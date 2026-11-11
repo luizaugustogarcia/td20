@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+Usage: tools/td20 [--dry-run] COMMAND [Maven options]
+
+CPU validation:
+  test         Run emitter and checker CPU tests (CUDA smoke tests are opt-in)
+  inventory    Validate the 83 root partitions and 104 endpoint annotations
+  structure    Check the source inventory without reading sorting certificates
+  count        Count root classes and endpoint classes on all available CPU cores
+  count-u      Independently Burnside-count all-unoriented roots
+  count-j      Count joint-3 residuals with TD18 Java CPU machinery
+  count-e      Independently Burnside-count the endpoint cover
+
+Computation:
+  emit         Generate roots/endpoints, emit witnesses, and reconstruct residuals
+  avoidance    Regenerate endpoint residuals and search reconstructed roots
+  verify       Independently regenerate obligations and check certificates on CPU
+
+Build and help:
+  build-gpu    Build the native CUDA library and package both modules
+  help         Show this help
+
+Examples:
+  tools/td20 count '-Dexec.args=--phase=roots --partitions=1-1'
+  tools/td20 emit '-Dtd20.args=--phase=endpoints --endpoints=1-10'
+  tools/td20 avoidance -Dtd20.args=--endpoints=1-10
+  tools/td20 avoidance -Dtd20.args=--resume-work=/path/to/previous/work
+  tools/td20 verify '-Dexec.args=--phase=roots --partitions=1-1'
+  tools/td20 --dry-run emit
+
+Phases: roots, endpoints, avoidance, all (count supports roots/endpoints/all).
+Ranges cover only their selected scope. Obstruction counts are not prerequisites.
+The checker regenerates obligations and replays the certificate database directly.
+See docs/WORKFLOW.md, docs/OPERATIONS.md, and docs/RESEARCH_PLAN.md.
+USAGE
+}
+
+dry_run=false
+if [[ ${1:-} == --dry-run ]]; then
+    dry_run=true
+    shift
+fi
+command=${1:-help}
+if (( $# > 0 )); then
+    shift
+fi
+options=("$@")
+
+case "$command" in
+    help|--help|-h) usage; exit 0 ;;
+    test)       args=(-pl emitter,checker -am test) ;;
+    inventory|structure)
+                args=(-pl checker compile exec:java)
+                supplied=false
+                for i in "${!options[@]}"; do
+                    if [[ ${options[i]} == -Dexec.args=* ]]; then
+                        if "$supplied"; then
+                            printf '%s\n' 'Supply -Dexec.args only once.' >&2
+                            exit 2
+                        fi
+                        supplied=true
+                        options[i]="-Dexec.args=--structural-only ${options[i]#-Dexec.args=}"
+                    fi
+                done
+                if ! "$supplied"; then
+                    args+=(-Dexec.args=--structural-only)
+                fi
+                ;;
+    count)      args=(-pl emitter compile exec:java@cpu-cli
+                     -Dexec.mainClass=br.unb.cic.td20.CountTD20Bracelets) ;;
+    count-u)    args=(-pl emitter compile exec:java@cpu-cli
+                     -Dexec.mainClass=br.unb.cic.td20.CountTD20Unoriented) ;;
+    count-j)    args=(-pl emitter compile exec:java@cpu-cli
+                     -Dexec.mainClass=br.unb.cic.td20.CountTD20Joint) ;;
+    count-e)    args=(-pl emitter compile exec:java@cpu-cli
+                     -Dexec.mainClass=br.unb.cic.td20.CountTD20Endpoints) ;;
+    emit)       args=(-pl emitter -Pgpu compile exec:exec) ;;
+    avoidance)
+                args=(-pl emitter -Pgpu compile exec:exec)
+                supplied=false
+                for i in "${!options[@]}"; do
+                    if [[ ${options[i]} == -Dtd20.args=* ]]; then
+                        if "$supplied"; then
+                            printf '%s\n' 'Supply -Dtd20.args only once.' >&2
+                            exit 2
+                        fi
+                        supplied=true
+                        value=${options[i]#-Dtd20.args=}
+                        read -r -a invocation_args <<< "$value"
+                        for argument in "${invocation_args[@]}"; do
+                            if [[ $argument == --phase=* && $argument != --phase=avoidance ]]; then
+                                printf '%s\n' 'The avoidance command requires --phase=avoidance.' >&2
+                                exit 2
+                            fi
+                        done
+                        options[i]="-Dtd20.args=--phase=avoidance $value"
+                    fi
+                done
+                if ! "$supplied"; then
+                    args+=(-Dtd20.args=--phase=avoidance)
+                fi
+                ;;
+    verify)     args=(-pl checker compile exec:java) ;;
+    build-gpu)  args=(-Pgpu package) ;;
+    *) printf 'Unknown command: %s\n' "$command" >&2; usage >&2; exit 2 ;;
+esac
+
+td20_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd -- "$td20_root"
+if "$dry_run"; then
+    printf '%q ' mvn "${args[@]}" "${options[@]}"
+    printf '\n'
+else
+    exec mvn "${args[@]}" "${options[@]}"
+fi

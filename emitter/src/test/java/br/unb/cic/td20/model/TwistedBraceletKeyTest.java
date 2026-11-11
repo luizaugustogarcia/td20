@@ -1,0 +1,120 @@
+package br.unb.cic.td20.model;
+
+import br.unb.cic.td20.permutation.Cycle;
+import br.unb.cic.td20.permutation.MulticyclePermutation;
+import java.util.Arrays;
+import java.util.function.Consumer;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class TwistedBraceletKeyTest {
+    @Test
+    void matchesTheFullWordOrbitReferenceForEveryPermutationThroughSevenSymbols() {
+        for (int n = 1; n <= 7; n++) {
+            int[] images = new int[n];
+            for (int symbol = 0; symbol < n; symbol++) images[symbol] = symbol;
+            permute(images, 0, permutation -> {
+                final var candidate = candidate(permutation);
+                assertEquals(reference(candidate), TwistedBraceletKey.of(candidate).canonicalWord(),
+                        () -> "Orbit minimum disagrees for omega=" + Arrays.toString(permutation));
+            });
+        }
+    }
+
+    @Test
+    void preservesMixedEqualSizeAnnotationsAndTwistedReflectionInAnyCurrentCycle() {
+        final var candidate = new CyclicTargetCandidate(
+                new MulticyclePermutation("(0 5 2)(1 6 3 7 4)(8 9 10)(11 13 12)"),
+                Cycle.of(5, 1, 2, 3, 4, 0, 6, 7, 8, 9, 10, 11, 12, 13, 14));
+        final var expected = reference(candidate);
+        assertEquals(expected, TwistedBraceletKey.of(candidate).canonicalWord());
+        candidate.dihedralOrbitWords().forEach(image -> {
+            final var transformed = CyclicTargetCandidate.fromEncodingWord(image.word());
+            assertEquals(expected, TwistedBraceletKey.of(transformed).canonicalWord());
+        });
+    }
+
+    @Test
+    void preservesRankOriginsBeyondTheGpuDomain() {
+        final int[] labels = new int[23];
+        final int[] ranks = new int[23];
+        Arrays.fill(labels, 1);
+        for (int position = 0; position < ranks.length; position++) ranks[position] = position * 7 % 23 + 1;
+        final var candidate = CyclicTargetCandidate.fromEncodingWord(StandardizedEncodingWord.of(labels, ranks));
+        assertEquals(reference(candidate), TwistedBraceletKey.of(candidate).canonicalWord());
+    }
+
+    /** The previous object-based orbit minimum is an independent reference. */
+    private static StandardizedEncodingWord reference(final CyclicTargetCandidate candidate) {
+        return candidate.dihedralOrbitWords().map(DihedralOrbitWord::word)
+                .min((left, right) -> Arrays.compare(fixedColorSymbols(left), fixedColorSymbols(right)))
+                .orElseThrow();
+    }
+
+    private static int[] fixedColorSymbols(final StandardizedEncodingWord word) {
+        final int[] sizes = new int[word.length() + 1];
+        final boolean[] oriented = new boolean[word.length() + 1];
+        int colorCount = 0;
+        for (int position = 0; position < word.length(); position++) {
+            final int label = word.cycleLabelAt(position);
+            if (sizes[label]++ == 0) colorCount++;
+            oriented[label] |= word.rankAt(position) != 0;
+        }
+        final Integer[] colors = new Integer[colorCount];
+        for (int label = 1; label <= colorCount; label++) colors[label - 1] = label;
+        Arrays.sort(colors, (left, right) -> {
+            final int sizeComparison = Integer.compare(sizes[right], sizes[left]);
+            if (sizeComparison != 0) return sizeComparison;
+            final int orientationComparison = Boolean.compare(oriented[left], oriented[right]);
+            return orientationComparison != 0 ? orientationComparison : Integer.compare(left, right);
+        });
+        final int[] firstSymbolByLabel = new int[colorCount + 1];
+        int nextSymbol = 0;
+        for (int label : colors) {
+            firstSymbolByLabel[label] = nextSymbol;
+            nextSymbol += oriented[label] ? sizes[label] : 1;
+        }
+        final int[] symbols = new int[word.length()];
+        for (int position = 0; position < word.length(); position++) {
+            final int label = word.cycleLabelAt(position);
+            symbols[position] = firstSymbolByLabel[label] + (oriented[label] ? word.rankAt(position) - 1 : 0);
+        }
+        return symbols;
+    }
+
+    private static CyclicTargetCandidate candidate(final int[] images) {
+        final var omega = new MulticyclePermutation();
+        final boolean[] seen = new boolean[images.length];
+        for (int first = 0; first < images.length; first++) {
+            if (seen[first]) continue;
+            final int[] symbols = new int[images.length];
+            int length = 0;
+            int x = first;
+            do {
+                seen[x] = true;
+                symbols[length++] = x;
+                x = images[x];
+            } while (x != first);
+            // Include implicit fixed points in the exhaustive reference domain.
+            if (length > 1) omega.add(Cycle.of(Arrays.copyOf(symbols, length)));
+        }
+        final int[] beta = new int[images.length];
+        for (int symbol = 0; symbol < beta.length; symbol++) beta[symbol] = symbol;
+        return new CyclicTargetCandidate(omega, Cycle.of(beta));
+    }
+
+    private static void permute(final int[] values, final int index, final Consumer<int[]> consumer) {
+        if (index == values.length) { consumer.accept(values); return; }
+        for (int next = index; next < values.length; next++) {
+            swap(values, index, next);
+            permute(values, index + 1, consumer);
+            swap(values, index, next);
+        }
+    }
+
+    private static void swap(final int[] values, final int first, final int second) {
+        final int value = values[first];
+        values[first] = values[second];
+        values[second] = value;
+    }
+}

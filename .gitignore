@@ -1,0 +1,50 @@
+# Maven and Java build products
+**/target/
+*.class
+__pycache__/
+*.py[cod]
+
+# Generated computational artifacts
+certificates/
+data/
+checkpoints/
+avoidance-work/
+logs/
+
+# Native/CMake build products
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+*.so
+*.dylib
+*.dll
+
+# IDE and editor settings
+.idea/
+.vscode/
+*.iml
+*.swp
+*~
+
+# Operating-system metadata, including Windows alternate-data-stream exports
+.DS_Store
+Thumbs.db
+*.Zone.Identifier
+*:Zone.Identifier
+
+# LaTeX build products
+docs/td20-reduction-count.pdf
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.log.*
+*.out
+*.synctex.gz
+*.thm
+
+# Locally supplied research articles
+docs/refs/*.pdf

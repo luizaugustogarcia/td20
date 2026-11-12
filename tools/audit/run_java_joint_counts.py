@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resume exact Java joint-3 counting; CPU concurrency is detected by the JVM."""
+"""Resume exact Java joint-2 counting; CPU concurrency is detected by the JVM."""
 from __future__ import annotations
 import argparse
 import fcntl
@@ -18,7 +18,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--n', type=int, default=21)
-    parser.add_argument('--output', type=Path, default=PROJECT / 'data/joint3-reduction-audit/native-v1')
+    parser.add_argument('--output', type=Path, default=PROJECT / 'data/joint2-reduction-audit/native-v1')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--paper', type=Path)
     parser.add_argument('--unoriented', type=Path)
@@ -43,11 +43,11 @@ def main():
         reused = len(complete)
         available = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else (os.cpu_count() or 1)
         print(json.dumps({'reused_complete_partitions': reused, 'remaining_partitions': len(missing),
-                          'scheduling': 'td18-partition-pool-v1', 'available_cpu_cores': available}), flush=True)
+                          'scheduling': 'td18-prefix-frontier-v1', 'available_cpu_cores': available}), flush=True)
 
         def publish():
             if options.paper:
-                from publish_partial_joint3_counts import load_unoriented, native_rows, render, update_paper
+                from publish_partial_joint2_counts import load_unoriented, native_rows, render, update_paper
                 expected, values, total = load_unoriented(options.unoriented)
                 original = options.paper.read_text()
                 rendered, count = render(original, expected, values, total, native_rows(output, expected))
@@ -66,7 +66,7 @@ def main():
                 try:
                     for line in process.stdout:
                         print(line, end='', flush=True)
-                        if not line.startswith('{"format":"td20-joint3-residual-count-v3"'):
+                        if not line.startswith('{"format":"td20-joint2-residual-count-v3"'):
                             continue
                         row = json.loads(line)
                         part = tuple(row.get('partition', ()))
@@ -90,11 +90,11 @@ def main():
         if set(complete) != set(inventory):
             raise ValueError('Java count finished with missing partitions')
         rows = [complete[part] for part in inventory]
-        report = {'format': 'td20-joint3-count-run-v1', 'complete': True, 'domain': options.n,
+        report = {'format': 'td20-joint2-count-run-v1', 'complete': True, 'domain': options.n,
                   'required_partitions': len(inventory), 'completed_partitions': len(rows), 'rows': rows,
-                  'implementation': 'java-joint3-td18-machinery-v1', 'worker_limit': available,
+                  'implementation': 'java-joint2-td18-machinery-v2', 'worker_limit': available,
                   'available_cpu_cores': available, 'reused_complete_partitions': reused,
-                  'scheduling': 'td18-partition-pool-v1',
+                  'scheduling': 'td18-prefix-frontier-v1',
                   'retained_native_audit_partitions': sum(row['format'] != ROW_V3 for row in rows),
                   'sorting_certificates_checked': False, 'td20_proved': False}
         for field in COUNT_FIELDS:

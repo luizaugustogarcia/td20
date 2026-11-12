@@ -13,16 +13,21 @@ import java.util.regex.Pattern;
 /** Regenerates the partition inventory and checks every machine-readable paper row. */
 public final class JointInventory {
     public static final int ROOT_COUNT = 83;
-    public static final int ENDPOINT_COUNT = 104;
+    public static final int ENDPOINT_COUNT = 214;
     private JointInventory() { }
     public record Root(int number, int[] partition, long unorientedClasses,
                        long jointResidualClasses, long supportClearingClasses, long orientedClasses) {
         public Root {
             partition = partition.clone();
-            if (number < 1 || unorientedClasses < 0 || jointResidualClasses < 0
+            boolean pending = jointResidualClasses == -1 && supportClearingClasses == -1 && orientedClasses == -1;
+            if (number < 1 || unorientedClasses < 0 || !pending && (jointResidualClasses < 0
                     || supportClearingClasses < 0 || orientedClasses < 0
-                    || jointResidualClasses - supportClearingClasses != orientedClasses)
+                    || jointResidualClasses - supportClearingClasses != orientedClasses))
                 throw new IllegalArgumentException("Inconsistent root count");
+        }
+        public boolean countsComplete() { return jointResidualClasses >= 0; }
+        public void requireCompleteCounts() {
+            if (!countsComplete()) throw new IllegalStateException("Pending joint-2 counts: partition=" + number);
         }
         @Override public int[] partition() { return partition.clone(); }
     }
@@ -36,13 +41,23 @@ public final class JointInventory {
             return false;
         }
     }
+    private static String normalizePending(String line) {
+        if (line.startsWith("\\unorientedjointrow{")) {
+            if (!line.matches("^\\\\unorientedjointrow\\{[1-9][0-9]*}\\{[0-9]+(?:,[0-9]+)*}\\{[0-9]+}$"))
+                throw new IllegalArgumentException("Malformed pending root row");
+            return line.replace("\\unorientedjointrow", "\\jointrow") + "{-1}{-1}{-1}";
+        }
+        if (line.startsWith("\\jointrow{") && line.contains("{-"))
+            throw new IllegalArgumentException("Use the explicit pending-row macro for missing counts");
+        return line;
+    }
     public static List<Root> read(final Path paper) throws IOException {
-        final var syntax = Pattern.compile("^\\\\jointrow\\{([0-9]+)}\\{([0-9,]+)}\\{([0-9]+)}\\{([0-9]+)}\\{([0-9]+)}\\{([0-9]+)}\\s*(?:%.*)?$");
+        final var syntax = Pattern.compile("^\\\\jointrow\\{([0-9]+)}\\{([0-9,]+)}\\{([0-9]+)}\\{(-1|[0-9]+)}\\{(-1|[0-9]+)}\\{(-1|[0-9]+)}\\s*(?:%.*)?$");
         final var rows = new ArrayList<Root>();
         for (final var line : Files.readAllLines(paper)) {
-            final var m = syntax.matcher(line.trim());
+            final var m = syntax.matcher(normalizePending(line.trim()));
             if (!m.matches()) {
-                if (line.trim().startsWith("\\jointrow{")) throw new IllegalStateException("Malformed paper inventory row");
+                if ((line.trim().startsWith("\\jointrow{") || line.trim().startsWith("\\unorientedjointrow{"))) throw new IllegalStateException("Malformed paper inventory row");
                 continue;
             }
             rows.add(new Root(Integer.parseInt(m.group(1)), Arrays.stream(m.group(2).split(","))
@@ -60,12 +75,12 @@ public final class JointInventory {
     }
     public static List<Endpoint> endpoints() {
         final var result = new ArrayList<Endpoint>();
-        for (final var p : Partitions.generateValidPartitions(16)) {
-            if (KnownDiameters.threeNorm(p) > 7) continue;
+        for (final var p : Partitions.generateValidPartitions(18)) {
+            if (KnownDiameters.threeNorm(p) > 8) continue;
             for (final var a : AnnotatedPartitions.of(p))
                 result.add(new Endpoint(result.size() + 1, p, a.oriented()));
         }
-        if (result.size() != ENDPOINT_COUNT || result.stream().filter(Endpoint::elementaryClosure).count() != 52)
+        if (result.size() != ENDPOINT_COUNT || result.stream().filter(Endpoint::elementaryClosure).count() != 104)
             throw new IllegalStateException("Endpoint annotation inventory mismatch");
         return List.copyOf(result);
     }

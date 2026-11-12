@@ -45,24 +45,25 @@
 
 ## Joint selection and coverage
 
-- Keep all 83 paper root partitions and the independently generated 104
+- Use the joint-2 selection from ../td18 with the TD(20) domain and budgets.
+- Keep all 83 paper root partitions and the independently generated 214
   endpoint annotations consistent with the implementation.
 - First test all moves creating at least two fixed points. Otherwise inspect
-  every qualifying gain-one first move. A gain-three second move closes;
-  gain-one and gain-two second moves continue to depth three. The favorable
-  depth-three gain patterns are (1,1,3), (1,2,2), and (1,2,3). Include
-  supports within even-length cycles and across cycles.
-- At every depth, totally unoriented states receive no structural reduction.
+  every qualifying gain-one first move and every second move creating at least
+  two fixed points. Gain three closes; gain two reaches an 18-symbol endpoint.
+  Include supports within even-length cycles and across cycles.
+- At both depths, totally unoriented states receive no structural reduction.
   Use a known-diameter closure when it fits; otherwise retain the obligation.
 - Use only the paper's explicit budget-valid support-clearing patterns.
 - Endpoint sorting failures are final-phase obligations; never assume a
   predicted obstruction list or count.
-- Reconstruct every compatible root through three inverse waves. Restore the
-  last gain (two or three), then the gain-one or gain-two middle move, then
-  the gain-one first move. Preserve gain-pattern tags across deduplication,
-  enumerate all gaps and supports, and verify actual forward gains.
-- Direct roots use budget eleven; endpoints use eight; inverse waves use
-  budgets nine, ten, and eleven.
+- Reconstruct every compatible root through two inverse waves. Restore the
+  gain-two second move, then the gain-one first move. Enumerate every cyclic
+  gap and support and verify actual forward gains and odd-cycle increase.
+- Direct roots use budget eleven; endpoints use nine; inverse waves use
+  budgets ten and eleven on twenty and twenty-one symbols respectively.
+- Reject superseded route counts and checkpoints. Explicit pending paper
+  rows support structural inventory checks; proof verification requires counts.
 
 ## Code, documentation, and proof discipline
 
@@ -86,7 +87,7 @@
   existing Java Burnside counter.
 - Keep generation, counting, sorting, scheduling, persistence, and checking
   machinery identical to ../td18, except for the TD(20) domain and budgets
-  and the joint-3 reduction/reconstruction. Use TD(18) worker detection,
+  and the budget-valid support clearings. Use TD(18) worker detection,
   bounded queues, and prefix scheduling; do not hardcode machine-specific
   worker counts.
 - JDK 21 is the baseline. Prefer immutable keys and deterministic iteration

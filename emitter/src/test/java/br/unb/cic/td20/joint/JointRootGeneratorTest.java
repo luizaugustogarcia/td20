@@ -45,6 +45,22 @@ class JointRootGeneratorTest {
     }
 
     @Test
+    void nineteenCycleHasExactly667ResidualClassesIncludingTwoWithNoFirstMove() {
+        final Set<ExtendedToricClassKey> keys = new HashSet<>();
+        final int[] noFirst = {0};
+        JointRootGenerator.generateResiduals(new int[]{19}, pair -> {
+            assertTrue(keys.add(pair.extendedToricClassKey()), "Duplicate 19-cycle class");
+            final var outcome = JointReductionAnalysis.analyze(pair);
+            assertFalse(outcome.hasFavorablePrefix());
+            assertNotEquals(JointReductionAnalysis.Route.TOTALLY_UNORIENTED, outcome.route());
+            if (outcome.route() == JointReductionAnalysis.Route.NO_QUALIFYING_FIRST_MOVE) noFirst[0]++;
+            assertFalse(SupportClearing.closes(pair));
+        });
+        assertEquals(667, keys.size());
+        assertEquals(2, noFirst[0]);
+    }
+
+    @Test
     void countModeAgreesWithEmissionAndCanonicalizesPartitionOrder() {
         final int[][] partitions = {{3, 3, 3}, {5, 2, 2}, {4, 3, 2}, {3, 2, 2}};
         for (final int[] partition : partitions) {
@@ -60,7 +76,6 @@ class JointRootGeneratorTest {
         }
         assertThrows(IllegalArgumentException.class, () -> JointRootGenerator.count(new int[]{1, 3}));
         assertThrows(IllegalArgumentException.class, () -> JointRootGenerator.count(new int[]{20}));
-        assertThrows(IllegalArgumentException.class, () -> JointRootGenerator.count(new int[]{23}));
         assertThrows(IllegalArgumentException.class, () -> JointRootGenerator.count(new int[]{}));
         assertThrows(IllegalStateException.class, () -> JointRootGenerator.count(new int[]{19},
                 () -> { throw new IllegalStateException("cancelled"); }));

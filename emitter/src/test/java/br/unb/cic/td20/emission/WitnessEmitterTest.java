@@ -35,13 +35,20 @@ class WitnessEmitterTest {
             assertThrows(IllegalStateException.class, () -> WitnessEmitter.emitRoot(wrong,(p,b) -> true,progress));
         }
     }
+    @Test void pendingCountsRejectRootEmissionBeforeAnyWitnessWork() {
+        var row = new JointInventory.Root(1,new int[]{3,2,2},1,-1,-1,-1);
+        try (var progress = new WitnessEmitter.Progress()) {
+            assertThrows(IllegalStateException.class, () -> WitnessEmitter.emitRoot(row,
+                    (pair,budget) -> { fail("Pending counts cannot discharge roots"); return false; },progress));
+        }
+    }
     @Test void missingEndpointWitnessesPopulateFinalWorkWithoutMarkers(@TempDir Path directory) {
         int[] partition = {3,2,2};
         long expected = DirectTwistedBraceletGenerator.countRepresentatives(partition,new boolean[3]);
         var endpoint = new JointInventory.Endpoint(1,partition,new boolean[3]);
         try (var states = new DiskStateSet(directory.resolve("states")); var progress = new WitnessEmitter.Progress()) {
             WitnessEmitter.emitEndpoint(endpoint,(pair,budget) -> {
-                assertEquals(8,budget); return false;
+                assertEquals(9,budget); return false;
             },states,progress);
             assertTrue(expected > 0); assertEquals(expected,states.seal());
         }
@@ -57,6 +64,8 @@ class WitnessEmitterTest {
     }
 
     @Test void reconstructedRootUsesCpuPrefixAndPersistsItsClosure(@TempDir Path directory) {
+        final String previousTimeout = System.getProperty("td20.reconstructionCpuPrefixMillis");
+        System.setProperty("td20.reconstructionCpuPrefixMillis", "60000");
         var pair = CyclicTargetPair.of(new MulticyclePermutation("(0 1 2)(3 4 5)"),
                 Cycle.of(0,1,2,3,4,5)).canonicalRepresentative();
         try (var writer = new AsyncCertificateWriter(directory.resolve("certificates"), 60)) {
@@ -66,6 +75,9 @@ class WitnessEmitterTest {
                 writer.flush();
                 assertEquals(1, writer.findResult(pair, 2).orElseThrow().moves().size());
             } finally { WitnessSearch.uninstallWriter(writer); }
+        } finally {
+            if (previousTimeout == null) System.clearProperty("td20.reconstructionCpuPrefixMillis");
+            else System.setProperty("td20.reconstructionCpuPrefixMillis", previousTimeout);
         }
     }
 }

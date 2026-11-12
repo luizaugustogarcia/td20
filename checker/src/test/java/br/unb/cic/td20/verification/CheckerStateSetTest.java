@@ -20,11 +20,11 @@ class CheckerStateSetTest {
     void deduplicatesByClassAndKeepsBudgetsDistinct(@TempDir final Path directory) {
         final var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)),
                 Cycle.of(0, 1, 2));
-        final var first = new JointInverseReconstruction.SearchState(8, pair);
+        final var first = new JointInverseReconstruction.SearchState(9, pair);
         try (final var states = new CheckerStateSet(directory.resolve("states"))) {
             states.add(first);
-            states.add(new JointInverseReconstruction.SearchState(8, pair.canonicalRepresentative()));
-            states.add(new JointInverseReconstruction.SearchState(9, pair));
+            states.add(new JointInverseReconstruction.SearchState(9, pair.canonicalRepresentative()));
+            states.add(new JointInverseReconstruction.SearchState(10, pair));
             assertEquals(2, states.seal().count());
             assertTrue(states.contains(first));
             final var recovered = new ArrayList<JointInverseReconstruction.SearchState>();

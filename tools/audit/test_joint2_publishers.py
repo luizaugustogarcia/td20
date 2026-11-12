@@ -14,8 +14,8 @@ import unittest
 
 DIRECTORY = Path(__file__).resolve().parent
 PROJECT = DIRECTORY.parent.parent
-PARTIAL_SCRIPT = DIRECTORY / "publish_partial_joint3_counts.py"
-FINAL_SCRIPT = DIRECTORY / "publish_joint3_counts.py"
+PARTIAL_SCRIPT = DIRECTORY / "publish_partial_joint2_counts.py"
+FINAL_SCRIPT = DIRECTORY / "publish_joint2_counts.py"
 PAPER = PROJECT / "docs" / "td20-reduction-count.tex"
 
 
@@ -26,8 +26,8 @@ def load(name: str, path: Path):
     return module
 
 
-partial = load("partial_joint3_publisher", PARTIAL_SCRIPT)
-final = load("final_joint3_publisher", FINAL_SCRIPT)
+partial = load("partial_joint2_publisher", PARTIAL_SCRIPT)
+final = load("final_joint2_publisher", FINAL_SCRIPT)
 
 
 def pending_paper() -> str:
@@ -49,7 +49,7 @@ def pending_paper() -> str:
     return paper.replace("Exact counts by least clearing length.", "Counts are pending.")
 
 
-class JointThreePublisherTest(unittest.TestCase):
+class JointTwoPublisherTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -86,7 +86,7 @@ class JointThreePublisherTest(unittest.TestCase):
     def native_row(partition: tuple[int, ...], joint: int, cleared: int,
                    no_first: int, shard_index: int = 0, shard_count: int = 1) -> dict:
         return {
-            "format": "td20-joint3-residual-count-v1",
+            "format": "td20-joint2-residual-count-v1",
             "partition": list(partition),
             "shard_index": shard_index,
             "shard_count": shard_count,
@@ -114,17 +114,19 @@ class JointThreePublisherTest(unittest.TestCase):
                     {"9": c, "11": 0, "13": 0, "17": 0},
             })
         result = {
-            "format": "td20-joint3-selection-summary-v1",
+            "format": "td20-joint2-selection-summary-v1",
             "complete": True, "domain": 21, "root_budget": 11,
             "partitions_required": 83, "partitions_completed": 83,
-            "selection": ["immediate gain >= 2", "(1,3)", "(1,1,3)",
-                          "(1,2,2)", "(1,2,3)"],
+            "selection": ["immediate gain >= 2", "(1,3)", "(1,2)"],
             "rows": rows, "sorting_certificates_checked": False,
             "td20_proved": False,
+            "endpoint_counts": {"all_endpoint_classes": 11,
+                                "elementary_closure_classes": 3,
+                                "classes_requiring_discharge": 8},
         }
         fields = {
             "totally_unoriented_root_classes": "U",
-            "oriented_joint3_residual_classes": "J",
+            "oriented_joint2_residual_classes": "J",
             "support_clearing_classes": "C",
             "oriented_root_classes_after_support_clearing": "O",
             "direct_root_class_obligations": "direct",
@@ -206,7 +208,7 @@ class JointThreePublisherTest(unittest.TestCase):
         partial_text = paper.read_text()
         self.assertEqual(83, partial_text.count("\\jointrow{"))
         total = r"\multicolumn{2}{l}{Total} & " + " & ".join(str(self.summary[field]) for field in
-            ("totally_unoriented_root_classes", "oriented_joint3_residual_classes",
+            ("totally_unoriented_root_classes", "oriented_joint2_residual_classes",
              "support_clearing_classes", "oriented_root_classes_after_support_clearing")) + r"\\"
         self.assertIn(total, partial_text)
         summary_path = self.write_json("in-place-summary.json", self.summary)
@@ -218,6 +220,9 @@ class JointThreePublisherTest(unittest.TestCase):
         self.assertIn("td20_proved=false", final_text)
         self.assertIn("sorting_certificates_checked=false", final_text)
         self.assertNotIn("pending exact artifacts", final_text)
+        self.assertIn(r"All endpoint classes & 11\\", final_text)
+        self.assertIn(r"Elementary endpoint closures & 3\\", final_text)
+        self.assertIn(r"Endpoint classes requiring discharge (budget nine) & 8\\", final_text)
         subprocess.run([
             sys.executable, str(FINAL_SCRIPT), "--summary", str(summary_path),
             "--paper", str(paper), "--in-place",
@@ -299,6 +304,15 @@ class JointThreePublisherTest(unittest.TestCase):
             "classes_requiring_discharge": 1,
         }
         changes.append(wrong_endpoint)
+
+        missing_endpoints = copy.deepcopy(self.summary)
+        del missing_endpoints["endpoint_counts"]
+        changes.append(missing_endpoints)
+
+        for invalid_endpoints in (None, {}, []):
+            changed = copy.deepcopy(self.summary)
+            changed["endpoint_counts"] = invalid_endpoints
+            changes.append(changed)
 
         for index, changed in enumerate(changes):
             path = self.write_json(f"invalid-{index}.json", changed)

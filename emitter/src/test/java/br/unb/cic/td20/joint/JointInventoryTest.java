@@ -18,7 +18,11 @@ class JointInventoryTest {
     void paperContainsEveryRootPartitionAndAuditedTotals() throws Exception {
         final var rows = JointInventory.read(paper());
         assertEquals(83, rows.size());
-        assertTrue(rows.stream().mapToLong(JointInventory.Root::directClasses).sum() > 0);
+        assertEquals(12_704_114_061L, rows.stream().mapToLong(JointInventory.Root::unorientedClasses).sum());
+        for (final var row : rows) {
+            if (row.countsComplete()) assertEquals(row.unorientedClasses() + row.orientedClasses(), row.directClasses());
+            else assertThrows(IllegalStateException.class, row::directClasses);
+        }
         assertArrayEquals(new int[]{21}, rows.getFirst().partition());
         rows.getFirst().partition()[0] = 1;
         assertArrayEquals(new int[]{21}, rows.getFirst().partition());
@@ -29,7 +33,7 @@ class JointInventoryTest {
     void missingDuplicateMalformedAndInconsistentRowsReject() throws Exception {
         final String original = Files.readString(paper());
         final String row = original.lines().map(String::strip)
-                .filter(line -> line.startsWith("\\jointrow{1}"))
+                .filter(line -> line.startsWith("\\unorientedjointrow{1}") || line.startsWith("\\jointrow{1}"))
                 .findFirst().orElseThrow();
         assertTrue(original.contains(row));
         for (final String changed : new String[]{
@@ -45,16 +49,29 @@ class JointInventoryTest {
     }
 
     @Test
-    void endpointCoverIsCompleteAndHasFiftyTwoElementaryClosures() {
+    void explicitPendingRowIsReadableButCannotSupplyProofCounts() throws Exception {
+        final String original = Files.readString(paper());
+        final String row = original.lines().map(String::strip)
+                .filter(line -> line.startsWith("\\unorientedjointrow{1}") || line.startsWith("\\jointrow{1}"))
+                .findFirst().orElseThrow();
+        final Path pending = directory.resolve("pending.tex");
+        Files.writeString(pending, original.replace(row, "\\unorientedjointrow{1}{21}{0}"));
+        final var root = JointInventory.read(pending).getFirst();
+        assertFalse(root.countsComplete());
+        assertThrows(IllegalStateException.class, root::directClasses);
+    }
+
+    @Test
+    void endpointCoverIsCompleteAndHasOneHundredFourElementaryClosures() {
         final var endpoints = JointInventory.endpoints();
-        assertEquals(104, endpoints.size());
-        assertEquals(52, endpoints.stream().filter(JointInventory.Endpoint::elementaryClosure).count());
+        assertEquals(214, endpoints.size());
+        assertEquals(104, endpoints.stream().filter(JointInventory.Endpoint::elementaryClosure).count());
         final var seen = new HashSet<String>();
         for (final var endpoint : endpoints) {
             final int[] partition = endpoint.partition();
             final boolean[] orientations = endpoint.orientedByPart();
-            assertEquals(16, Arrays.stream(partition).sum());
-            assertTrue(KnownDiameters.threeNorm(partition) <= 7);
+            assertEquals(18, Arrays.stream(partition).sum());
+            assertTrue(KnownDiameters.threeNorm(partition) <= 8);
             assertEquals(0, Arrays.stream(partition).filter(x -> x % 2 == 0).count() % 2);
             assertTrue(seen.add(Arrays.toString(partition) + Arrays.toString(orientations)));
             for (int i = 0; i < partition.length; i++) {

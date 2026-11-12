@@ -13,15 +13,15 @@ import unittest
 
 DIRECTORY = Path(__file__).resolve().parent
 SCRIPT = DIRECTORY / "run_joint_counts.py"
-SPEC = importlib.util.spec_from_file_location("joint3_runner", SCRIPT)
+SPEC = importlib.util.spec_from_file_location("joint2_runner", SCRIPT)
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
-BINARY = Path(os.environ.get("TD20_NATIVE_AUDIT_BINARY", "/tmp/td20-joint3-count-v2"))
-BASELINE = Path("/tmp/td20-joint3-count")
+BINARY = Path(os.environ.get("TD20_NATIVE_AUDIT_BINARY", "/tmp/td20-joint2-count-v2"))
+BASELINE = Path("/tmp/td20-joint2-count")
 
 
 @unittest.skipUnless(BINARY.is_file(), "Build the native v2 counter first")
-class JointThreeShardingTest(unittest.TestCase):
+class JointTwoShardingTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -39,7 +39,7 @@ class JointThreeShardingTest(unittest.TestCase):
     @staticmethod
     def representative_set(path, domain, expected):
         lines = path.read_text().splitlines()
-        if lines[0] != f"TD20-JOINT3-RESIDUALS 1 N={domain} scope=oriented" \
+        if lines[0] != f"TD20-JOINT2-RESIDUALS 1 N={domain} scope=oriented" \
                 or lines[-1] != f"COUNT {expected}":
             raise AssertionError("Invalid representative boundary")
         values = set(lines[1:-1])

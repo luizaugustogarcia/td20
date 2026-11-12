@@ -7,15 +7,14 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
 
-/** Exact Java joint-3 counting; whole-partition reports are atomic resume boundaries. */
+/** Exact Java joint-2 counting; whole-partition reports are atomic resume boundaries. */
 public final class CountTD20Joint {
     private CountTD20Joint() { }
     public static void main(String[] args) throws Exception {
         int n=21;Path list=null,output=br.unb.cic.td20.runtime.ProjectPaths.root(Path.of(""))
-                .resolve("data/joint3-reduction-audit/native-v1");
+                .resolve("data/joint2-reduction-audit/native-v1");
         for(String arg:args) {
             if(arg.startsWith("--n=")) n=Integer.parseInt(arg.substring(4));
             else if(arg.startsWith("--partitions-file=")) list=Path.of(arg.substring(18));
@@ -40,10 +39,12 @@ public final class CountTD20Joint {
         reporter.scheduleWithFixedDelay(() -> System.out.printf("Counting progress: completed=%d%n", processed.get()),
                 60,60,java.util.concurrent.TimeUnit.SECONDS);
         final Path directory=output;
-        try(var coordinators=Executors.newFixedThreadPool(workers)) {
-            var completed=new ExecutorCompletionService<String>(coordinators);
-            for(int[] part:parts) completed.submit(() -> publish(part,directory));
-            for(int i=0;i<parts.size();i++) { System.out.println(completed.take().get()); processed.incrementAndGet(); }
+        try {
+            for(int[] part:parts) {
+                System.out.printf("Counting partition %s on %d CPUs%n",key(part),workers);
+                System.out.println(publish(part,directory));
+                processed.incrementAndGet();
+            }
         } finally { reporter.shutdownNow(); }
     }
     private static String key(int[] part) {
@@ -52,9 +53,9 @@ public final class CountTD20Joint {
     private static String publish(int[] part,Path directory) throws Exception {
         Path report=directory.resolve("partition-"+key(part)+".json");
         if(Files.exists(report)) throw new IllegalArgumentException("Refusing to overwrite "+report);
-        long started=System.nanoTime();var audit=JointRootGenerator.countAudit(part);var c=audit.counts();
-        var json=new StringBuilder("{\"format\":\"td20-joint3-residual-count-v3\",")
-            .append("\"implementation\":\"java-joint3-td18-machinery-v1\",\"scheduling\":\"td18-partition-pool-v1\",")
+        long started=System.nanoTime();var audit=JointRootGenerator.countConcurrently(part);var c=audit.counts();
+        var json=new StringBuilder("{\"format\":\"td20-joint2-residual-count-v3\",")
+            .append("\"implementation\":\"java-joint2-td18-machinery-v2\",\"scheduling\":\"td18-prefix-frontier-v1\",")
             .append("\"partition\":").append(Arrays.toString(part).replace(" ",""))
             .append(",\"shard_index\":0,\"shard_count\":1,\"worker_limit\":").append(Runtime.getRuntime().availableProcessors())
             .append(",\"oriented_root_classes\":").append(c.jointResidualClasses())

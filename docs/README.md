@@ -1,8 +1,8 @@
 # Documentation map
 
-[The source specification](td20-reduction-count.tex) defines the joint-3 route
-toward the objective `TD(20) = 11`, the 83-partition root inventory, the 104
-endpoint annotations, and all three inverse waves. The lower bound is already
+[The source specification](td20-reduction-count.tex) defines the joint-2 route
+toward the objective `TD(20) = 11`, the 83-partition root inventory, the 214
+endpoint annotations, and both inverse waves. The lower bound is already
 established by the reverse permutation; the route targets its matching upper
 bound. Any generated PDF is a reading copy, not a computational certificate.
 

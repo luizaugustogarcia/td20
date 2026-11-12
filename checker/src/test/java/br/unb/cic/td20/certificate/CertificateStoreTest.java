@@ -16,13 +16,16 @@ class CertificateStoreTest {
     static { RocksDB.loadLibrary(); }
     private static final CyclicTargetPair PAIR = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(0,1,2));
     private static void database(final Path path, final byte[] value, final boolean marker) throws Exception {
+        database(path,value,marker ? "joint2-selection-v1" : null);
+    }
+    private static void database(final Path path, final byte[] value, final String marker) throws Exception {
         try (final var options = new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true);
              final var first = new ColumnFamilyOptions(); final var second = new ColumnFamilyOptions()) {
             final var handles = new ArrayList<ColumnFamilyHandle>();
             try (final var db = RocksDB.open(options,path.toString(),List.of(
                     new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,first),
                     new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles)) {
-                if(marker) db.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),"joint3-selection-v1".getBytes(StandardCharsets.UTF_8));
+                if(marker != null) db.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),marker.getBytes(StandardCharsets.UTF_8));
                 if(value!=null) db.put(handles.get(0),CertificateCodec.keyFor(PAIR),value);
                 handles.forEach(ColumnFamilyHandle::close);
             }
@@ -72,6 +75,10 @@ class CertificateStoreTest {
             assertTrue(store.find(PAIR,10).isEmpty());
             assertThrows(IllegalStateException.class,()->store.require(PAIR,10));
         }
+    }
+    @Test void rejectsSupersededJointRouteSchema(@TempDir final Path path) throws Exception {
+        database(path.resolve("old-route"),null,"unsupported-selection-v1");
+        assertThrows(IllegalStateException.class,()->new CertificateStore(path.resolve("old-route")));
     }
     @Test void rejectsMissingFormatMarker(@TempDir final Path path) throws Exception {
         database(path.resolve("db"),null,false);

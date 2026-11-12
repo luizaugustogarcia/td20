@@ -51,12 +51,7 @@ public final class JointMoves {
         }
         return true;
     }
-    /**
-     * Checks the complete joint-three routing with arbitrary applicable
-     * supports. This is deliberately independent of the constrained emitter:
-     * every qualifying edge is obtained by replay, including the
-     * totally-unoriented stop at both intermediate depths.
-     */
+    /** Checks every first and second triple; no consecutive-edge shortcut. */
     public static boolean residual(final CyclicTargetPair pair) {
         final int[] p = images(pair), beta = pair.getBeta().getSymbols();
         if (fixed(p) != 0) throw new IllegalArgumentException("Contract fixed points first");
@@ -65,39 +60,17 @@ public final class JointMoves {
         for (int i = 0; i < n - 2; i++) for (int j = i + 1; j < n - 1; j++)
             for (int k = j + 1; k < n; k++) {
                 final int a = beta[i], b = beta[j], c = beta[k];
-                final int firstGain = gain(p, a, b, c);
+                if (gain(p, a, b, c) >= 2) return false;
+                if (gain(p, a, b, c) != 1) continue;
                 final int[] q = apply(p, a, b, c);
                 if (odd(q) != initialOdd + 2) continue;
-                if (firstGain >= 2) return false;
-                if (firstGain != 1) continue;
                 final int[] nextBeta = transpose(beta, i, j, k);
                 if (totallyUnoriented(q, nextBeta)) continue;
-                final int nextOdd = initialOdd + 2;
                 for (int r = 0; r < n - 2; r++) for (int s = r + 1; s < n - 1; s++)
                     for (int t = s + 1; t < n; t++) {
                         final int x = nextBeta[r], y = nextBeta[s], z = nextBeta[t];
-                        if (q[x] == x || q[y] == y || q[z] == z) continue;
-                        final int secondGain = gain(q, x, y, z);
-                        if (secondGain < 1) continue;
-                        final int[] successor = apply(q, x, y, z);
-                        if (odd(successor) != nextOdd + 2) continue;
-                        if (secondGain >= 3) return false;
-                        if (secondGain > 2) continue;
-                        final int[] thirdBeta = transpose(nextBeta, r, s, t);
-                        if (totallyUnoriented(successor, thirdBeta)) continue;
-                        final int successorOdd = nextOdd + 2;
-                        for (int u = 0; u < n - 2; u++)
-                            for (int v = u + 1; v < n - 1; v++)
-                                for (int w = v + 1; w < n; w++) {
-                                    final int d = thirdBeta[u], e = thirdBeta[v], f = thirdBeta[w];
-                                    if (successor[d] == d || successor[e] == e
-                                            || successor[f] == f) continue;
-                                    final int thirdGain = gain(successor, d, e, f);
-                                    if (secondGain == 1 && thirdGain != 3
-                                            || secondGain == 2 && thirdGain < 2) continue;
-                                    if (odd(apply(successor, d, e, f)) == successorOdd + 2)
-                                        return false;
-                                }
+                        if (q[x] != x && q[y] != y && q[z] != z && gain(q, x, y, z) >= 2)
+                            return false;
                     }
             }
         return true;

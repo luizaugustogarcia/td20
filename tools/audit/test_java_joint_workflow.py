@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 import run_joint_counts as rows
-from publish_partial_joint3_counts import validate_native_row
+from publish_partial_joint2_counts import validate_native_row
 
 PROJECT = Path(__file__).resolve().parents[2]
 CLASSES = PROJECT / 'emitter/target/classes'

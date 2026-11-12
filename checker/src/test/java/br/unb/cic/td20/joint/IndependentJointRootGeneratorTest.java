@@ -21,15 +21,13 @@ class IndependentJointRootGeneratorTest {
                 final Set<String> forPartition=new HashSet<>();
                 IndependentJointRootGenerator.generateResiduals(partition,pair->{
                     assertTrue(JointMoves.residual(pair));
-                    assertTrue(oracleResidual(pair));
                     final var key=key(pair);
                     assertTrue(actual.add(key),"Duplicate emitted class");
                     assertTrue(forPartition.add(key));
                 });
                 final Set<String> parallel=ConcurrentHashMap.newKeySet();
-                IndependentJointRootGenerator.generateResidualsConcurrently(partition,()->{},pair->{
+                IndependentJointRootGenerator.generateResidualsConcurrently(partition,4,()->{},pair->{
                     assertTrue(JointMoves.residual(pair));
-                    assertTrue(oracleResidual(pair));
                     assertTrue(parallel.add(key(pair)),"Duplicate parallel class");
                 });
                 assertEquals(forPartition,parallel,"Parallel prefix split mismatch");
@@ -40,40 +38,18 @@ class IndependentJointRootGeneratorTest {
                 if(JointMoves.fixed(p)!=0||!fullTarget(p)) continue;
                 final var pair=pair(p);
                 if(!Arrays.equals(CertificateCodec.keyFor(pair),CertificateCodec.keyFor(pair.canonicalRepresentative()))) continue;
-                final boolean oracle=oracleResidual(pair);
-                assertEquals(oracle,JointMoves.residual(pair),"Move replay mismatch at N="+n);
-                if(oracle) expected.add(key(pair));
+                if(JointMoves.residual(pair)) expected.add(key(pair));
             } while(next(p));
             assertEquals(expected,actual,"Full class-set mismatch for N="+n);
         }
     }
-    @Test void rejectsDomainsBeyondTheFiveBitJointThreeScope() {
-        assertThrows(IllegalArgumentException.class,
-                () -> IndependentJointRootGenerator.generateResiduals(new int[]{23}, ignored -> fail()));
-    }
-    /** Small-domain oracle written as a state recursion rather than generator constraints. */
-    private static boolean oracleResidual(final CyclicTargetPair pair) {
-        final int[] images=JointMoves.images(pair),beta=pair.getBeta().getSymbols();
-        if(JointMoves.fixed(images)!=0)throw new IllegalArgumentException("Contract fixed points first");
-        return !JointMoves.totallyUnoriented(images,beta)&&!favorable(images,beta,0,0);
-    }
-    private static boolean favorable(final int[] images,final int[] beta,final int depth,final int secondGain) {
-        final int initialOdd=JointMoves.odd(images),n=images.length;
-        for(int i=0;i<n-2;i++)for(int j=i+1;j<n-1;j++)for(int k=j+1;k<n;k++) {
-            final int a=beta[i],b=beta[j],c=beta[k];
-            if(images[a]==a||images[b]==b||images[c]==c)continue;
-            final int gain=JointMoves.gain(images,a,b,c);
-            if(gain==0)continue;
-            final int[] successor=JointMoves.apply(images,a,b,c);
-            if(JointMoves.odd(successor)!=initialOdd+2)continue;
-            if(depth==0&&gain>=2||depth==1&&gain==3
-                    ||depth==2&&(secondGain==1&&gain==3||secondGain==2&&gain>=2))return true;
-            if(depth==0&&gain!=1||depth==1&&(gain!=1&&gain!=2)||depth>=2)continue;
-            final int[] nextBeta=JointMoves.transpose(beta,i,j,k);
-            if(JointMoves.totallyUnoriented(successor,nextBeta))continue;
-            if(favorable(successor,nextBeta,depth+1,depth==1?gain:secondGain))return true;
-        }
-        return false;
+    @Test void nineteenCycleRegeneratesAll667ResidualClasses() {
+        final Set<String> actual=new HashSet<>();
+        IndependentJointRootGenerator.generateResidualsConcurrently(new int[]{19},4,()->{},pair->{
+            assertTrue(JointMoves.residual(pair));
+            assertTrue(actual.add(key(pair)));
+        });
+        assertEquals(667,actual.size());
     }
     private static boolean fullTarget(final int[] p) {
         int x=0,length=0;

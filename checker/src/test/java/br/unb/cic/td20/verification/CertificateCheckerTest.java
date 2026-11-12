@@ -23,23 +23,26 @@ class CertificateCheckerTest {
             try(final var database=RocksDB.open(options,directory.toString(),List.of(
                     new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,first),
                     new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles)) {
-                database.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),"joint3-selection-v1".getBytes(StandardCharsets.UTF_8));
+                database.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),"joint2-selection-v1".getBytes(StandardCharsets.UTF_8));
                 handles.forEach(ColumnFamilyHandle::close);
             }
         }
-        final var pair=CyclicTargetPair.of(new MulticyclePermutation(List.of(
-                Cycle.of(0,1,2,10,4,12,6,14,8),Cycle.of(3,15,13,11,9,7,5))),
-                Cycle.of(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)).canonicalRepresentative();
+        final var pair=CyclicTargetPair.of(new MulticyclePermutation("(0 1 2 3 4 5 6 7 8)(9 10 11 12 13 14 15 16 17)"),
+                Cycle.of(java.util.stream.IntStream.range(0,18).toArray())).canonicalRepresentative();
         try(final var store=new CertificateStore(directory);final var residuals=new CheckerStateSet(path.resolve("regenerated"))) {
             assertFalse(store.hasObstruction(pair));
             assertTrue(CertificateChecker.checkEndpointPair(pair,store,residuals));
             assertEquals(1,residuals.seal().count());
         }
     }
+    @Test void pendingCountsRejectRootCheckingBeforeDatabaseWork() {
+        var row = new br.unb.cic.td20.joint.JointInventory.Root(1,new int[]{3,2,2},1,-1,-1,-1);
+        assertThrows(IllegalStateException.class, () -> CertificateChecker.verifyRoot(row,null,null));
+    }
     @Test void partialRangesCannotBeReportedAsComplete() throws Exception {
         final var options=CertificateChecker.Options.parse(new String[]{"--structural-only","--phase=all","--partitions=2-83"},Path.of("."));
         assertFalse(options.completeScope());
         assertThrows(IllegalArgumentException.class,()->CertificateChecker.Options.parse(
-                new String[]{"--structural-only","--endpoints=0-104"},Path.of(".")));
+                new String[]{"--structural-only","--endpoints=0-214"},Path.of(".")));
     }
 }

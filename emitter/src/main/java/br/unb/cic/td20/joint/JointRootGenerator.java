@@ -28,10 +28,9 @@ import java.util.function.Consumer;
  * numeric image-array representative per orbit; this representative need not
  * be the least fixed-content encoding used by certificate keys.</p>
  *
- * <p>Immediate gain-at-least-two moves, terminal gain-three second moves, and
- * gain-two-second/gain-at-least-two-third paths are rejected on safe prefixes.
- * Gain-one second paths, whose legality depends on the intermediate
- * totally-unoriented stop, are replayed exhaustively at full leaves. Forced proper
+ * <p>Every gain-two move and every qualifying gain-one/second-gain-two pair is
+ * rejected as soon as its at most six positions are known. Deleting the first
+ * fixed point does not change cyclic order on a second support. Forced proper
  * target cycles and strict smaller twisted images are rejected on prefixes.
  * Full leaves pass realizability, orientation and orbit comparisons before
  * emission. No sorting obstruction information is used.</p>
@@ -78,11 +77,28 @@ public final class JointRootGenerator {
         return auditConcurrently(partition, Runtime.getRuntime().availableProcessors(), NO_CANCELLATION, null);
     }
 
-    /** Per-partition count mode used by the TD18-style parallel partition coordinator. */
+    /** Sequential audit count, useful for checking the parallel prefix scheduler. */
     public static AuditCounts countAudit(final int[] partition) {
         var generator = new Generator(partition, NO_CANCELLATION, null);
         generator.run();
         return generator.audit();
+    }
+
+    /**
+     * Picks the shallowest frontier depth whose disjoint subtree count comfortably exceeds the worker
+     * pool, so no single giant branch can strand the remaining CPUs during the tail of generation.
+     * An explicit {@code td20.jointFrontierDepth} overrides the choice (tuning/benchmarking only).
+     * Counting inspects only the top of the tree and stops as soon as the target is met, so it is
+     * negligible beside full generation, and it runs on a disposable copy so the template is untouched.
+     */
+    private static int chooseFrontierDepth(final Generator template, final int workers) {
+        final int maxDepth = Math.max(1, template.n - 1);
+        final Integer forced = Integer.getInteger("td20.jointFrontierDepth");
+        if (forced != null) return Math.max(1, Math.min(forced, maxDepth));
+        final long target = 32L * workers;
+        int depth = Math.min(3, maxDepth);
+        while (depth < maxDepth && template.countFrontierAtLeast(depth, target) < target) depth++;
+        return depth;
     }
 
     private static AuditCounts auditConcurrently(final int[] partition, final int workers,
@@ -97,13 +113,17 @@ public final class JointRootGenerator {
         };
         final var template = new Generator(partition, cancel, consumer);
         final var pool = new ThreadPoolExecutor(workers, workers, 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(256),
+                new ArrayBlockingQueue<>(1 << 16),
                 Thread.ofPlatform().daemon(true).name("joint-generation-", 0).factory(),
                 new ThreadPoolExecutor.CallerRunsPolicy());
-        // At depth three there are at most (N-1)(N-2) disjoint jobs, with N <= 21.
+        // Cut the parallel frontier deep enough that even a single large cycle yields many more
+        // disjoint subtrees than workers. A fixed depth-three cut leaves a few enormous branches
+        // whose subtrees dominate the tail: they pin one CPU each for minutes while every other core
+        // sits idle (observed on the TD(20) single-cycle partitions). chooseFrontierDepth deepens the
+        // cut until the subtree count comfortably exceeds the pool.
         final List<Future<AuditCounts>> jobs = new ArrayList<>();
         try {
-            template.frontierDepth = Math.min(3, template.n - 1);
+            template.frontierDepth = chooseFrontierDepth(template, workers);
             template.frontier = branch -> jobs.add(pool.submit(() -> {
                 try {
                     final var generator = new Generator(template, branch);
@@ -175,14 +195,15 @@ public final class JointRootGenerator {
     }
 
     private record Triple(int a, int b, int c) { }
-    private record Continuation(Triple second, boolean terminal, Triple[] thirds) { }
-    private record Rule(Triple first, Continuation[] continuations) { }
-    private static final class PendingContinuation {
-        private boolean terminal;
-        private final List<Triple> thirds = new ArrayList<>();
-    }
+    private record ConstraintGroup(Triple first, Triple[] seconds) { }
     private record Branch(int depth, int used, int[] position, int[] target,
                           int[] partialInverse, int targetEdges) { }
+
+    /** Stackless sentinel used to abandon frontier counting once the target is reached. */
+    private static final class StopCounting extends RuntimeException {
+        private StopCounting() { super(null, null, false, false); }
+    }
+    private static final StopCounting STOP_COUNTING = new StopCounting();
 
     private static final class Generator {
         private final int n;
@@ -193,13 +214,14 @@ public final class JointRootGenerator {
         private final int[] cycleStart;
         private final int[] cycleLength;
         private final int[] previousEqual;
+        private final int orientationDepth;
         private final int[] target;
         private final int[] partialInverse;
         private final int[] images;
         private final int[] inverseImages;
         private final boolean[] anchors;
         private final Triple[][] fast;
-        private final Rule[][] joint;
+        private final ConstraintGroup[][] pairs;
         private final Triple[] firsts;
         private final byte[] cyclicOrder;
         private final byte[] afterPositions;
@@ -219,7 +241,8 @@ public final class JointRootGenerator {
         private Generator(final Generator template, final Branch branch) {
             n = template.n; parts = template.parts; omega = template.omega; inverse = template.inverse;
             cycleStart = template.cycleStart; cycleLength = template.cycleLength; previousEqual = template.previousEqual;
-            fast = template.fast; joint = template.joint; firsts = template.firsts;
+            orientationDepth = template.orientationDepth;
+            fast = template.fast; pairs = template.pairs; firsts = template.firsts;
             cyclicOrder = template.cyclicOrder; afterPositions = template.afterPositions;
             cancellationCheck = template.cancellationCheck; consumer = template.consumer;
             position = branch.position.clone(); target = branch.target.clone();
@@ -251,6 +274,9 @@ public final class JointRootGenerator {
             if (n < 3 || n > KnownDiameters.ROOT_SYMBOLS || evenParts % 2 != 0)
                 throw new IllegalArgumentException(
                         "Expected an even fixed-point-free partition of 3 through 21 symbols");
+            // An oriented 3-cycle has an immediate gain-three move, already forbidden
+            // by fast[]. Thus only cycles of length at least four can orient a residual.
+            orientationDepth = Arrays.stream(parts).filter(length -> length >= 4).sum();
             this.consumer = consumer;
             this.cancellationCheck = cancellationCheck;
             omega = new int[n];
@@ -283,10 +309,10 @@ public final class JointRootGenerator {
             }
             for (int x = 0; x < n; x++) inverse[omega[x]] = x;
             final List<Triple>[] fastLists = new List[n];
-            final List<Rule>[] rules = new List[n];
+            final LinkedHashMap<Triple, List<Triple>>[] grouped = new LinkedHashMap[n];
             for (int d = 0; d < n; d++) {
                 fastLists[d] = new ArrayList<>();
-                rules[d] = new ArrayList<>();
+                grouped[d] = new LinkedHashMap<>();
             }
             for (int x = 0; x < n; x++) {
                 final int y = omega[x];
@@ -295,61 +321,39 @@ public final class JointRootGenerator {
                 fastLists[Math.max(x, Math.max(y, z))].add(new Triple(x, y, z));
             }
             final List<Triple> qualifying = new ArrayList<>();
-            final List<Triple> supports = new ArrayList<>();
-            for (int a = 0; a < n - 2; a++) for (int b = a + 1; b < n - 1; b++)
-                for (int c = b + 1; c < n; c++) {
-                    supports.add(new Triple(a, b, c));
-                    supports.add(new Triple(a, c, b));
-                }
             final int odd = oddCycles(omega);
-            for (final Triple first : supports) {
+            for (int a = 0; a < n - 2; a++) {
+                for (int b = a + 1; b < n - 1; b++) {
+                    for (int c = b + 1; c < n; c++) {
+                        for (int reverse = 0; reverse < 2; reverse++) {
+                            final Triple first = reverse == 0
+                                    ? new Triple(a, b, c) : new Triple(a, c, b);
                             if (gain(omega, first) != 1) continue;
                             final int[] next = apply(omega, first);
                             if (oddCycles(next) != odd + 2) continue;
                             qualifying.add(first);
-                            @SuppressWarnings("unchecked")
-                            final LinkedHashMap<Triple, PendingContinuation>[] byDepth = new LinkedHashMap[n];
-                            for (int d = 0; d < n; d++) byDepth[d] = new LinkedHashMap<>();
-                            for (final Triple second : supports) {
-                                if (next[second.a] == second.a || next[second.b] == second.b
-                                        || next[second.c] == second.c) continue;
-                                final int secondGain = gain(next, second);
-                                if (secondGain < 2) continue;
-                                final int[] successor = apply(next, second);
-                                if (oddCycles(successor) != oddCycles(next) + 2) continue;
-                                if (secondGain >= 3) {
-                                    final int depth = Math.max(depth(first), depth(second));
-                                    byDepth[depth].computeIfAbsent(second,
-                                            ignored -> new PendingContinuation()).terminal = true;
-                                    continue;
-                                }
-                                for (int x = 0; x < n; x++) {
-                                    final int y = successor[x], z = successor[y];
-                                    if (x == y || x == z || y == z
-                                            || successor[z] == x && (x > y || x > z)) continue;
-                                    final Triple third = new Triple(x, y, z);
-                                    final int depth = Math.max(Math.max(depth(first), depth(second)), depth(third));
-                                    byDepth[depth].computeIfAbsent(second,
-                                            ignored -> new PendingContinuation()).thirds.add(third);
-                                }
+                            for (int x = 0; x < n; x++) {
+                                final int y = next[x];
+                                final int z = next[y];
+                                if (x == y || x == z || y == z
+                                        || next[z] == x && (x > y || x > z)) continue;
+                                final int depth = Math.max(c, Math.max(x, Math.max(y, z)));
+                                grouped[depth].computeIfAbsent(first, ignored -> new ArrayList<>())
+                                        .add(new Triple(x, y, z));
                             }
-                            for (int d = 0; d < n; d++) {
-                                if (byDepth[d].isEmpty()) continue;
-                                final List<Continuation> continuations = new ArrayList<>();
-                                for (final var entry : byDepth[d].entrySet()) {
-                                    continuations.add(new Continuation(entry.getKey(),
-                                            entry.getValue().terminal,
-                                            entry.getValue().thirds.toArray(Triple[]::new)));
-                                }
-                                rules[d].add(new Rule(first, continuations.toArray(Continuation[]::new)));
-                            }
+                        }
+                    }
+                }
             }
             firsts = qualifying.toArray(Triple[]::new);
             fast = new Triple[n][];
-            joint = new Rule[n][];
+            pairs = new ConstraintGroup[n][];
             for (int d = 0; d < n; d++) {
                 fast[d] = fastLists[d].toArray(Triple[]::new);
-                joint[d] = rules[d].toArray(Rule[]::new);
+                pairs[d] = grouped[d].entrySet().stream()
+                        .map(entry -> new ConstraintGroup(entry.getKey(),
+                                entry.getValue().toArray(Triple[]::new)))
+                        .toArray(ConstraintGroup[]::new);
             }
             cyclicOrder = new byte[n * n * n];
             afterPositions = new byte[n * n * n * n];
@@ -390,6 +394,9 @@ public final class JointRootGenerator {
         }
 
         private void visit(final int depth, final int used) {
+            // U is counted and generated separately. Once all longer cycles are assigned,
+            // an unoriented prefix cannot acquire orientation from the remaining 2-/3-cycles.
+            if (orientationDepth == 0 || depth == orientationDepth && !hasAssignedOrientation()) return;
             if (frontier != null && depth == frontierDepth) {
                 checkCancellation();
                 frontier.accept(new Branch(depth, used, position.clone(), target.clone(),
@@ -424,34 +431,50 @@ public final class JointRootGenerator {
             }
         }
 
+        private boolean hasAssignedOrientation() {
+            for (int start = 0; start < orientationDepth; start += cycleLength[start]) {
+                int increases = 0;
+                for (int rank = start; rank < start + cycleLength[start]; rank++) {
+                    if (position[omega[rank]] > position[rank] && ++increases > 1) return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Counts the frontier nodes this prefix would spawn at {@code depth}, stopping once {@code limit}
+         * is reached. Runs on a disposable copy seeded from this generator's current (root) state, so it
+         * never disturbs the caller even though the early stop abandons the partial walk.
+         */
+        private long countFrontierAtLeast(final int depth, final long limit) {
+            final var probe = new Generator(this, new Branch(1, 1,
+                    position.clone(), target.clone(), partialInverse.clone(), targetEdges));
+            probe.frontierDepth = depth;
+            final long[] seen = {0};
+            probe.frontier = branch -> { if (++seen[0] >= limit) throw STOP_COUNTING; };
+            probe.position[0] = 0;
+            try {
+                probe.visit(1, 1);
+            } catch (StopCounting reachedTarget) {
+                // Target met; no need to enumerate the rest of the frontier.
+            }
+            return seen[0];
+        }
+
         private boolean constraints(final int depth) {
             for (final Triple triple : fast[depth]) {
                 if (cyclicOrder[index(position[triple.a], position[triple.b],
                         position[triple.c])] != 0) return false;
             }
-            for (final Rule group : joint[depth]) {
+            for (final ConstraintGroup group : pairs[depth]) {
                 final Triple first = group.first;
                 final int index = index(position[first.a], position[first.b], position[first.c]);
                 if (cyclicOrder[index] == 0) continue;
                 final int offset = index * n;
-                for (final Continuation continuation : group.continuations) {
-                    final Triple second = continuation.second;
-                    final int secondA = afterPositions[offset + position[second.a]];
-                    final int secondB = afterPositions[offset + position[second.b]];
-                    final int secondC = afterPositions[offset + position[second.c]];
-                    final int secondIndex = index(secondA, secondB, secondC);
-                    if (cyclicOrder[secondIndex] == 0) continue;
-                    if (continuation.terminal) return false;
-                    final int secondOffset = secondIndex * n;
-                    for (final Triple third : continuation.thirds) {
-                        final int thirdA = afterPositions[secondOffset
-                                + afterPositions[offset + position[third.a]]];
-                        final int thirdB = afterPositions[secondOffset
-                                + afterPositions[offset + position[third.b]]];
-                        final int thirdC = afterPositions[secondOffset
-                                + afterPositions[offset + position[third.c]]];
-                        if (cyclicOrder[index(thirdA, thirdB, thirdC)] != 0) return false;
-                    }
+                for (final Triple second : group.seconds) {
+                    if (cyclicOrder[index(afterPositions[offset + position[second.a]],
+                            afterPositions[offset + position[second.b]],
+                            afterPositions[offset + position[second.c]])] != 0) return false;
                 }
             }
             return true;
@@ -504,7 +527,7 @@ public final class JointRootGenerator {
                 anchors[position[rank]] = cycleLength[rank] == parts[0];
             }
             if (unoriented(images)) { ignoredUnoriented++; return; }
-            if (!canonical() || !joint3Residual(images)) return;
+            if (!canonical()) return;
             classes++;
             boolean qualifying = false;
             for (final Triple first : firsts) {
@@ -563,10 +586,6 @@ public final class JointRootGenerator {
                 + (omega[triple.c] == triple.a ? 1 : 0);
     }
 
-    private static int depth(final Triple triple) {
-        return Math.max(triple.a, Math.max(triple.b, triple.c));
-    }
-
     private static int[] apply(final int[] omega, final Triple triple) {
         final int[] next = omega.clone();
         next[triple.a] = omega[triple.c];
@@ -607,67 +626,6 @@ public final class JointRootGenerator {
             } while (x != first);
             if (length >= 3 && increases != 1) return false;
         }
-        return true;
-    }
-
-    private static boolean totallyUnoriented(final int[] omega, final int[] beta) {
-        final int[] at = new int[omega.length];
-        for (int i = 0; i < beta.length; i++) at[beta[i]] = i;
-        final int[] positioned = new int[omega.length];
-        for (int x = 0; x < omega.length; x++) positioned[at[x]] = at[omega[x]];
-        return unoriented(positioned);
-    }
-
-    private static int[] transpose(final int[] beta, final int first,
-                                   final int second, final int third) {
-        final int[] result = beta.clone();
-        System.arraycopy(beta, second, result, first, third - second);
-        System.arraycopy(beta, first, result, first + third - second, second - first);
-        return result;
-    }
-
-    /** Exhaustive leaf replay keeps the optimized prefix predicates honest. */
-    private static boolean joint3Residual(final int[] root) {
-        final int n = root.length;
-        final int[] beta = new int[n];
-        Arrays.setAll(beta, i -> i);
-        final int initialOdd = oddCycles(root);
-        for (int i = 0; i < n - 2; i++) for (int j = i + 1; j < n - 1; j++)
-            for (int k = j + 1; k < n; k++) {
-                final Triple first = new Triple(beta[i], beta[j], beta[k]);
-                final int firstGain = gain(root, first);
-                final int[] q = apply(root, first);
-                if (oddCycles(q) != initialOdd + 2) continue;
-                if (firstGain >= 2) return false;
-                if (firstGain != 1) continue;
-                final int[] beta1 = transpose(beta, i, j, k);
-                if (totallyUnoriented(q, beta1)) continue;
-                final int qOdd = initialOdd + 2;
-                for (int r = 0; r < n - 2; r++) for (int s = r + 1; s < n - 1; s++)
-                    for (int t = s + 1; t < n; t++) {
-                        final Triple second = new Triple(beta1[r], beta1[s], beta1[t]);
-                        if (q[second.a] == second.a || q[second.b] == second.b
-                                || q[second.c] == second.c) continue;
-                        final int secondGain = gain(q, second);
-                        if (secondGain < 1) continue;
-                        final int[] successor = apply(q, second);
-                        if (oddCycles(successor) != qOdd + 2) continue;
-                        if (secondGain >= 3) return false;
-                        final int[] beta2 = transpose(beta1, r, s, t);
-                        if (totallyUnoriented(successor, beta2)) continue;
-                        final int successorOdd = qOdd + 2;
-                        for (int u = 0; u < n - 2; u++) for (int v = u + 1; v < n - 1; v++)
-                            for (int w = v + 1; w < n; w++) {
-                                final Triple third = new Triple(beta2[u], beta2[v], beta2[w]);
-                                if (successor[third.a] == third.a || successor[third.b] == third.b
-                                        || successor[third.c] == third.c) continue;
-                                final int thirdGain = gain(successor, third);
-                                if (secondGain == 1 && thirdGain != 3
-                                        || secondGain == 2 && thirdGain < 2) continue;
-                                if (oddCycles(apply(successor, third)) == successorOdd + 2) return false;
-                            }
-                    }
-            }
         return true;
     }
 

@@ -13,13 +13,13 @@ import java.util.Comparator;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-/** Exact all-unoriented root count, independent of the joint-3 predicates. */
+/** Exact all-unoriented root count, independent of the joint-2 predicates. */
 public final class CountTD20Unoriented {
     private CountTD20Unoriented() { }
 
     public static void main(final String[] arguments) throws Exception {
         int workers = Runtime.getRuntime().availableProcessors();
-        Path output = Path.of("data/joint3-reduction-audit/unoriented-v1.json");
+        Path output = Path.of("data/joint2-reduction-audit/unoriented-v1.json");
         for (final String argument : arguments) {
             if (argument.startsWith("--output=")) output = Path.of(argument.substring(9));
             else throw new IllegalArgumentException("Unknown argument: " + argument);

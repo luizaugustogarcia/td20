@@ -71,12 +71,10 @@ public final class WitnessEmitter {
                             RECONSTRUCTION_CPU_PREFIX_MILLIS);
                     var result = options.resumeWork == null
                             ? JointAvoidance.resolve(endpoints, work,
-                                    pair -> settleReconstructed(pair, 9, writer),
                                     pair -> settleReconstructed(pair, 10, writer),
                                     pair -> settleReconstructed(pair, 11, writer),
                                     WitnessEmitter::lookupReconstructionBatch)
                             : JointAvoidance.resume(options.resumeWork, work,
-                                    pair -> settleReconstructed(pair, 9, writer),
                                     pair -> settleReconstructed(pair, 10, writer),
                                     pair -> settleReconstructed(pair, 11, writer),
                                     WitnessEmitter::lookupReconstructionBatch);
@@ -137,6 +135,7 @@ public final class WitnessEmitter {
     }
 
     static RootResult emitRoot(JointInventory.Root row, PairDischarge discharge, Progress progress) {
+        row.requireCompleteCounts();
         var unoriented = new LongAdder(); var joint = new LongAdder(); var cleared = new LongAdder();
         var unresolved = new LongAdder();
         progress.phase(() -> "root partition " + row.number() + ": unoriented=" + unoriented.sum()
@@ -172,13 +171,13 @@ public final class WitnessEmitter {
         DirectTwistedBraceletGenerator.generateRepresentativesConcurrently(endpoint.partition(), endpoint.orientedByPart(),
                 () -> { }, pair -> {
                     generated.increment();
-                    if (!discharge.apply(pair.canonicalRepresentative(), 8)) {
-                        residuals.add(pair, 8); misses.increment();
+                    if (!discharge.apply(pair.canonicalRepresentative(), 9)) {
+                        residuals.add(pair, 9); misses.increment();
                     }
                 });
         long expected = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(endpoint.partition(), endpoint.orientedByPart());
         if (generated.sum() != expected) throw new IllegalStateException("Endpoint generation count mismatch: " + endpoint.number());
-        log.info("Endpoint {}: generated={}, missingEightMoveDischarges={}", endpoint.number(), generated.sum(), misses.sum());
+        log.info("Endpoint {}: generated={}, missingNineMoveDischarges={}", endpoint.number(), generated.sum(), misses.sum());
     }
 
     @FunctionalInterface interface PairDischarge { boolean apply(CyclicTargetPair pair, int budget); }
@@ -195,7 +194,7 @@ public final class WitnessEmitter {
 
     private static void usage() {
         System.out.println("WitnessEmitter [--phase=roots|endpoints|avoidance|all] [--partitions=FIRST-LAST]"
-                + " [--endpoints=FIRST-LAST] [--paper=PATH] [--database=PATH] [--work=PATH] [--td16-db=PATH]"
+                + " [--endpoints=FIRST-LAST] [--paper=PATH] [--database=PATH] [--work=PATH] [--td18-db=PATH]"
                 + " [--resume-work=PATH (requires --phase=avoidance)]");
     }
 
@@ -206,7 +205,7 @@ public final class WitnessEmitter {
             Path database = Path.of(System.getProperty("td20.certificateDb", root.resolve("certificates").toString()));
             Path work = root.resolve("emitter/target/joint-emission-" + ProcessHandle.current().pid() + "-" + System.nanoTime());
             Path td16 = null, resumeWork = null; String phase = "all"; boolean help = false;
-            int first = 1, last = 83, endpointFirst = 1, endpointLast = 104;
+            int first = 1, last = 83, endpointFirst = 1, endpointLast = 214;
             for (String arg : args) {
                 if (arg.equals("--help")) help = true;
                 else if (arg.startsWith("--phase=")) phase = arg.substring(8);
@@ -214,15 +213,15 @@ public final class WitnessEmitter {
                 else if (arg.startsWith("--database=")) database = Path.of(arg.substring(11));
                 else if (arg.startsWith("--work=")) work = Path.of(arg.substring(7));
                 else if (arg.startsWith("--resume-work=")) resumeWork = Path.of(arg.substring(14));
-                else if (arg.startsWith("--td16-db=")) td16 = Path.of(arg.substring(10));
+                else if ((arg.startsWith("--td18-db=") || arg.startsWith("--td16-db="))) td16 = Path.of(arg.substring(10));
                 else if (arg.startsWith("--partitions=")) { int[] r = range(arg.substring(13),83); first = r[0]; last = r[1]; }
-                else if (arg.startsWith("--endpoints=")) { int[] r = range(arg.substring(12),104); endpointFirst = r[0]; endpointLast = r[1]; }
+                else if (arg.startsWith("--endpoints=")) { int[] r = range(arg.substring(12),214); endpointFirst = r[0]; endpointLast = r[1]; }
                 else throw new IllegalArgumentException("Unknown argument: " + arg);
             }
             if (!List.of("roots", "endpoints", "avoidance", "all").contains(phase)) throw new IllegalArgumentException("Invalid emission phase");
             if (resumeWork != null && (!phase.equals("avoidance") || first != 1 || last != 83
-                    || endpointFirst != 1 || endpointLast != 104 || td16 != null))
-                throw new IllegalArgumentException("Resume requires --phase=avoidance without ranges or a TD(16) import");
+                    || endpointFirst != 1 || endpointLast != 214 || td16 != null))
+                throw new IllegalArgumentException("Resume requires --phase=avoidance without ranges or a witness import");
             return new Options(paper.toAbsolutePath().normalize(), database.toAbsolutePath().normalize(), work.toAbsolutePath().normalize(),
                     td16 == null ? null : td16.toAbsolutePath().normalize(),
                     resumeWork == null ? null : resumeWork.toAbsolutePath().normalize(),

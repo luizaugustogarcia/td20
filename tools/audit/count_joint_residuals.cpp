@@ -1,4 +1,4 @@
-// Exact independent counter for roots with no favorable joint-3 reduction.
+// Exact independent counter for roots with no favorable joint-2 reduction.
 // Build: c++ -O3 -std=c++20 tools/audit/count_joint_residuals.cpp -o /tmp/td20-joint-count
 // This counts root classes, not sorting certificates or reduction endpoints.
 // Totally unoriented roots are excluded and remain separate direct obligations.
@@ -17,11 +17,7 @@ constexpr int MAX_N=21;
 using Perm=std::array<int,MAX_N>;
 struct Triple {int a,b,c;};
 struct PairConstraint {Triple first,second;};
-struct PathConstraint {Triple first,second,third;unsigned q_witness;};
 struct PairGroup {Triple first;std::vector<Triple> seconds;};
-struct ThirdWitness {Triple third;unsigned q_witness;};
-struct SecondGroup {Triple second;std::vector<ThirdWitness> thirds;};
-struct PathGroup {Triple first;std::vector<SecondGroup> seconds;};
 int odd_cycles(const Perm& p,int n) {
  unsigned seen=0;int count=0;
  for(int x=0;x<n;++x)if(!(seen&(1u<<x))){int y=x,length=0;do{seen|=1u<<y;++length;y=p[y];}while(y!=x);count+=length&1;}
@@ -46,20 +42,6 @@ bool totally_unoriented(const Perm& p,const Perm& beta,int n){
  for(int i=0;i<n;++i)at[beta[i]]=i;
  for(int x=0;x<n;++x)positioned[at[x]]=at[p[x]];
  return unoriented(positioned,n);
-}
-std::vector<unsigned> orientation_witnesses(const Perm& p,int n){
- std::vector<unsigned> result;unsigned seen=0;
- for(int first=0;first<n;++first)if(!(seen&(1u<<first))){
-  unsigned mask=0;int x=first,length=0;
-  do{seen|=1u<<x;mask|=1u<<x;++length;x=p[x];}while(x!=first);
-  if(length>=3)result.push_back(mask);
- }return result;
-}
-int mask_depth(unsigned mask){return 31-__builtin_clz(mask);}
-bool witness_oriented(const Perm& p,unsigned mask,const int* positions){
- int first=__builtin_ctz(mask),x=first,increases=0;
- do{increases+=positions[p[x]]>positions[x];x=p[x];}while(x!=first);
- return increases!=1;
 }
 bool same(Triple x,Triple y){return x.a==y.a&&x.b==y.b&&x.c==y.c;}
 bool power_on_support(const Perm& p,const int* support,int length,int exponent){
@@ -102,9 +84,7 @@ class Counter{
  std::uint64_t prefix_ordinal=0;
  std::array<std::vector<Triple>,MAX_N> fast;
  std::array<std::vector<PairConstraint>,MAX_N> pairs;
- std::array<std::vector<PathConstraint>,MAX_N> paths;
  std::array<std::vector<PairGroup>,MAX_N> grouped_pairs;
- std::array<std::vector<PathGroup>,MAX_N> grouped_paths;
  std::vector<unsigned char> cyclic_order,after_positions;
  std::vector<Triple> firsts;Count count;std::ostream* representatives;
  int triple_index(int a,int b,int c)const{return(a*n+b)*n+c;}
@@ -119,23 +99,7 @@ class Counter{
        transform1[position[t.c]])])return false;
    }
   }
-  for(const auto& group:grouped_paths[d]){
-   int index=triple_index(position[group.first.a],position[group.first.b],position[group.first.c]);
-   if(!cyclic_order[index])continue;
-   const auto* transform1=after_positions.data()+index*n;int p1[MAX_N];
-   for(int x=0;x<n;++x)p1[x]=transform1[position[x]];
-   Perm q=apply_move(omega,group.first);
-   for(const auto& second_group:group.seconds){const auto second=second_group.second;
-    int second_index=triple_index(p1[second.a],p1[second.b],p1[second.c]);
-    if(!cyclic_order[second_index])continue;
-    const auto* transform2=after_positions.data()+second_index*n;int p2[MAX_N];
-    for(int x=0;x<n;++x)p2[x]=transform2[p1[x]];
-    for(const auto& entry:second_group.thirds){const auto third=entry.third;
-     if((entry.q_witness==0||witness_oriented(q,entry.q_witness,p1))
-        &&cyclic_order[triple_index(p2[third.a],p2[third.b],p2[third.c])])return false;
-    }
-   }
-  }return true;
+  return true;
  }
  bool add_target(int rank){
   int source=(position[rank]+n-1)%n,dest=position[omega[rank]];target[source]=dest;partial_inverse[dest]=position[rank];++target_edges;int x=dest;
@@ -217,29 +181,12 @@ public:
   for(const auto first:supports){
    if(gain(omega,first)!=1)continue;
    Perm q=apply_move(omega,first);if(odd_cycles(q,n)!=odd+2)continue;firsts.push_back(first);
-   const auto q_witnesses=orientation_witnesses(q,n);if(q_witnesses.empty())continue;
    for(const auto second:supports){
     if(q[second.a]==second.a||q[second.b]==second.b||q[second.c]==second.c)continue;
-    int second_gain=gain(q,second);if(second_gain<1)continue;
-    Perm r=apply_move(q,second);if(odd_cycles(r,n)!=odd_cycles(q,n)+2)continue;
-    if(second_gain==3){
-     int depth=std::max({first.a,first.b,first.c,second.a,second.b,second.c});
-     pairs[depth].push_back({first,second});
-     continue;
-    }
-    if(second_gain>2)continue;
-    for(int x=0;x<n;++x){int y=r[x],z=r[y];
-     if(x==y||x==z||y==z)continue;if(r[z]==x&&(x>y||x>z))continue;
-     Triple third{x,y,z};int third_gain=gain(r,third);
-     if((second_gain==1&&third_gain!=3)||(second_gain==2&&third_gain<2))continue;
-     if(second_gain==2){
-      int depth=std::max({first.a,first.b,first.c,second.a,second.b,second.c,x,y,z});
-      paths[depth].push_back({first,second,third,0});
-     }else for(unsigned qw:q_witnesses){
-      int depth=std::max({first.a,first.b,first.c,second.a,second.b,second.c,x,y,z,mask_depth(qw)});
-      paths[depth].push_back({first,second,third,qw});
-     }
-    }
+    if(gain(q,second)<2)continue;
+    if(odd_cycles(apply_move(q,second),n)!=odd_cycles(q,n)+2)continue;
+    int depth=std::max({first.a,first.b,first.c,second.a,second.b,second.c});
+    pairs[depth].push_back({first,second});
    }
   }
   cyclic_order.resize(n*n*n);after_positions.resize(n*n*n*n);
@@ -256,14 +203,7 @@ public:
    if(found==groups.end()){groups.push_back({pair.first,{}});found=groups.end()-1;}
    found->seconds.push_back(pair.second);
   }
-  for(int d=0;d<n;++d)for(const auto& path:paths[d]){
-   auto& groups=grouped_paths[d];
-   auto first=std::find_if(groups.begin(),groups.end(),[&](const auto& group){return same(group.first,path.first);});
-   if(first==groups.end()){groups.push_back({path.first,{}});first=groups.end()-1;}
-   auto second=std::find_if(first->seconds.begin(),first->seconds.end(),[&](const auto& group){return same(group.second,path.second);});
-   if(second==first->seconds.end()){first->seconds.push_back({path.second,{}});second=first->seconds.end()-1;}
-   second->thirds.push_back({path.third,path.q_witness});
-  }
+
  }
  Count run(int selected_shard=0,int shards=1,int depth=1){
   if(shards<1||selected_shard<0||selected_shard>=shards||depth<1||depth>=MAX_N)throw std::invalid_argument("Invalid shard or depth");
@@ -291,17 +231,7 @@ bool brute_residual(const Perm& p,int n,bool& no_qualifying){
   for(int r0=0;r0<n-2;++r0)for(int s= r0+1;s<n-1;++s)for(int t=s+1;t<n;++t){
    Triple second{beta1[r0],beta1[s],beta1[t]};
    if(q[second.a]==second.a||q[second.b]==second.b||q[second.c]==second.c)continue;
-   int second_gain=gain(q,second);if(second_gain<1)continue;Perm r=apply_move(q,second);
-   if(odd_cycles(r,n)!=q_odd+2)continue;if(second_gain==3)return false;if(second_gain>2)continue;
-   Perm beta2=transpose_beta(beta1,r0,s,t,n);if(totally_unoriented(r,beta2,n))continue;
-   int r_odd=odd_cycles(r,n);
-   for(int u=0;u<n-2;++u)for(int v=u+1;v<n-1;++v)for(int w=v+1;w<n;++w){
-    Triple third{beta2[u],beta2[v],beta2[w]};
-    if(r[third.a]==third.a||r[third.b]==third.b||r[third.c]==third.c)continue;
-    int third_gain=gain(r,third);
-    if(((second_gain==1&&third_gain==3)||(second_gain==2&&third_gain>=2))
-       &&odd_cycles(apply_move(r,third),n)==r_odd+2)return false;
-   }
+   if(gain(q,second)>=2 && odd_cycles(apply_move(q,second),n)==q_odd+2)return false;
   }
  }return true;
 }
@@ -317,7 +247,7 @@ void verify_small(int maximum){
   do{bool fixed=false;for(int x=0;x<n;++x)if(p[x]==x){fixed=true;break;}if(fixed||!full_target(p,n)||unoriented(p,n)||!canonical(p,n,anchors))continue;bool noqual=false;if(brute_residual(p,n,noqual)){++direct;direct_noqual+=noqual;}}while(std::next_permutation(p.begin(),p.begin()+n));
   for(auto part:all_partitions(n)){Count c=Counter(part).run();constrained+=c.classes;constrained_noqual+=c.no_qualifying;}
   if(direct!=constrained||direct_noqual!=constrained_noqual)throw std::runtime_error("Small-domain comparison failed at N="+std::to_string(n)+": direct="+std::to_string(direct)+", constrained="+std::to_string(constrained));
-  std::cout<<"{\"format\":\"td20-joint3-small-check-v1\",\"n\":"<<n<<",\"classes\":"<<direct<<",\"no_qualifying_first_move\":"<<direct_noqual<<",\"agrees\":true}"<<std::endl;
+  std::cout<<"{\"format\":\"td20-joint2-small-check-v1\",\"n\":"<<n<<",\"classes\":"<<direct<<",\"no_qualifying_first_move\":"<<direct_noqual<<",\"agrees\":true}"<<std::endl;
  }
 }
 void verify_shards(int maximum){
@@ -340,7 +270,7 @@ void verify_shards(int maximum){
    ++checks;
   }
  }
- std::cout<<"{\"format\":\"td20-joint3-shard-check-v1\",\"maximum_domain\":"<<maximum
+ std::cout<<"{\"format\":\"td20-joint2-shard-check-v1\",\"maximum_domain\":"<<maximum
   <<",\"shards\":7,\"depths\":[1,2,4],\"checks\":"<<checks<<",\"agrees\":true}"<<std::endl;
 }
 std::vector<int> parse_partition(std::string s){std::vector<int> out;size_t start=0;do{size_t end=s.find(',',start);out.push_back(std::stoi(s.substr(start,end-start)));if(end==std::string::npos)break;start=end+1;}while(true);return out;}
@@ -353,12 +283,12 @@ int main(int argc,char** argv){
   if(verify){verify_small(verify);return 0;}if(verify_shard_max){verify_shards(verify_shard_max);return 0;}if(n<3||n>MAX_N)throw std::invalid_argument("N must be 3..21");
   auto parts=selected.empty()?all_partitions(n):std::vector<std::vector<int>>{selected};
   if(!selected.empty())n=std::accumulate(selected.begin(),selected.end(),0);
-  std::ofstream reps;if(!representatives_path.empty()){reps.open(representatives_path);if(!reps)throw std::runtime_error("Cannot open representatives output");reps<<"TD20-JOINT3-RESIDUALS 1 N="<<n<<" scope=oriented\n";}
+  std::ofstream reps;if(!representatives_path.empty()){reps.open(representatives_path);if(!reps)throw std::runtime_error("Cannot open representatives output");reps<<"TD20-JOINT2-RESIDUALS 1 N="<<n<<" scope=oriented\n";}
   std::uint64_t total=0;
   for(const auto& part:parts){
    auto started=std::chrono::steady_clock::now();Count c=Counter(part,reps.is_open()?&reps:nullptr).run(shard_index,shard_count,shard_depth);total+=c.classes;
    double elapsed=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
-   std::cout<<"{\"format\":\"td20-joint3-residual-count-v2\",\"partition\":[";for(size_t i=0;i<part.size();++i){if(i)std::cout<<',';std::cout<<part[i];}
+   std::cout<<"{\"format\":\"td20-joint2-residual-count-v2\",\"partition\":[";for(size_t i=0;i<part.size();++i){if(i)std::cout<<',';std::cout<<part[i];}
    std::cout<<"],\"shard_index\":"<<shard_index<<",\"shard_count\":"<<shard_count
     <<",\"shard_depth\":"<<std::min(shard_depth,n-1)
     <<",\"sharding\":\""<<(shard_depth==1?"first-position-modulo-v1":"accepted-prefix-modulo-v2")<<"\""

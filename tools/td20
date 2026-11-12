@@ -7,11 +7,11 @@ Usage: tools/td20 [--dry-run] COMMAND [Maven options]
 
 CPU validation:
   test         Run emitter and checker CPU tests (CUDA smoke tests are opt-in)
-  inventory    Validate the 83 root partitions and 104 endpoint annotations
+  inventory    Validate the 83 root partitions and 214 endpoint annotations
   structure    Check the source inventory without reading sorting certificates
   count        Count root classes and endpoint classes on all available CPU cores
   count-u      Independently Burnside-count all-unoriented roots
-  count-j      Count joint-3 residuals with TD18 Java CPU machinery
+  count-j      Count joint-2 residuals with TD18 Java CPU machinery
   count-e      Independently Burnside-count the endpoint cover
 
 Computation:

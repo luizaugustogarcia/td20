@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 public final class JointInventory {
     private static final Pattern ROW = Pattern.compile(
             "^\\\\jointrow\\{([1-9][0-9]*)}\\{([0-9]+(?:,[0-9]+)*)}"
-                    + "\\{([0-9]+)}\\{([0-9]+)}\\{([0-9]+)}\\{([0-9]+)}$");
+                    + "\\{([0-9]+)}\\{(-1|[0-9]+)}\\{(-1|[0-9]+)}\\{(-1|[0-9]+)}$");
 
     private JointInventory() { }
 
@@ -24,17 +24,21 @@ public final class JointInventory {
                        long orientedClasses) {
         public Root {
             partition = partition.clone();
-            if (number < 1 || unorientedClasses < 0 || jointResidualClasses < 0
+            boolean pending = jointResidualClasses == -1 && supportClearingClasses == -1 && orientedClasses == -1;
+            if (number < 1 || unorientedClasses < 0 || !pending && (jointResidualClasses < 0
                     || supportClearingClasses < 0 || orientedClasses < 0
                     || supportClearingClasses > jointResidualClasses
-                    || orientedClasses != jointResidualClasses - supportClearingClasses) {
+                    || orientedClasses != jointResidualClasses - supportClearingClasses))
                 throw new IllegalArgumentException("Invalid joint root inventory counts");
-            }
-            Math.addExact(unorientedClasses, orientedClasses);
+            if (!pending) Math.addExact(unorientedClasses, orientedClasses);
         }
 
+        public boolean countsComplete() { return jointResidualClasses >= 0; }
+        public void requireCompleteCounts() {
+            if (!countsComplete()) throw new IllegalStateException("Pending joint-2 counts: partition=" + number);
+        }
         @Override public int[] partition() { return partition.clone(); }
-        public long directClasses() { return Math.addExact(unorientedClasses, orientedClasses); }
+        public long directClasses() { requireCompleteCounts(); return Math.addExact(unorientedClasses, orientedClasses); }
     }
 
     public record Endpoint(int number, int[] partition, boolean[] orientedByPart) {
@@ -49,7 +53,7 @@ public final class JointInventory {
         @Override public int[] partition() { return partition.clone(); }
         @Override public boolean[] orientedByPart() { return orientedByPart.clone(); }
 
-        /** Clearing an oriented 3-cycle leaves 13 symbols with seven moves. */
+        /** Clearing an oriented 3-cycle leaves 15 symbols with eight moves. */
         public boolean elementaryClosure() {
             for (int i = 0; i < partition.length; i++) {
                 if (partition[i] == 3 && orientedByPart[i]) return true;
@@ -58,13 +62,23 @@ public final class JointInventory {
         }
     }
 
+    private static String normalizePending(String line) {
+        if (line.startsWith("\\unorientedjointrow{")) {
+            if (!line.matches("^\\\\unorientedjointrow\\{[1-9][0-9]*}\\{[0-9]+(?:,[0-9]+)*}\\{[0-9]+}$"))
+                throw new IllegalArgumentException("Malformed pending root row");
+            return line.replace("\\unorientedjointrow", "\\jointrow") + "{-1}{-1}{-1}";
+        }
+        if (line.startsWith("\\jointrow{") && line.contains("{-"))
+            throw new IllegalArgumentException("Use the explicit pending-row macro for missing counts");
+        return line;
+    }
     public static List<Root> read(final Path paper) throws IOException {
         final List<Root> rows = new ArrayList<>();
         final List<int[]> expected = Partitions.generateValidPartitions(KnownDiameters.ROOT_SYMBOLS);
         int lineNumber = 0;
         for (final String line : Files.readAllLines(paper)) {
             lineNumber++;
-            final String stripped = line.strip();
+            final String stripped = normalizePending(line.strip());
             if (!stripped.startsWith("\\jointrow")) continue;
             final var matcher = ROW.matcher(stripped);
             if (!matcher.matches()) throw new IllegalArgumentException(
@@ -90,8 +104,8 @@ public final class JointInventory {
 
     public static List<Endpoint> endpoints() {
         final List<Endpoint> result = new ArrayList<>();
-        for (final int[] partition : Partitions.generateValidPartitions(16)) {
-            if (KnownDiameters.threeNorm(partition) > 7) continue;
+        for (final int[] partition : Partitions.generateValidPartitions(18)) {
+            if (KnownDiameters.threeNorm(partition) > 8) continue;
             for (final var annotation : AnnotatedPartitions.of(partition)) {
                 result.add(new Endpoint(result.size() + 1, partition, annotation.oriented()));
             }

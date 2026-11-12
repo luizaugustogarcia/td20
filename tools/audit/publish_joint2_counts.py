@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a complete checked joint-3 summary into a new paper source."""
+"""Render a complete checked joint-2 summary into a new paper source."""
 from __future__ import annotations
 
 import argparse
@@ -51,7 +51,7 @@ def write_new_atomic(output: Path, content: str) -> None:
 
 def load_summary(path: Path) -> dict:
     result = json.loads(path.read_text())
-    if result.get("format") != "td20-joint3-selection-summary-v1" \
+    if result.get("format") != "td20-joint2-selection-summary-v1" \
             or result.get("complete") is not True or result.get("domain") != 21 \
             or result.get("root_budget") != 11 \
             or result.get("partitions_required") != 83 \
@@ -65,10 +65,9 @@ def load_summary(path: Path) -> dict:
     expected = list(partitions(21))
     if len(expected) != 83:
         raise ValueError("Independent root inventory is not 83 partitions")
-    selection = ["immediate gain >= 2", "(1,3)", "(1,1,3)",
-                 "(1,2,2)", "(1,2,3)"]
+    selection = ["immediate gain >= 2", "(1,3)", "(1,2)"]
     if result.get("selection") != selection:
-        raise ValueError("Incorrect joint-3 selection envelope")
+        raise ValueError("Incorrect joint-2 selection envelope")
     totals = {key: 0 for key in ("U", "J", "C", "O")}
     no_first_total = 0
     clearing_totals = {key: 0 for key in ("9", "11", "13", "17")}
@@ -99,7 +98,7 @@ def load_summary(path: Path) -> dict:
         for key, value in values.items():
             totals[key] += value
     fields = {"U": "totally_unoriented_root_classes",
-              "J": "oriented_joint3_residual_classes",
+              "J": "oriented_joint2_residual_classes",
               "C": "support_clearing_classes",
               "O": "oriented_root_classes_after_support_clearing"}
     for key, field in fields.items():
@@ -117,17 +116,17 @@ def load_summary(path: Path) -> dict:
                    for key in clearing):
         raise ValueError("Incorrect support-clearing aggregate")
     endpoints = result.get("endpoint_counts")
-    if endpoints is not None:
-        if set(endpoints) != {"all_endpoint_classes", "elementary_closure_classes",
-                             "classes_requiring_discharge"}:
-            raise ValueError("Invalid endpoint aggregate")
-        all_endpoints = count(endpoints.get("all_endpoint_classes"), "all endpoints")
-        elementary = count(endpoints.get("elementary_closure_classes"),
-                           "elementary endpoints")
-        requiring = count(endpoints.get("classes_requiring_discharge"),
-                          "endpoints requiring discharge")
-        if all_endpoints != elementary + requiring:
-            raise ValueError("Inconsistent endpoint aggregate")
+    if not isinstance(endpoints, dict) or set(endpoints) != {
+            "all_endpoint_classes", "elementary_closure_classes",
+            "classes_requiring_discharge"}:
+        raise ValueError("Missing or invalid endpoint aggregate")
+    all_endpoints = count(endpoints.get("all_endpoint_classes"), "all endpoints")
+    elementary = count(endpoints.get("elementary_closure_classes"),
+                       "elementary endpoints")
+    requiring = count(endpoints.get("classes_requiring_discharge"),
+                      "endpoints requiring discharge")
+    if all_endpoints != elementary + requiring:
+        raise ValueError("Inconsistent endpoint aggregate")
     return result
 
 
@@ -158,7 +157,7 @@ def render(summary: dict, paper: str) -> str:
         paper = paper.replace(macro, "")
 
     totals = [summary[field] for field in
-              ("totally_unoriented_root_classes", "oriented_joint3_residual_classes",
+              ("totally_unoriented_root_classes", "oriented_joint2_residual_classes",
                "support_clearing_classes", "oriented_root_classes_after_support_clearing")]
     final_total = r"\multicolumn{2}{l}{Total} & " + " & ".join(map(str, totals)) + r"\\"
     total_candidates = [
@@ -194,8 +193,28 @@ def render(summary: dict, paper: str) -> str:
     paper = paper.replace("exact counts pending.", "exact class counts.")
     paper = paper.replace("completed counts are shown explicitly.", "exact class counts.")
     paper = paper.replace(
+        "The route-dependent\ncounts are pending; completed totally unoriented counts are independent of\nselection.",
+        "Joint residual counts have been reconciled row for row; completed totally\nunoriented counts are independent of selection.")
+    paper = paper.replace(
         "Final class totals\nawait completion and row-for-row reconciliation.",
         "Final class totals\nhave been reconciled row for row in the combined count artifact.")
+    endpoints = summary["endpoint_counts"]
+    aggregate_rows = [
+        (r"Direct roots $U+O$ (budget eleven)", summary["direct_root_class_obligations"]),
+        ("All endpoint classes", endpoints["all_endpoint_classes"]),
+        ("Elementary endpoint closures", endpoints["elementary_closure_classes"]),
+        ("Endpoint classes requiring discharge (budget nine)", endpoints["classes_requiring_discharge"]),
+    ]
+    aggregate = "% BEGIN JOINT2 TOTALS\n" + "\n".join([
+        r"\begin{center}", r"\begin{tabular}{@{}lr@{}}", r"\toprule",
+        r"Obligation set & Classes\\", r"\midrule",
+        *(label + " & " + str(value) + r"\\" for label, value in aggregate_rows),
+        r"\bottomrule", r"\end{tabular}", r"\end{center}", "% END JOINT2 TOTALS",
+    ])
+    paper, replaced = re.subn(r"% BEGIN JOINT2 TOTALS\n.*?% END JOINT2 TOTALS",
+                              lambda _: aggregate, paper, flags=re.DOTALL)
+    if replaced != 1:
+        raise ValueError("Missing or duplicate aggregate count block")
     if "\\pendingjointrow{" in paper or "\\unorientedjointrow{" in paper \
             or "pending exact artifacts" in paper or "pending joint-residual count" in paper:
         raise ValueError("Pending keyed count material remains")
@@ -213,7 +232,7 @@ def main() -> None:
     original = options.paper.read_text()
     rendered = render(load_summary(options.summary), original)
     if options.in_place:
-        from publish_partial_joint3_counts import update_paper
+        from publish_partial_joint2_counts import update_paper
         update_paper(options.paper, original, rendered)
         output = options.paper.resolve()
     else:

@@ -24,7 +24,7 @@ import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 
-/** Read-only TD(20) joint-3 witness/obstruction schema, with independent replay. */
+/** Read-only TD(20) joint-2 witness/obstruction schema, with independent replay. */
 public final class CertificateStore implements AutoCloseable {
     public static final int FORMAT_VERSION = 2;
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
@@ -51,7 +51,7 @@ public final class CertificateStore implements AutoCloseable {
                     new ColumnFamilyDescriptor(OBSTRUCTIONS, obstructionOptions)), handles);
             database = opened;
             final var marker = database.get(handles.get(0), "td20-schema".getBytes(StandardCharsets.UTF_8));
-            if (!Arrays.equals(marker, "joint3-selection-v1".getBytes(StandardCharsets.UTF_8)))
+            if (!Arrays.equals(marker, "joint2-selection-v1".getBytes(StandardCharsets.UTF_8)))
                 throw new IllegalStateException("Missing or unsupported certificate format marker");
         } catch (final RocksDBException | RuntimeException failure) {
             handles.forEach(ColumnFamilyHandle::close);
@@ -137,7 +137,7 @@ public final class CertificateStore implements AutoCloseable {
         catch (final RocksDBException failure) { throw new IllegalStateException("Cannot read certificate", failure); }
     }
     private static int obligationBudget(final int domain) {
-        return domain == 16 ? 8 : domain == 18 || domain == 19 ? 9 : domain == 20 ? 10 : 11;
+        return domain == 18 ? 9 : domain == 20 ? 10 : 11;
     }
     private void parallelRanges(final int size, final RangeAction action) {
         final int taskCount = Math.min(workers, size);

@@ -20,7 +20,7 @@ public final class CountTD20Bracelets {
         Path paper = ProjectPaths.root(Path.of("")).resolve("docs/td20-reduction-count.tex");
         String phase = "all";
         int workers = Runtime.getRuntime().availableProcessors();
-        int first = 1, last = 83, endpointFirst = 1, endpointLast = 104;
+        int first = 1, last = 83, endpointFirst = 1, endpointLast = 214;
         for (String arg : arguments) {
             if (arg.equals("--help")) {
                 System.out.println("CountTD20Bracelets [--phase=roots|endpoints|all] [--partitions=FIRST-LAST]"
@@ -29,7 +29,7 @@ public final class CountTD20Bracelets {
             else if (arg.startsWith("--paper=")) paper = Path.of(arg.substring(8));
             else if (arg.startsWith("--workers=")) workers = Integer.parseInt(arg.substring(10));
             else if (arg.startsWith("--partitions=")) { int[] r = range(arg.substring(13),83); first = r[0]; last = r[1]; }
-            else if (arg.startsWith("--endpoints=")) { int[] r = range(arg.substring(12),104); endpointFirst = r[0]; endpointLast = r[1]; }
+            else if (arg.startsWith("--endpoints=")) { int[] r = range(arg.substring(12),214); endpointFirst = r[0]; endpointLast = r[1]; }
             else throw new IllegalArgumentException("Unknown argument: " + arg);
         }
         if (workers < 1) throw new IllegalArgumentException("Positive worker count required");

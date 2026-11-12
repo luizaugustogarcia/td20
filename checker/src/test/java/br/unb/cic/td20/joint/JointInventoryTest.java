@@ -10,10 +10,14 @@ class JointInventoryTest {
         final var roots=JointInventory.read(ProjectPaths.root(Path.of("")).resolve("docs/td20-reduction-count.tex"));
         assertEquals(JointInventory.ROOT_COUNT,roots.size());
         assertArrayEquals(new int[]{21}, roots.getFirst().partition());
-        assertTrue(roots.stream().mapToLong(r -> r.unorientedClasses() + r.orientedClasses()).sum() > 0);
+        assertEquals(12_704_114_061L,roots.stream().mapToLong(JointInventory.Root::unorientedClasses).sum());
+        for (final var root : roots) {
+            if (root.countsComplete()) assertDoesNotThrow(root::requireCompleteCounts);
+            else assertThrows(IllegalStateException.class, root::requireCompleteCounts);
+        }
         final var endpoints=JointInventory.endpoints();
         assertEquals(JointInventory.ENDPOINT_COUNT,endpoints.size());
-        assertEquals(52,endpoints.stream().filter(JointInventory.Endpoint::elementaryClosure).count());
+        assertEquals(104,endpoints.stream().filter(JointInventory.Endpoint::elementaryClosure).count());
         assertEquals(9,KnownDiameters.knownDiameter(17));
         assertEquals(8,KnownDiameters.knownDiameter(15));
         assertEquals(10,KnownDiameters.knownDiameter(19));

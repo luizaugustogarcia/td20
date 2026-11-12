@@ -25,7 +25,7 @@ import org.rocksdb.*;
 public final class AsyncCertificateWriter implements AutoCloseable {
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
     private static final byte[] SCHEMA_KEY = "td20-schema".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] SCHEMA_VALUE = "joint3-selection-v1".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SCHEMA_VALUE = "joint2-selection-v1".getBytes(StandardCharsets.UTF_8);
     private static final byte[] EMPTY = {};
     static { RocksDB.loadLibrary(); }
     private final DBOptions options;
@@ -97,7 +97,7 @@ public final class AsyncCertificateWriter implements AutoCloseable {
     }
 
     private static int obligationBudget(int domain) {
-        return domain == 16 ? 8 : domain == 18 || domain == 19 ? 9 : domain == 20 ? 10 : 11;
+        return domain == 18 ? 9 : domain == 20 ? 10 : 11;
     }
 
     public void enqueueClosure(CyclicTargetPair pair, List<Cycle> moves, int maximumMoves) {

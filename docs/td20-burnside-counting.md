@@ -136,27 +136,30 @@ supports are still enumerated; this is not a closed formula for every term.
 
 Totally unoriented root classes are counted for every one of the 83
 fixed-point-free even partitions of 21, with all annotations unoriented. The
-same counter applies independently to the 104 annotated endpoint types on 16
-symbols with 3-norm at most seven. Empty types are retained explicitly.
+same counter applies independently to the 214 annotated endpoint types on 18
+symbols with 3-norm at most eight. Empty types are retained explicitly.
 
-Oriented joint-3 residual roots are counted by a constrained generator rather
+Oriented joint-2 residual roots are counted by a constrained generator rather
 than by this Burnside calculation, because the absence of the favorable
 prefixes is not determined by annotated type alone. The Java joint count records
 the explicit support-clearing subset separately. A complete summary therefore
 combines `U` from Burnside with `J`, `C`, and `O = J - C` for each of
 the 83 deterministic partition keys. Endpoint counts form a separate
-104-row artifact.
+214-row artifact.
 
 Burnside support, rotation, and reflection tasks use exactly the TD(18)
 Java counter and scheduling. Bracelet generation uses the same disjoint
-prefix tasks and worker detection. New joint-3 reports identify the TD(18)
-partition scheduler; completed native and historical adaptive Java audit rows
-retain their original implementation provenance.
+prefix tasks and worker detection. Java joint-2 reports identify the bounded
+adaptive prefix scheduler; each partition uses every JVM-visible CPU. The
+oriented stream excludes prefixes whose completed long cycles are all
+unoriented, since no remaining 2-cycle or admissible 3-cycle can orient a
+residual. U remains a separately counted obligation set. Reports retain their
+actual implementation provenance.
 
 The final totals are intentionally not stated here until all complete
 versioned artifacts and the source table agree row for row. See
 [the source specification](td20-reduction-count.tex) for the exact predicates
-and three inverse waves. No sorting-failure count is an input to Burnside
+and two inverse waves. No sorting-failure count is an input to Burnside
 counting or joint selection.
 
 Tests compare Burnside and direct generation on every annotated partition
@@ -165,4 +168,4 @@ classes. They also check the independently enumerated example
 I = 9702, all nonidentity rotation terms zero, each reflection term 76,
 and B = 479 for (5 oriented, 3 unoriented, 3 unoriented).
 Counting is independent of sorting certificates: a class count establishes
-neither an eight-move endpoint result nor an eleven-move root result.
+neither a nine-move endpoint result nor an eleven-move root result.

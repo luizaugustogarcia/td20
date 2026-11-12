@@ -10,13 +10,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 
-/** Exact independent Burnside count for the 16-symbol endpoint cover. */
+/** Exact independent Burnside count for the 18-symbol endpoint cover. */
 public final class CountTD20Endpoints {
     private CountTD20Endpoints() { }
 
     public static void main(final String[] arguments) throws Exception {
         int workers = Runtime.getRuntime().availableProcessors();
-        Path output = Path.of("data/joint3-reduction-audit/endpoints-v1.json");
+        Path output = Path.of("data/joint2-reduction-audit/endpoints-v1.json");
         for (final String argument : arguments) {
             if (argument.startsWith("--output=")) output = Path.of(argument.substring(9));
             else throw new IllegalArgumentException("Unknown argument: " + argument);
@@ -24,7 +24,7 @@ public final class CountTD20Endpoints {
         if (workers < 1) throw new IllegalArgumentException("Positive worker count required");
         System.setProperty("td20.twistedBraceletWorkers", Integer.toString(workers));
         final var endpoints = JointInventory.endpoints();
-        if (endpoints.size() != 104 || endpoints.stream().filter(JointInventory.Endpoint::elementaryClosure).count() != 52)
+        if (endpoints.size() != 214 || endpoints.stream().filter(JointInventory.Endpoint::elementaryClosure).count() != 104)
             throw new IllegalStateException("Incorrect endpoint annotation inventory");
         final long started = System.nanoTime();
         try (var pool = java.util.concurrent.Executors.newFixedThreadPool(workers)) {
@@ -37,14 +37,15 @@ public final class CountTD20Endpoints {
             }
             for (final var task : tasks) {
                 rows.add(task.get());
-                System.out.printf("endpoint progress: %d/104%n", rows.size());
+                System.out.printf("endpoint progress: %d/214%n", rows.size());
             }
             rows.sort(Comparator.comparingInt(row -> row.endpoint.number()));
             long total = 0, elementary = 0, requiring = 0;
             final var json = new StringBuilder(24_576);
-            json.append("{\n  \"format\": \"td20-joint3-endpoint-count-v1\",\n")
-                    .append("  \"complete\": true,\n  \"domain\": 16,\n")
-                    .append("  \"required_annotations\": 104,\n  \"completed_annotations\": 104,\n")
+            json.append("{\n  \"format\": \"td20-joint2-endpoint-count-v1\",\n")
+                    .append("  \"complete\": true,\n  \"domain\": 18,\n")
+                    .append("  \"required_annotations\": ").append(endpoints.size())
+                    .append(",\n  \"completed_annotations\": ").append(rows.size()).append(",\n")
                     .append("  \"worker_limit\": ").append(workers).append(",\n  \"rows\": [\n");
             for (int index = 0; index < rows.size(); index++) {
                 final var row = rows.get(index); final var endpoint = row.endpoint;

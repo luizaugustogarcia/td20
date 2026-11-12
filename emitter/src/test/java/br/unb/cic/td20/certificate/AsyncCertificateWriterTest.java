@@ -98,6 +98,20 @@ class AsyncCertificateWriterTest {
             assertTrue(writer.find(pair(),1).orElseThrow().isEmpty());
         }
     }
+    @Test void rejectsSupersededJointRouteSchema(@TempDir Path directory) throws Exception {
+        try (var writer = new AsyncCertificateWriter(directory,60)) { writer.flush(); }
+        var handles = new ArrayList<org.rocksdb.ColumnFamilyHandle>();
+        try (var options = new org.rocksdb.DBOptions(); var familyOptions = new org.rocksdb.ColumnFamilyOptions();
+             var database = RocksDB.open(options,directory.toString(),List.of(
+                     new org.rocksdb.ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,familyOptions),
+                     new org.rocksdb.ColumnFamilyDescriptor("obstructions".getBytes(java.nio.charset.StandardCharsets.UTF_8),familyOptions)),handles)) {
+            try {
+                database.put(handles.getFirst(),"td20-schema".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "unsupported-selection-v1".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            } finally { handles.forEach(org.rocksdb.ColumnFamilyHandle::close); }
+        }
+        assertThrows(IllegalStateException.class, () -> new AsyncCertificateWriter(directory,60));
+    }
     @Test void rejectsUnversionedDatabaseAndInvalidWitness(@TempDir Path directory) throws Exception {
         RocksDB.loadLibrary();
         try (var options = new Options().setCreateIfMissing(true); var ignored = RocksDB.open(options,directory.resolve("source").toString())) { }

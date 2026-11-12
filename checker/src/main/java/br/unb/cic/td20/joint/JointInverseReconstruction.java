@@ -9,53 +9,40 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Exhaustive inverse supports for the three-wave joint-3 reduction prefix. */
+/** Exhaustive inverse supports for a gain-one, gain-two reduction prefix. */
 public final class JointInverseReconstruction {
     private JointInverseReconstruction() { }
     public record SearchState(int maximumMoves, CyclicTargetPair pair) {
         public SearchState {
             Objects.requireNonNull(pair);
-            if (maximumMoves < 8 || maximumMoves > 11) throw new IllegalArgumentException("Invalid reconstruction budget");
+            if (maximumMoves < 9 || maximumMoves > 11) throw new IllegalArgumentException("Invalid reconstruction budget");
             if (JointMoves.fixed(JointMoves.images(pair)) != 0)
                 throw new IllegalArgumentException("Reconstruction states must be contracted");
         }
     }
     private record Restoration(CyclicTargetPair pair, int[] fixed) { }
     public static void intermediates(final CyclicTargetPair endpoint, final Consumer<CyclicTargetPair> output) {
-        requireDomain(endpoint,16);
+        requireDomain(endpoint,18);
         preimages(endpoint,2,output);
-        preimages(endpoint,3,output);
-    }
-    public static void middle(final CyclicTargetPair intermediate, final Consumer<CyclicTargetPair> output) {
-        final int domain = intermediate.getBeta().size();
-        if (domain != 18 && domain != 19)
-            throw new IllegalArgumentException("Expected an 18- or 19-symbol intermediate");
-        // The domain independently retains the path tag: 18 encodes
-        // (1,2,2), while 19 encodes (1,1,3). Generate their tagged middle gains.
-        preimages(intermediate,20-domain,output);
     }
     public static void roots(final CyclicTargetPair intermediate, final Consumer<CyclicTargetPair> output) {
         requireDomain(intermediate,20);
         preimages(intermediate,1,output);
     }
-    /** Complete local inverse operation for gains one through three. */
+    /** Complete local inverse operation; production phases fix domains 18 and 20. */
     public static void preimages(final CyclicTargetPair child, final int gain,
                                  final Consumer<CyclicTargetPair> output) {
         final int symbols = child.getBeta().size();
-        if (gain < 1 || gain > 3 || symbols + gain > 21
+        if (gain < 1 || gain > 2 || symbols + gain > 21
                 || JointMoves.fixed(JointMoves.images(child)) != 0)
-            throw new IllegalArgumentException("Expected a contracted child and a gain of one through three");
+            throw new IllegalArgumentException("Expected a contracted child and a gain of one or two");
         restore(child,gain,state -> {
-            if (gain == 3) {
-                consider(state,state.fixed[0],state.fixed[1],state.fixed[2],3,output);
-            } else if (gain == 2) {
-                for (int symbol = 0; symbol < symbols; symbol++) {
-                    consider(state, state.fixed[0], state.fixed[1], symbol, 2, output);
-                }
+            if (gain == 2) {
+                for (int symbol = 0; symbol < symbols; symbol++)
+                    consider(state,state.fixed[0],state.fixed[1],symbol,2,output);
             } else {
-                for (int a = 0; a < symbols-1; a++) for (int b = a+1; b < symbols; b++) {
-                    consider(state, state.fixed[0], a, b, 1, output);
-                }
+                for (int a = 0; a < symbols-1; a++) for (int b = a+1; b < symbols; b++)
+                    consider(state,state.fixed[0],a,b,1,output);
             }
         });
     }
@@ -107,7 +94,7 @@ public final class JointInverseReconstruction {
                 beta[cursor++] = pair.getBeta().get(i);
                 if (i == gap) beta[cursor++] = symbol;
             }
-            insert(CyclicTargetPair.of(omega, Cycle.of(beta)), restored, depth + 1, output);
+            insert(CyclicTargetPair.of(omega,Cycle.of(beta)),restored,depth+1,output);
         }
     }
 }

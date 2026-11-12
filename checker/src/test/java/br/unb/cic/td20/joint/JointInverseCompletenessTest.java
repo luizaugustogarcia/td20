@@ -42,7 +42,7 @@ class JointInverseCompletenessTest {
                             successor[c] = omega[b];
                             int gain = 0;
                             for (int x = 0; x < successor.length; x++) if (successor[x] == x) gain++;
-                            if (gain < 1 || gain > 3 || oddCycles(successor) != oddBefore + 2) continue;
+                            if (gain < 1 || gain > 2 || oddCycles(successor) != oddBefore + 2) continue;
                             if (gain == 1 && sameEvenCycle(omega, a, b, c)) evenCycleFirstMoves[0]++;
                             // Exchange the adjacent half-open intervals [a,b) and [b,c).
                             final int[] beta = new int[omega.length];
@@ -61,8 +61,8 @@ class JointInverseCompletenessTest {
             });
             for (final var entry : expected.entrySet()) {
                 final Child key = entry.getKey();
-                final Set<ExtendedToricClassKey> actual = java.util.concurrent.ConcurrentHashMap.newKeySet();
-                JointInverseReconstruction.preimages(children.get(key),key.gain,
+                final Set<ExtendedToricClassKey> actual = new HashSet<>();
+                JointInverseReconstruction.preimages(children.get(key), key.gain,
                         parent -> actual.add(parent.extendedToricClassKey()));
                 assertEquals(entry.getValue(), actual,
                         "Complete predecessor classes at N=" + n + ", gain=" + key.gain + ", child=" + key.key);
@@ -79,8 +79,7 @@ class JointInverseCompletenessTest {
         final CyclicTargetPair small = pair(new int[]{1, 2, 0}, new int[]{0, 1, 2});
         assertThrows(IllegalArgumentException.class, () -> JointInverseReconstruction.intermediates(small, ignored -> { }));
         assertThrows(IllegalArgumentException.class, () -> JointInverseReconstruction.roots(small, ignored -> { }));
-        assertThrows(IllegalArgumentException.class, () -> JointInverseReconstruction.middle(small, ignored -> { }));
-        assertThrows(IllegalArgumentException.class, () -> JointInverseReconstruction.preimages(small, 4, ignored -> { }));
+        assertThrows(IllegalArgumentException.class, () -> JointInverseReconstruction.preimages(small, 3, ignored -> { }));
         final CyclicTargetPair withFixedPoint = pair(new int[]{0, 2, 3, 1}, new int[]{0, 1, 2, 3});
         assertThrows(IllegalArgumentException.class,
                 () -> JointInverseReconstruction.preimages(withFixedPoint, 1, ignored -> { }));

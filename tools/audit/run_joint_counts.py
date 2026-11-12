@@ -18,9 +18,9 @@ from pathlib import Path
 import subprocess
 import time
 
-ROW_V1 = 'td20-joint3-residual-count-v1'
-ROW_V2 = 'td20-joint3-residual-count-v2'
-ROW_V3 = 'td20-joint3-residual-count-v3'
+ROW_V1 = 'td20-joint2-residual-count-v1'
+ROW_V2 = 'td20-joint2-residual-count-v2'
+ROW_V3 = 'td20-joint2-residual-count-v3'
 COUNT_FIELDS = ('oriented_root_classes', 'support_clearing_classes',
                 'oriented_after_support_clearing', 'no_qualifying_first_move',
                 'qualifying_but_no_favorable_prefix', 'prefix_nodes',
@@ -38,7 +38,7 @@ def partitions(n: int, maximum: int | None = None, prefix: tuple[int, ...] = ())
 
 def validate_representatives(path: Path, domain: int, expected: int) -> None:
     with path.open() as stream:
-        if stream.readline().rstrip('\n') != f'TD20-JOINT3-RESIDUALS 1 N={domain} scope=oriented':
+        if stream.readline().rstrip('\n') != f'TD20-JOINT2-RESIDUALS 1 N={domain} scope=oriented':
             raise ValueError(f'Invalid representative header: {path}')
         count = 0
         for line in stream:
@@ -68,8 +68,8 @@ def validate_row(row: dict, part: tuple[int, ...], shard_index: int | None = Non
         raise ValueError(f'Unexpected shard envelope for {part}')
     if row['format'] == ROW_V3:
         if index != 0 or count != 1 or (row.get('implementation'), row.get('scheduling')) not in {
-                    ('java-joint3-adaptive-v1', 'adaptive-subtree-queue-v1'),
-                    ('java-joint3-td18-machinery-v1', 'td18-partition-pool-v1')} \
+                    ('java-joint2-td18-machinery-v1', 'td18-prefix-frontier-v1'),
+                    ('java-joint2-td18-machinery-v2', 'td18-prefix-frontier-v1')} \
                 or type(row.get('worker_limit')) is not int or row['worker_limit'] < 1 \
                 or 'sharding' in row or 'shard_depth' in row:
             raise ValueError(f'Invalid Java count envelope for {part}')
@@ -187,7 +187,7 @@ def merge_representatives(output: Path, domain: int, rows: list[dict]) -> str:
     temporary = output / 'representatives.txt.tmp'
     count = 0
     with temporary.open('w') as target:
-        target.write(f'TD20-JOINT3-RESIDUALS 1 N={domain} scope=oriented\n')
+        target.write(f'TD20-JOINT2-RESIDUALS 1 N={domain} scope=oriented\n')
         for row in rows:
             source = output / row['representatives']
             with source.open() as stream:
@@ -227,7 +227,7 @@ def run_count(options, available_cpus: int, inventory: list[tuple[int, ...]], ou
     reused = len(complete)
     publish = None
     if options.paper:
-        from publish_partial_joint3_counts import load_unoriented, native_rows, render, update_paper
+        from publish_partial_joint2_counts import load_unoriented, native_rows, render, update_paper
         expected, values, total = load_unoriented(options.unoriented)
 
         def publish():
@@ -278,15 +278,14 @@ def run_count(options, available_cpus: int, inventory: list[tuple[int, ...]], ou
             raise
     rows = [merge_shards(part, results[part]) if len(results[part]) > 1 else results[part][0]
             for part in inventory]
-    report = {'format': 'td20-joint3-count-run-v1', 'complete': True,
+    report = {'format': 'td20-joint2-count-run-v1', 'complete': True,
               'domain': options.n, 'required_partitions': len(inventory),
               'completed_partitions': len(rows),
-              'implementation': 'native-cpp20-joint3-prefix-v2',
+              'implementation': 'native-cpp20-joint2-prefix-v2',
               'worker_limit': options.workers, 'available_cpu_cores': available_cpus,
               'partition_shards': options.partition_shards, 'shard_depth': options.shard_depth,
               'singleton_shards': options.singleton_shards, 'reused_complete_partitions': reused,
-              'scope': ('oriented roots with no immediate gain >=2, no qualifying gains (1,3), '
-                        'and no qualifying joint-3 gains (1,1,3), (1,2,2), or (1,2,3)'),
+              'scope': ('oriented roots with no immediate gain >=2 and no qualifying gains (1,3) or (1,2)'),
               'totally_unoriented_roots': 'excluded; separate direct obligations',
               'support_clearing_by_least_length': {
                   length: sum(row['support_clearing_by_least_length'][length] for row in rows)
@@ -317,8 +316,8 @@ def main() -> None:
                         help='Optional shard-count override for the single-cycle partition')
     parser.add_argument('--resume', action='store_true',
                         help='Validate and reuse completed partitions and completed v2 shards')
-    parser.add_argument('--binary', type=Path, default=Path('/tmp/td20-joint3-count-v2'))
-    parser.add_argument('--output', type=Path, default=Path('data/joint3-reduction-audit/native-v1'))
+    parser.add_argument('--binary', type=Path, default=Path('/tmp/td20-joint2-count-v2'))
+    parser.add_argument('--output', type=Path, default=Path('data/joint2-reduction-audit/native-v1'))
     parser.add_argument('--representatives', action='store_true')
     parser.add_argument('--merge-representatives', action='store_true')
     parser.add_argument('--paper', type=Path,

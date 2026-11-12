@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and combine the complete TD(20) joint-3 counting artifacts."""
+"""Validate and combine the complete TD(20) joint-2 counting artifacts."""
 from __future__ import annotations
 
 import argparse
@@ -25,8 +25,8 @@ def require_integer(row: dict, field: str) -> int:
 
 def endpoint_annotations() -> list[tuple[tuple[int, ...], tuple[bool, ...]]]:
     result = []
-    for partition in partitions(16):
-        if sum(length // 2 for length in partition) > 7:
+    for partition in partitions(18):
+        if sum(length // 2 for length in partition) > 8:
             continue
         annotations = [()]
         start = 0
@@ -40,24 +40,26 @@ def endpoint_annotations() -> list[tuple[tuple[int, ...], tuple[bool, ...]]]:
                            for prefix in annotations for oriented in range(maximum + 1)]
             start = end
         result.extend((partition, annotation) for annotation in annotations)
-    if len(result) != 104 or sum(
+    if len(result) != 214 or sum(
             any(length == 3 and oriented for length, oriented in zip(partition, annotation))
-            for partition, annotation in result) != 52:
+            for partition, annotation in result) != 104:
         raise ValueError('Independent endpoint inventory is inconsistent')
     return result
 
 
 def load_native(path: Path, expected: list[tuple[int, ...]]) -> dict:
     report = json.loads(path.read_text())
-    if report.get('format') != 'td20-joint3-count-run-v1' or report.get('complete') is not True:
-        raise ValueError('Unsupported or incomplete native joint-3 report')
+    if report.get('format') != 'td20-joint2-count-run-v1' or report.get('complete') is not True:
+        raise ValueError('Unsupported or incomplete native joint-2 report')
     if report.get('domain') != 21 or report.get('required_partitions') != 83 \
             or report.get('completed_partitions') != 83:
         raise ValueError('Incorrect native inventory envelope')
     rows = report.get('rows')
     if not isinstance(rows, list) or [tuple(row.get('partition', ())) for row in rows] != expected:
         raise ValueError('Native rows do not match the deterministic 83-partition inventory')
+    from run_joint_counts import validate_row
     for row in rows:
+        validate_row(row, tuple(row["partition"]))
         joint = require_integer(row, 'oriented_root_classes')
         cleared = require_integer(row, 'support_clearing_classes')
         oriented = require_integer(row, 'oriented_after_support_clearing')
@@ -111,10 +113,10 @@ def load_unoriented(path: Path, expected: list[tuple[int, ...]]) -> dict:
 
 def load_endpoints(path: Path) -> dict:
     report = json.loads(path.read_text())
-    if report.get('format') != 'td20-joint3-endpoint-count-v1' \
-            or report.get('complete') is not True or report.get('domain') != 16 \
-            or report.get('required_annotations') != 104 \
-            or report.get('completed_annotations') != 104:
+    if report.get('format') != 'td20-joint2-endpoint-count-v1' \
+            or report.get('complete') is not True or report.get('domain') != 18 \
+            or report.get('required_annotations') != 214 \
+            or report.get('completed_annotations') != 214:
         raise ValueError('Unsupported or incomplete endpoint report')
     expected = endpoint_annotations()
     rows = report.get('rows')
@@ -146,7 +148,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native', required=True, type=Path)
     parser.add_argument('--unoriented', required=True, type=Path)
-    parser.add_argument('--endpoints', type=Path)
+    parser.add_argument('--endpoints', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     options = parser.parse_args()
     expected = list(partitions(21))
@@ -154,6 +156,7 @@ def main() -> None:
         raise ValueError('Independent root inventory is not 83 partitions')
     native = load_native(options.native, expected)
     unoriented = load_unoriented(options.unoriented, expected)
+    endpoints = load_endpoints(options.endpoints)
     rows = []
     for number, (partition, native_row, unoriented_row) in enumerate(
             zip(expected, native['rows'], unoriented['rows']), 1):
@@ -167,12 +170,12 @@ def main() -> None:
                      'support_clearing_by_least_length':
                          native_row['support_clearing_by_least_length']})
     result = {
-        'format': 'td20-joint3-selection-summary-v1', 'complete': True,
+        'format': 'td20-joint2-selection-summary-v1', 'complete': True,
         'domain': 21, 'root_budget': 11, 'partitions_required': 83,
         'partitions_completed': 83,
-        'selection': ['immediate gain >= 2', '(1,3)', '(1,1,3)', '(1,2,2)', '(1,2,3)'],
+        'selection': ['immediate gain >= 2', '(1,3)', '(1,2)'],
         'totally_unoriented_root_classes': sum(row['U'] for row in rows),
-        'oriented_joint3_residual_classes': sum(row['J'] for row in rows),
+        'oriented_joint2_residual_classes': sum(row['J'] for row in rows),
         'support_clearing_classes': sum(row['C'] for row in rows),
         'oriented_root_classes_after_support_clearing': sum(row['O'] for row in rows),
         'direct_root_class_obligations': sum(row['direct'] for row in rows),
@@ -185,12 +188,10 @@ def main() -> None:
         'sorting_certificates_checked': False,
         'td20_proved': False,
     }
-    if options.endpoints:
-        endpoints = load_endpoints(options.endpoints)
-        result['endpoint_counts'] = {
-            key: require_integer(endpoints, key) for key in
-            ('all_endpoint_classes', 'elementary_closure_classes',
-             'classes_requiring_discharge')}
+    result['endpoint_counts'] = {
+        key: require_integer(endpoints, key) for key in
+        ('all_endpoint_classes', 'elementary_closure_classes',
+         'classes_requiring_discharge')}
     options.output = options.output.resolve()
     options.output.parent.mkdir(parents=True, exist_ok=True)
     with options.output.open('x') as destination:

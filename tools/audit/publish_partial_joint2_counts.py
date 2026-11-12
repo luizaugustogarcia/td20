@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Publish completed U rows and any available native J/C/O rows into TeX.
+"""Publish completed U rows and available J/C/O partition reports into TeX.
 
-This deliberately permits a mixed table while the all-core native run is in
-progress.  It validates deterministic keys and only replaces a row after its
+This permits a mixed table while the all-core Java count is in progress,
+including completed independent native audits. It validates deterministic
+keys and only replaces a row after its
 atomic per-partition report is complete.  The final combined-summary publisher
 still performs the strict aggregate reconciliation.
 """
@@ -95,7 +96,7 @@ def native_integer(row: dict, field: str, partition: tuple[int, ...]) -> int:
 
 def validate_native_row(row: dict, expected: set[tuple[int, ...]]) -> tuple[int, ...]:
     partition = tuple(row.get("partition", ()))
-    if row.get("format") not in ("td20-joint3-residual-count-v1", "td20-joint3-residual-count-v2", "td20-joint3-residual-count-v3") \
+    if row.get("format") not in ("td20-joint2-residual-count-v1", "td20-joint2-residual-count-v2", "td20-joint2-residual-count-v3") \
             or partition not in expected:
         raise ValueError(f"Unsupported native row key {partition}")
     shard_index = row.get("shard_index")
@@ -106,14 +107,14 @@ def validate_native_row(row: dict, expected: set[tuple[int, ...]]) -> tuple[int,
     depth = row.get("shard_depth", 1)
     if type(depth) is not int or not 1 <= depth < sum(partition):
         raise ValueError(f"Invalid native shard depth {partition}")
-    if row["format"] == "td20-joint3-residual-count-v3":
+    if row["format"] == "td20-joint2-residual-count-v3":
         if shard_index != 0 or shard_count != 1 or (row.get("implementation"), row.get("scheduling")) not in {
-                    ("java-joint3-adaptive-v1", "adaptive-subtree-queue-v1"),
-                    ("java-joint3-td18-machinery-v1", "td18-partition-pool-v1")} \
+                    ("java-joint2-td18-machinery-v1", "td18-prefix-frontier-v1"),
+                    ("java-joint2-td18-machinery-v2", "td18-prefix-frontier-v1")} \
                 or type(row.get("worker_limit")) is not int or row["worker_limit"] < 1 \
                 or "sharding" in row or "shard_depth" in row:
             raise ValueError(f"Invalid Java count envelope {partition}")
-    elif row["format"] == "td20-joint3-residual-count-v2":
+    elif row["format"] == "td20-joint2-residual-count-v2":
         scheme = "first-position-modulo-v1" if depth == 1 else "accepted-prefix-modulo-v2"
         if row.get("sharding") != scheme or "shard_depth" not in row:
             raise ValueError(f"Invalid native v2 shard scheme {partition}")

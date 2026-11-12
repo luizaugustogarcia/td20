@@ -38,13 +38,12 @@ import java.util.stream.IntStream;
  *
  * <p>The residual scope excludes totally unoriented roots, which remain
  * separate obligations. An oriented residual has no immediate gain-at-least-two
- * move and no favorable joint-three prefix: gain pattern (1,3), (1,1,3),
- * (1,2,2), or (1,2,3). Totally-unoriented states stop at both intermediate
- * depths. Structural availability is not a sorting certificate. Neither this
+ * move and no favorable joint-two prefix: gain pattern (1,3) or (1,2).
+ * Totally unoriented states receive no structural reduction at either depth. Structural availability is not a sorting certificate. Neither this
  * audit nor an empty residual family proves TD(20).</p>
  */
 public final class CheckJointResiduals {
-    private static final String MAGIC = "TD20-JOINT3-RESIDUALS";
+    private static final String MAGIC = "TD20-JOINT2-RESIDUALS";
     private static final int VERSION = 1;
     private static final int MAXIMUM_EXHAUSTIVE_DOMAIN = 10;
 
@@ -366,7 +365,7 @@ public final class CheckJointResiduals {
 
     private static void printReport(final Header header, final Exhaustion exhaustion,
                                     final ReadResult read, final int classes) {
-        System.out.println("{\"format\":\"td20-joint3-residual-java-audit-v1\",\"domain\":"
+        System.out.println("{\"format\":\"td20-joint2-residual-java-audit-v1\",\"domain\":"
                 + header.domain + ",\"partition\":\"" + header.partitionText()
                 + "\",\"scope\":\"oriented\",\"enumeration_performed\":" + (exhaustion != null)
                 + ",\"representative_file_validated\":" + (read != null)

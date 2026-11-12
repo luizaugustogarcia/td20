@@ -133,7 +133,7 @@ void count_file(const std::string& path) {
     std::ifstream input(path);
     if (!input) throw std::runtime_error("Cannot open input: " + path);
     std::string line;
-    if (!std::getline(input, line) || line != "TD20-JOINT3-RESIDUALS 1 N=21 scope=oriented") {
+    if (!std::getline(input, line) || line != "TD20-JOINT2-RESIDUALS 1 N=21 scope=oriented") {
         throw std::runtime_error("Missing or incompatible residual header: " + path);
     }
     std::uint64_t scanned = 0, closed = 0;
@@ -156,7 +156,7 @@ void count_file(const std::string& path) {
         }
     }
     if (input.bad() || !footer) throw std::runtime_error("Truncated or unreadable residual input: " + path);
-    std::cout << "{\"format\":\"td20-joint3-support-clearing-count-v1\",\"input\":"
+    std::cout << "{\"format\":\"td20-joint2-support-clearing-count-v1\",\"input\":"
               << json_string(path) << ",\"domain\":21,\"scanned\":" << scanned
               << ",\"support_clearing\":" << closed << ",\"remaining\":" << scanned - closed
               << ",\"least_closing_length\":{";
@@ -203,7 +203,7 @@ void self_test() {
             ++tested;
         }
     }
-    std::cout << "{\"format\":\"td20-joint3-support-clearing-self-test-v1\",\"local_candidates\":"
+    std::cout << "{\"format\":\"td20-joint2-support-clearing-self-test-v1\",\"local_candidates\":"
               << tested << ",\"agrees\":true}" << std::endl;
 }
 }

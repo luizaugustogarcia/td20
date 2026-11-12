@@ -8,14 +8,13 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Complete joint selection of up to three sorting transpositions. Inputs are
+ * Complete joint selection of up to two sorting transpositions. Inputs are
  * fixed-point-free valid cyclic-target pairs on labels 0 through N-1.
  * The current cycle beta is a cyclic writing; omega is an image array.
  *
  * <p>The selection first seeks a move creating at least two fixed points.
- * Otherwise every qualifying gain-one move is considered. Gain-three second
- * moves close, while gain-one and gain-two seconds continue to a third move.
- * Favorable third-depth patterns are (1,1,3), (1,2,2), and (1,2,3). A qualifying
+ * Otherwise every qualifying gain-one move is considered, followed by every
+ * move creating at least two fixed points after contraction. A qualifying
  * move increases the number of odd-length algebraic cycles by two. Totally
  * unoriented pairs receive no structural reduction at either depth.</p>
  *
@@ -32,9 +31,7 @@ public final class JointReductionAnalysis {
         TOTALLY_UNORIENTED,
         IMMEDIATE_AT_LEAST_TWO,
         ONE_THEN_THREE,
-        ONE_ONE_THEN_THREE,
-        ONE_TWO_THEN_TWO,
-        ONE_TWO_THEN_THREE,
+        ONE_THEN_TWO,
         NO_QUALIFYING_FIRST_MOVE,
         RETAINED
     }
@@ -121,7 +118,9 @@ public final class JointReductionAnalysis {
         int qualifying = 0;
         int stopped = 0;
         int favorableFirsts = 0;
-        int favorablePrefixes = 0;
+        int favorablePairs = 0;
+        int bestSecondGain = 0;
+        List<Move> bestPrefix = List.of();
         for (int i = 0; i < beta.length - 2; i++) {
             for (int j = i + 1; j < beta.length - 1; j++) {
                 for (int k = j + 1; k < beta.length; k++) {
@@ -138,64 +137,32 @@ public final class JointReductionAnalysis {
                         stopped++;
                         continue;
                     }
-                    final int contractedOdd = oddCycleCount(contracted.omega);
-                    for (int r = 0; r < contracted.beta.length - 2; r++) {
-                        for (int s = r + 1; s < contracted.beta.length - 1; s++) {
-                            for (int t = s + 1; t < contracted.beta.length; t++) {
-                                final Move second = new Move(contracted.beta[r],
-                                        contracted.beta[s], contracted.beta[t]);
-                                final int secondGain = gain(contracted.omega, second);
-                                if (secondGain < 1) continue;
-                                final int[] secondOmega = applyToOmega(contracted.omega, second);
-                                if (oddCycleCount(secondOmega) != contractedOdd + 2) continue;
-                                final Move liftedSecond = lift(second, contracted.originalLabels);
-                                if (secondGain == 3) {
-                                    favorableFirsts++; favorablePrefixes++;
-                                    return new Result(Route.ONE_THEN_THREE,
-                                            List.of(first, liftedSecond), 1, 3, 0,
-                                            qualifying, stopped, favorableFirsts, favorablePrefixes);
-                                }
-                                final int[] secondBeta = applyToBeta(contracted.beta, second);
-                                final Contracted twice = contractFixedPointsUnchecked(secondOmega, secondBeta);
-                                if (stopTotallyUnoriented && isTotallyUnorientedUnchecked(
-                                        twice.omega, twice.beta)) {
-                                    stopped++;
-                                    continue;
-                                }
-                                for (final Move third : fastMovesUnchecked(twice.omega, twice.beta)) {
-                                    final int thirdGain = gain(twice.omega, third);
-                                    if (secondGain == 1 && thirdGain != 3
-                                            || secondGain == 2 && thirdGain < 2) continue;
-                                    favorableFirsts++; favorablePrefixes++;
-                                    final Move liftedThird = new Move(
-                                            contracted.originalLabels[twice.originalLabels[third.a]],
-                                            contracted.originalLabels[twice.originalLabels[third.b]],
-                                            contracted.originalLabels[twice.originalLabels[third.c]]);
-                                    final Route route = secondGain == 1
-                                            ? Route.ONE_ONE_THEN_THREE
-                                            : thirdGain == 3 ? Route.ONE_TWO_THEN_THREE
-                                            : Route.ONE_TWO_THEN_TWO;
-                                    return new Result(route, List.of(first, liftedSecond, liftedThird),
-                                            1, secondGain, 0, qualifying, stopped,
-                                            favorableFirsts, favorablePrefixes);
-                                }
-                            }
+                    final List<Move> seconds = fastMovesUnchecked(
+                            contracted.omega, contracted.beta);
+                    if (!seconds.isEmpty()) favorableFirsts++;
+                    favorablePairs += seconds.size();
+                    for (final Move second : seconds) {
+                        final int secondGain = gain(contracted.omega, second);
+                        if (secondGain > bestSecondGain) {
+                            bestSecondGain = secondGain;
+                            bestPrefix = List.of(first, new Move(
+                                    contracted.originalLabels[second.a],
+                                    contracted.originalLabels[second.b],
+                                    contracted.originalLabels[second.c]));
                         }
                     }
                 }
             }
         }
-        final Route route = qualifying == 0 ? Route.NO_QUALIFYING_FIRST_MOVE : Route.RETAINED;
-        return new Result(route, List.of(), 0, 0, 0, qualifying, stopped,
-                favorableFirsts, favorablePrefixes);
+        final Route route = bestSecondGain == 3 ? Route.ONE_THEN_THREE
+                : bestSecondGain == 2 ? Route.ONE_THEN_TWO
+                : qualifying == 0 ? Route.NO_QUALIFYING_FIRST_MOVE : Route.RETAINED;
+        return new Result(route, bestPrefix, bestSecondGain > 0 ? 1 : 0,
+                bestSecondGain, 0, qualifying, stopped, favorableFirsts, favorablePairs);
     }
 
     private static Result empty(final Route route) {
         return new Result(route, List.of(), 0, 0, 0, 0, 0, 0, 0);
-    }
-
-    private static Move lift(final Move move, final int[] labels) {
-        return new Move(labels[move.a], labels[move.b], labels[move.c]);
     }
 
     /**

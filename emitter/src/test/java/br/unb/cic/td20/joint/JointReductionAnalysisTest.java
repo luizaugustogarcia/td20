@@ -54,9 +54,13 @@ class JointReductionAnalysisTest {
                 valid[0]++;
                 for (final boolean stop : List.of(false, true)) {
                     final Result actual = analyze(omega, beta, stop);
-                    final boolean expected = exhaustiveFavorable(omega, beta, stop);
-                    assertEquals(expected, actual.hasFavorablePrefix(),
+                    final Expected expected = exhaustive(omega, beta, stop);
+                    assertEquals(expected.route, actual.route(),
                             () -> Arrays.toString(omega) + " stop=" + stop);
+                    assertEquals(expected.qualifying, actual.qualifyingFirstMoves());
+                    assertEquals(expected.stopped, actual.stoppedSuccessors());
+                    assertEquals(expected.favorableFirsts, actual.favorableFirstMoves());
+                    assertEquals(expected.favorablePairs, actual.favorablePairs());
                     replayPrefix(omega, beta, actual);
                     observed.add(actual.route());
                 }
@@ -66,7 +70,7 @@ class JointReductionAnalysisTest {
         assertTrue(observed.contains(Route.TOTALLY_UNORIENTED));
         assertTrue(observed.contains(Route.IMMEDIATE_AT_LEAST_TWO));
         assertTrue(observed.contains(Route.NO_QUALIFYING_FIRST_MOVE));
-        assertTrue(observed.stream().anyMatch(route -> route.name().contains("THEN")));
+        assertTrue(observed.contains(Route.ONE_THEN_TWO));
     }
 
     @Test
@@ -75,6 +79,7 @@ class JointReductionAnalysisTest {
         final int[] beta = IntStream.range(0, omega.length).toArray();
         final Result actual = analyze(omega, beta);
         assertEquals(Route.ONE_THEN_THREE, actual.route());
+        assertEquals(exhaustive(omega, beta, true).favorablePairs, actual.favorablePairs());
         replayPrefix(omega, beta, actual);
     }
 
@@ -152,41 +157,6 @@ class JointReductionAnalysisTest {
         assertTrue(checked[0] > 100);
     }
 
-    private static boolean exhaustiveFavorable(final int[] omega, final int[] beta,
-                                                final boolean stop) {
-        if (stop && allUnoriented(omega, beta)) return false;
-        final int initialOdd = oddCycles(omega);
-        for (final Move first : applicableMoves(beta, omega, false)) {
-            final int firstGain = gain(omega, first);
-            final int[] q = multiplyOmega(omega, first);
-            if (oddCycles(q) != initialOdd + 2) continue;
-            if (firstGain >= 2) return true;
-            if (firstGain != 1) continue;
-            final int[] beta1 = CommonOperations.applyTranspositionOptimized(
-                    Cycle.of(beta.clone()), Cycle.of(first.a(), first.b(), first.c())).getSymbols();
-            if (stop && allUnoriented(q, beta1)) continue;
-            final int qOdd = oddCycles(q);
-            for (final Move second : applicableMoves(beta1, q, true)) {
-                final int secondGain = gain(q, second);
-                if (secondGain < 1) continue;
-                final int[] r = multiplyOmega(q, second);
-                if (oddCycles(r) != qOdd + 2) continue;
-                if (secondGain == 3) return true;
-                final int[] beta2 = CommonOperations.applyTranspositionOptimized(
-                        Cycle.of(beta1.clone()), Cycle.of(second.a(), second.b(), second.c())).getSymbols();
-                if (stop && allUnoriented(r, beta2)) continue;
-                final int rOdd = oddCycles(r);
-                for (final Move third : applicableMoves(beta2, r, true)) {
-                    final int thirdGain = gain(r, third);
-                    if (secondGain == 1 && thirdGain != 3
-                            || secondGain == 2 && thirdGain < 2) continue;
-                    if (oddCycles(multiplyOmega(r, third)) == rOdd + 2) return true;
-                }
-            }
-        }
-        return false;
-    }
-
     private record Expected(Route route, int qualifying, int stopped,
                             int favorableFirsts, int favorablePairs) { }
 
@@ -217,7 +187,7 @@ class JointReductionAnalysisTest {
             favorablePairs += successful;
             if (successful > 0) favorableFirsts++;
         }
-        final Route route = best == 3 ? Route.ONE_THEN_THREE : best == 2 ? Route.ONE_TWO_THEN_TWO
+        final Route route = best == 3 ? Route.ONE_THEN_THREE : best == 2 ? Route.ONE_THEN_TWO
                 : qualifying == 0 ? Route.NO_QUALIFYING_FIRST_MOVE : Route.RETAINED;
         return new Expected(route, qualifying, stopped, favorableFirsts, favorablePairs);
     }
@@ -236,10 +206,8 @@ class JointReductionAnalysisTest {
             assertArrayEquals(expectedOmega, currentOmega);
             assertEquals(Cycle.of(expectedBeta), Cycle.of(currentBeta));
             assertArrayEquals(rho, target(currentOmega, currentBeta));
-            final int actualGain = fixedCount(currentOmega) - before;
-            if (index == 0) assertEquals(result.firstMoveGain(), actualGain);
-            else if (index == 1) assertEquals(result.secondMoveGain(), actualGain);
-            index++;
+            assertEquals(index++ == 0 ? result.firstMoveGain() : result.secondMoveGain(),
+                    fixedCount(currentOmega) - before);
         }
         assertThrows(UnsupportedOperationException.class,
                 () -> result.prefix().add(new Move(0, 1, 2)));

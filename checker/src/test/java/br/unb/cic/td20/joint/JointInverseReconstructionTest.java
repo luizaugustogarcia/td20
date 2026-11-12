@@ -13,17 +13,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JointInverseReconstructionTest {
     @Test void regeneratesFixedPointFreeOrientedIntermediatePreimages() {
-        final var endpoint=CyclicTargetPair.of(new MulticyclePermutation(List.of(
-                Cycle.of(0,11,13,12,2,4,9,5,7,3,14),Cycle.of(1,10,8,15,6))),
-                Cycle.of(0,6,5,15,14,8,4,9,1,12,11,13,3,2,7,10)).canonicalRepresentative();
+        final var endpoint=CyclicTargetPair.of(new MulticyclePermutation("(0 1 2 3 4 5 6 7 8)(9 10 11 12 13 14 15 16 17)"),
+                Cycle.of(java.util.stream.IntStream.range(0,18).toArray())).canonicalRepresentative();
         final var count=new AtomicInteger();
         JointInverseReconstruction.intermediates(endpoint,parent->{
-            assertTrue(parent.getBeta().size()==18||parent.getBeta().size()==19);
+            assertEquals(20,parent.getBeta().size());
             assertEquals(0,JointMoves.fixed(JointMoves.images(parent)));
             assertFalse(JointMoves.totallyUnoriented(JointMoves.images(parent),parent.getBeta().getSymbols()));
-            final int gain=parent.getBeta().size()-endpoint.getBeta().size();
-            assertEquals(JointMoves.odd(JointMoves.images(parent))+2-gain,
-                    JointMoves.odd(JointMoves.images(endpoint)));
+            assertEquals(JointMoves.odd(JointMoves.images(endpoint)),JointMoves.odd(JointMoves.images(parent)));
             count.incrementAndGet();
         });
         assertTrue(count.get()>0);
@@ -31,12 +28,10 @@ class JointInverseReconstructionTest {
     @Test void inverseSupportsIncludeFirstMovesSplittingASingleEvenLengthCycle() {
         final CyclicTargetPair[] endpoint={null};
         assertThrows(Found.class,()->DirectTwistedBraceletGenerator.generateRepresentatives(
-                new int[]{7,5,2,2},new boolean[]{true,true,false,false},pair->{endpoint[0]=pair;throw new Found();}));
+                new int[]{9,5,2,2},new boolean[]{true,true,false,false},pair->{endpoint[0]=pair;throw new Found();}));
         assertThrows(Found.class,()->JointInverseReconstruction.intermediates(endpoint[0],intermediate->{
-            assertTrue(intermediate.getBeta().size()==18||intermediate.getBeta().size()==19);
-            JointInverseReconstruction.middle(intermediate,middle->JointInverseReconstruction.roots(middle,root->{
-                assertEquals(20,middle.getBeta().size());
-                assertEquals(21,root.getBeta().size());
+            if(intermediate.getOmega().stream().noneMatch(c->c.size()>=4&&c.size()%2==0))return;
+            JointInverseReconstruction.roots(intermediate,root->{
                 final var even=root.getOmega().stream().filter(c->c.size()%2==0&&Arrays.stream(c.getSymbols()).anyMatch(x->x==20)).findFirst();
                 if(even.isEmpty())return;
                 final var support=even.orElseThrow().getSymbols();
@@ -55,9 +50,9 @@ class JointInverseReconstructionTest {
                         omega.add(Cycle.of(Arrays.copyOf(buffer,length)));
                     }
                     final var child=CyclicTargetPair.of(omega,Cycle.of(Arrays.stream(beta.getSymbols()).filter(x->x!=20).toArray()));
-                    if(child.extendedToricClassKey().equals(middle.extendedToricClassKey()))throw new Found();
+                    if(child.extendedToricClassKey().equals(intermediate.extendedToricClassKey()))throw new Found();
                 }
-            }));
+            });
         }));
     }
     private static final class Found extends RuntimeException { }

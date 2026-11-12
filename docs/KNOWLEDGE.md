@@ -1,9 +1,9 @@
 # Mathematical knowledge and references
 
 [The TD(20) source specification](td20-reduction-count.tex) defines the local
-joint-3 argument. The sibling `../td` repository supplies only the shared
+joint-2 argument. The sibling `../td` repository supplies only the shared
 twisted-bracelet framework and established conventions. The premise
-`TD(18) = 10` is assumed as directed; it is not reproved here.
+`TD(18) = 10` is an established, independently checked premise; it is not reproved here.
 
 ## Equality objective and established lower bound
 
@@ -12,7 +12,7 @@ transposition distance `floor(n / 2) + 1` for `n >= 3`, hence its distance in
 `S_20` is 11 and `TD(20) >= 11`. The
 [shared paper](../../td/docs/paper/main.tex) records this formula and its
 original reference. This established lower bound is independent of the
-joint-3 route and all class counts. The remaining proof direction is the
+joint-2 route and all class counts. The remaining proof direction is the
 certificate-checked upper bound `TD(20) <= 11`.
 
 ## Pairs, moves, and fixed points
@@ -53,44 +53,27 @@ correct action. A twisted bracelet is the whole orbit, not a canonical word.
 `ExtendedToricClassKey` identifies classes of valid pairs. Full-target
 realizability must be checked before a candidate becomes a pair.
 
-## Exact joint-3 selection
+## Exact joint-2 selection
 
-Roots are fixed-point-free valid pairs on 21 symbols with budget 11. Totally
-unoriented states receive no structural reduction at any depth. A
-known-diameter closure may still be used when its checked inequality fits.
-For every other root the complete routing rule is:
+Roots have 21 nonfixed symbols and budget eleven. Totally unoriented states
+receive no structural reduction at either depth. Immediate gain at least two
+closes by 1 + TD(18) = 11. Otherwise inspect every qualifying gain-one first
+move and every second move creating at least two fixed points. Gain three
+closes by 2 + TD(16) = 11; gain two reaches an 18-symbol budget-nine endpoint.
+Include supports within even-length cycles and across cycles.
 
-1. An immediate move of gain at least two closes, because contraction leaves
-   at most 19 symbols and `1 + TD(18) = 11`.
-2. Otherwise inspect every qualifying gain-one first move.
-3. At an oriented successor, a gain-three second move closes. Gain-one and
-   gain-two second moves continue; no other second gain is retained.
-4. After gains `(1,1)`, a gain-three third move reaches a 16-symbol endpoint.
-5. After gains `(1,2)`, a gain-two third move reaches a 16-symbol endpoint,
-   while a gain-three third move closes on at most 15 symbols.
+Every gain-at-least-two move uses (x, omega(x), omega squared(x)) up to cyclic
+writing in beta order. This complete consecutive-edge test gives safe prefix
+predicates. Gain-one first supports remain exhaustive.
 
-Thus the favorable depth-three sequences are `(1,1,3)`, `(1,2,2)`, and
-`(1,2,3)`. The first two carry distinct route tags to the endpoint even when
-they produce the same endpoint class. The two-move closure `(1,3)` is also
-part of the favorable-prefix test. Every first, second, and third support is
-tested by actual applicability and odd-cycle gain, including supports inside
-even-length cycles and across cycles.
-
-Any move creating at least two fixed points has, up to cyclic writing, support
-`(x, omega(x), omega squared(x))`. This gives a complete linear-size test for
-such moves. Gain-one moves are still enumerated exhaustively. Prefix pruning
-is sound only when it encodes the whole rule above; leaf replay is the final
-check.
-
-Each endpoint has 16 nonfixed symbols, budget 8, and 3-norm at most 7. The
-complete cover contains 104 annotated types. Exactly 52 contain an oriented
-3-cycle and close by one local move followed by `TD(12)`, costing at most 8.
-Every other endpoint requires a replayed result within eight moves or enters
-inverse reconstruction. No predicted endpoint-failure count is a premise.
+Endpoints have 3-norm at most eight. The cover has 30 partitions and 214
+annotations; 104 close by one oriented-3-cycle clearing plus TD(14) = 8.
+Every class in the other 110 annotations needs a nine-move result or inverse
+coverage. No endpoint-failure count is a premise.
 
 ## Direct roots and support clearing
 
-An oriented joint-3 residual has none of the favorable routes above. It is a
+An oriented joint-2 residual has none of the favorable routes above. It is a
 direct root unless one of these explicit local powers clears its support:
 
 | Support length | Powers relative to `beta_S` | Clearing length | Bound |
@@ -103,32 +86,23 @@ direct root unless one of these explicit local powers clears its support:
 These are the only support-clearing patterns admitted by this route. The root
 inventory consists of the 83 nonincreasing partitions of 21 into parts at
 least two having an even number of even parts. For each partition the source
-table records totally unoriented classes `U`, oriented joint-3 residuals `J`,
+table records totally unoriented classes `U`, oriented joint-2 residuals `J`,
 the support-cleared subset `C`, and `O = J - C`. Direct obligations total
 `U + O`. Those totals remain pending until complete artifacts agree.
 
-## Three inverse waves
+## Two inverse waves
 
-For every endpoint class without an eight-move discharge, preserve each route
-tag and reverse exactly the corresponding gains:
+Restore gain two in every gap distribution, testing supports with both restored
+symbols and one survivor. This gives 20-symbol budget-ten predecessors.
+Restore gain one in every gap, testing supports with it and two survivors.
+This gives 21-symbol budget-eleven roots. Require valid fixed-point-free,
+non-totally-unoriented predecessors, exact forward gain, and odd-cycle increase
+two. Disk deduplication preserves every compatible class; all paths use (1,2).
 
-1. Reverse the third move. Tag `(1,1,3)` restores three fixed points and gives
-   a 19-symbol predecessor; tag `(1,2,2)` restores two and gives an 18-symbol
-   predecessor. Both have budget 9.
-2. Reverse the tagged second move. Restore one fixed point for `(1,1,3)` or
-   two for `(1,2,2)`, giving a 20-symbol predecessor with budget 10.
-3. Reverse the gain-one first move, giving a 21-symbol root with budget 11.
-
-At every wave enumerate all cyclic gaps and compatible supports, then replay
-the forward move and verify its exact fixed-point gain and odd-cycle increase.
-Deduplication must retain the union of route tags. A checked result at a wave's
-budget closes every represented path; unresolved classes propagate. Every
-remaining reconstructed root needs a budget-11 result.
-
-The checker independently regenerates the 83 root rows, all 104 endpoint
-annotations, and all inverse waves. Missing obstruction markers, checksums,
-and sidecar manifests cannot remove obligations. A count is not a sorting
-witness, and a witness proves an upper bound only for its represented class.
+Checked results close represented paths; unresolved classes propagate. The
+checker regenerates all 83 root rows, 214 endpoint annotations, and both waves.
+Missing markers, checksums, and sidecars cannot remove work. A count is not
+a witness. The selection-independent U count is retained; J/C/O are pending.
 
 The Java package root is `br.unb.cic.td20`. See
 [the architecture](ARCHITECTURE.md) for module boundaries.

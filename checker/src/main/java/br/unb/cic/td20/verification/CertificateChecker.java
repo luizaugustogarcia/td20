@@ -42,13 +42,14 @@ public final class CertificateChecker {
                 if (options.includesEndpoint(endpoint.number())) verifyEndpoint(endpoint,certificates,residuals,progress);
             final long residualCount = residuals.seal().count();
             if (options.avoidance()) verifyAvoidance(certificates,residuals,options.work,progress);
-            else if (residualCount > 0) System.out.printf("Eight-move endpoint failures requiring final avoidance: %d%n",residualCount);
+            else if (residualCount > 0) System.out.printf("Nine-move endpoint failures requiring final avoidance: %d%n",residualCount);
             if (options.completeScope()) System.out.println("All regenerated obligations in the complete joint-selection scope are verified.");
             else System.out.println("Requested partial verification scope completed; this is not a complete TD(20) certificate check.");
         } finally { DirectTwistedBraceletGenerator.shutdownExecutor(); }
     }
     static void verifyRoot(final JointInventory.Root row, final CertificateStore certificates,
                            final VerificationProgress progress) {
+        row.requireCompleteCounts();
         final var unoriented = new LongAdder();
         progress.phase(() -> "root partition " + row.number() + " totally unoriented: regenerated=" + unoriented.sum());
         try (final var verifier = required(certificates, 11)) {
@@ -61,7 +62,7 @@ public final class CertificateChecker {
         final var oriented = new LongAdder(); final var cleared = new LongAdder();
         progress.phase(() -> "root partition " + row.number() + " oriented joint residuals: regenerated=" + oriented.sum());
         try (final var verifier = required(certificates, 11)) {
-            IndependentJointRootGenerator.generateResidualsConcurrently(row.partition(),
+            IndependentJointRootGenerator.generateResidualsConcurrently(row.partition(), CheckerParallelism.workers(),
                     verifier::check, pair -> {
                         oriented.increment();
                         if (SupportClearing.closes(pair)) { cleared.increment(); return; }
@@ -83,8 +84,8 @@ public final class CertificateChecker {
                 endpoint.partition(),endpoint.orientedByPart());
         final var generated = new LongAdder(); final var residual = new LongAdder();
         progress.phase(() -> "endpoint " + endpoint.number() + ": regenerated=" + generated.sum() + " residual=" + residual.sum());
-        try (final var verifier = new CertificateBatchVerifier(certificates, 8, pair -> {
-            residuals.add(new JointInverseReconstruction.SearchState(8, pair)); residual.increment();
+        try (final var verifier = new CertificateBatchVerifier(certificates, 9, pair -> {
+            residuals.add(new JointInverseReconstruction.SearchState(9, pair)); residual.increment();
         })) {
             DirectTwistedBraceletGenerator.generateRepresentativesConcurrently(endpoint.partition(),endpoint.orientedByPart(),
                     verifier::check, pair -> { generated.increment(); verifier.accept(pair); });
@@ -97,23 +98,22 @@ public final class CertificateChecker {
     /** Missing witnesses become regenerated obligations even without a stored marker. */
     static boolean checkEndpointPair(final CyclicTargetPair pair, final CertificateStore certificates,
                                      final CheckerStateSet residuals) {
-        if (certificates.find(pair,8).isPresent()) return false;
-        residuals.add(new JointInverseReconstruction.SearchState(8,pair));
+        if (certificates.find(pair,9).isPresent()) return false;
+        residuals.add(new JointInverseReconstruction.SearchState(9,pair));
         return true;
     }
     static void verifyAvoidance(final CertificateStore certificates, final CheckerStateSet endpoints,
                                 final Path work, final VerificationProgress progress) {
         final int workers = CheckerParallelism.workers();
         try (final var intermediate = new CheckerStateSet(work.resolve("intermediate-preimages"));
-             final var middle = new CheckerStateSet(work.resolve("middle-preimages"));
              final var roots = new CheckerStateSet(work.resolve("root-preimages"))) {
             final long endpointCount = endpoints.seal().count();
             final var endpointsDone = new AtomicLong();
-            progress.phase(() -> "regenerating tagged third-move inverse supports: endpoints="
+            progress.phase(() -> "regenerating gain-two inverse supports: endpoints="
                     + endpointsDone.get() + "/" + endpointCount);
             endpoints.forEachConcurrently(workers, state -> {
                 JointInverseReconstruction.intermediates(state.pair(),
-                        parent -> intermediate.add(new JointInverseReconstruction.SearchState(9,parent)));
+                        parent -> intermediate.add(new JointInverseReconstruction.SearchState(10,parent)));
                 endpointsDone.incrementAndGet();
             });
             final long intermediateCount = intermediate.seal().count();
@@ -122,25 +122,11 @@ public final class CertificateChecker {
             progress.phase(() -> "screening intermediates: completed=" + intermediatesDone.get() + "/"
                     + intermediateCount + " closures=" + closed.sum() + " propagated=" + propagated.sum());
             intermediate.forEachConcurrently(workers,
-                    batch -> certificates.findAll(batch.stream().map(JointInverseReconstruction.SearchState::pair).toList(), 9),
+                    batch -> certificates.findAll(batch.stream().map(JointInverseReconstruction.SearchState::pair).toList(), 10),
                     state -> { closed.increment(); intermediatesDone.incrementAndGet(); }, state -> {
                 propagated.increment();
-                JointInverseReconstruction.middle(state.pair(),
-                        parent -> middle.add(new JointInverseReconstruction.SearchState(10,parent)));
+                JointInverseReconstruction.roots(state.pair(),parent -> roots.add(new JointInverseReconstruction.SearchState(11,parent)));
                 intermediatesDone.incrementAndGet();
-            });
-            final long middleCount = middle.seal().count();
-            final var middleClosed = new LongAdder(); final var middlePropagated = new LongAdder();
-            final var middlesDone = new AtomicLong();
-            progress.phase(() -> "screening middle predecessors: completed=" + middlesDone.get() + "/"
-                    + middleCount + " closures=" + middleClosed.sum() + " propagated=" + middlePropagated.sum());
-            middle.forEachConcurrently(workers,
-                    batch -> certificates.findAll(batch.stream().map(JointInverseReconstruction.SearchState::pair).toList(), 10),
-                    state -> { middleClosed.increment(); middlesDone.incrementAndGet(); }, state -> {
-                middlePropagated.increment();
-                JointInverseReconstruction.roots(state.pair(),
-                        parent -> roots.add(new JointInverseReconstruction.SearchState(11,parent)));
-                middlesDone.incrementAndGet();
             });
             final long rootCount = roots.seal().count();
             final var checked = new AtomicLong();
@@ -148,9 +134,8 @@ public final class CertificateChecker {
             roots.forEachConcurrently(workers,
                     batch -> certificates.findAll(batch.stream().map(JointInverseReconstruction.SearchState::pair).toList(), 11),
                     state -> checked.incrementAndGet(), state -> { throw missing(state.pair(), 11); });
-            System.out.printf("final avoidance verified: endpointResiduals=%d intermediates=%d "
-                            + "intermediateClosures=%d middles=%d middleClosures=%d roots=%d%n",
-                    endpointCount,intermediateCount,closed.sum(),middleCount,middleClosed.sum(),rootCount);
+            System.out.printf("final avoidance verified: endpointResiduals=%d intermediates=%d intermediateClosures=%d roots=%d%n",
+                    endpointCount,intermediateCount,closed.sum(),rootCount);
         }
     }
     private static CertificateBatchVerifier required(final CertificateStore certificates, final int maximumMoves) {
@@ -169,7 +154,7 @@ public final class CertificateChecker {
         static Options parse(final String[] args, final Path root) throws IOException {
             Path paper=root.resolve("docs/td20-reduction-count.tex"), database=Path.of(System.getProperty("td20.certificateDb",root.resolve("certificates").toString()));
             Path work=root.resolve("checker/target/joint-verification-"+ProcessHandle.current().pid()+"-"+System.nanoTime());
-            String phase="all"; int firstPartition=1,lastPartition=83,firstEndpoint=1,lastEndpoint=104;
+            String phase="all"; int firstPartition=1,lastPartition=83,firstEndpoint=1,lastEndpoint=214;
             boolean structural=false,help=false;
             for (final var arg:args) {
                 if(arg.equals("--help")) help=true;
@@ -179,7 +164,7 @@ public final class CertificateChecker {
                 else if(arg.startsWith("--database=")) database=Path.of(arg.substring(11));
                 else if(arg.startsWith("--work=")) work=Path.of(arg.substring(7));
                 else if(arg.startsWith("--partitions=")) { final int[] r=range(arg.substring(13),83);firstPartition=r[0];lastPartition=r[1]; }
-                else if(arg.startsWith("--endpoints=")) { final int[] r=range(arg.substring(12),104);firstEndpoint=r[0];lastEndpoint=r[1]; }
+                else if(arg.startsWith("--endpoints=")) { final int[] r=range(arg.substring(12),214);firstEndpoint=r[0];lastEndpoint=r[1]; }
                 else throw new IllegalArgumentException("Unknown argument: "+arg);
             }
             if(!List.of("roots","endpoints","avoidance","all").contains(phase)) throw new IllegalArgumentException("Invalid checker phase");
@@ -205,6 +190,6 @@ public final class CertificateChecker {
         boolean avoidance(){return phase.equals("all")||phase.equals("avoidance");}
         boolean includesPartition(final int n){return firstPartition<=n&&n<=lastPartition;}
         boolean includesEndpoint(final int n){return firstEndpoint<=n&&n<=lastEndpoint;}
-        boolean completeScope(){return phase.equals("all")&&firstPartition==1&&lastPartition==83&&firstEndpoint==1&&lastEndpoint==104;}
+        boolean completeScope(){return phase.equals("all")&&firstPartition==1&&lastPartition==83&&firstEndpoint==1&&lastEndpoint==214;}
     }
 }

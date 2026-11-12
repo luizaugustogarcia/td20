@@ -15,8 +15,8 @@ import select
 import subprocess
 import sys
 
-from publish_partial_joint3_counts import load_unoriented
-from summarize_joint3_counts import load_native, load_endpoints, partitions
+from publish_partial_joint2_counts import load_unoriented
+from summarize_joint2_counts import load_native, load_endpoints, partitions
 
 
 DIRECTORY = Path(__file__).resolve().parent
@@ -60,13 +60,13 @@ def main() -> None:
     parser.add_argument("--wait-unoriented-pid", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--unoriented", type=Path,
-                        default=Path("data/joint3-reduction-audit/unoriented-native-v1.json"))
+                        default=Path("data/joint2-reduction-audit/unoriented-native-v1.json"))
     parser.add_argument("--joint-directory", "--native-directory", dest="native_directory", type=Path,
-                        default=Path("data/joint3-reduction-audit/native-v1"))
+                        default=Path("data/joint2-reduction-audit/native-v1"))
     parser.add_argument("--endpoints", type=Path,
-                        default=Path("data/joint3-reduction-audit/endpoints-v1.json"))
+                        default=Path("data/joint2-reduction-audit/endpoints-v1.json"))
     parser.add_argument("--summary", type=Path,
-                        default=Path("data/joint3-reduction-audit/summary-v1.json"))
+                        default=Path("data/joint2-reduction-audit/summary-v1.json"))
     parser.add_argument("--paper", type=Path, default=Path("docs/td20-reduction-count.tex"))
     options = parser.parse_args()
     for field in ("unoriented", "native_directory", "endpoints", "summary", "paper"):
@@ -81,7 +81,7 @@ def main() -> None:
     if not options.unoriented.exists():
         run(str(PROJECT / "tools/td20"), "count-u", f"-Dexec.args=--output={options.unoriented}")
     load_unoriented(options.unoriented)
-    run(sys.executable, "-B", str(DIRECTORY / "publish_partial_joint3_counts.py"),
+    run(sys.executable, "-B", str(DIRECTORY / "publish_partial_joint2_counts.py"),
         "--unoriented", str(options.unoriented),
         "--native-directory", str(options.native_directory),
         "--paper", str(options.paper), "--in-place")
@@ -99,10 +99,10 @@ def main() -> None:
         run(str(PROJECT / "tools/td20"), "count-e",
             f"-Dexec.args=--output={options.endpoints}")
     if not options.summary.exists():
-        run(sys.executable, "-B", str(DIRECTORY / "summarize_joint3_counts.py"),
+        run(sys.executable, "-B", str(DIRECTORY / "summarize_joint2_counts.py"),
             "--native", str(native_report), "--unoriented", str(options.unoriented),
             "--endpoints", str(options.endpoints), "--output", str(options.summary))
-    run(sys.executable, "-B", str(DIRECTORY / "publish_joint3_counts.py"),
+    run(sys.executable, "-B", str(DIRECTORY / "publish_joint2_counts.py"),
         "--summary", str(options.summary), "--paper", str(options.paper), "--in-place")
     run("mvn", "-pl", "emitter", "-am", "test")
     run("mvn", "-pl", "checker", "-am", "test")

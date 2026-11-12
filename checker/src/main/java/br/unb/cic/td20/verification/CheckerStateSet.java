@@ -31,7 +31,7 @@ import org.rocksdb.WriteOptions;
  * Sealing ends writes before the checker streams the resulting set.
  */
 final class CheckerStateSet implements AutoCloseable {
-    private static final byte VERSION = 1;
+    private static final byte VERSION = 2;
     private static final byte[] EMPTY = {};
 
     static {
@@ -197,7 +197,7 @@ final class CheckerStateSet implements AutoCloseable {
     }
 
     private static void requireKey(final byte[] key, final byte[] value) {
-        if (key.length < 4 || key[0] != VERSION || key[1] < 8 || key[1] > 11
+        if (key.length < 4 || key[0] != VERSION || key[1] < 9 || key[1] > 11
                 || key[2] < 1 || key[2] > 21 || value.length != 0) {
             throw new IllegalStateException("Malformed checker state");
         }

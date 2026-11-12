@@ -4,7 +4,6 @@ import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.model.CyclicTargetPair;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -18,13 +17,9 @@ import java.util.function.Consumer;
 
 /**
  * Independent rank-placement regeneration of oriented joint residuals.
- * Every immediate and second support is derived independently by enumerating
- * arbitrary supports in both orientations. Safe gain-two third continuations
- * use the complete consecutive-edge characterization. The gain-one,
- * gain-one, gain-three case is checked by exhaustive replay at each leaf,
- * where the intermediate totally-unoriented stop is known exactly. Partial
- * target cycles and twisted canonical comparisons reject only irrevocable
- * prefixes.
+ * Every forbidden predicate is derived by enumerating arbitrary supports in
+ * both orientations, including every possible second support. Partial target
+ * cycles and twisted canonical comparisons reject only irrevocable prefixes.
  */
 public final class IndependentJointRootGenerator {
     private static final Runnable NO_CANCELLATION = () -> { };
@@ -97,12 +92,7 @@ public final class IndependentJointRootGenerator {
     private record Triple(int a, int b, int c) {
         int depth() { return Math.max(a, Math.max(b, c)); }
     }
-    private record Continuation(Triple second, boolean terminal, List<Triple> thirds) { }
-    private record Rule(Triple first, List<Continuation> continuations) { }
-    private static final class PendingContinuation {
-        boolean terminal;
-        final List<Triple> thirds = new ArrayList<>();
-    }
+    private record Rule(Triple first, List<Triple> seconds) { }
     private record Branch(int rank, int used, int[] position, int[] image, int[] inverse,
                           int[] target, int edges) { }
     private static final class Enumeration {
@@ -155,43 +145,14 @@ public final class IndependentJointRootGenerator {
                 if (gain != 1) continue;
                 final int[] q = JointMoves.apply(algebraic, first.a, first.b, first.c);
                 if (JointMoves.odd(q) != odd + 2) continue;
-                final LinkedHashMap<Triple, PendingContinuation>[] byDepth = new LinkedHashMap[n];
-                for (int d = 0; d < n; d++) byDepth[d] = new LinkedHashMap<>();
+                final List<Triple>[] byDepth = new List[n];
+                for (int d = 0; d < n; d++) byDepth[d] = new ArrayList<>();
                 for (final var second : supports) {
                     if (q[second.a] == second.a || q[second.b] == second.b || q[second.c] == second.c) continue;
-                    final int secondGain = JointMoves.gain(q, second.a, second.b, second.c);
-                    if (secondGain < 2) continue;
-                    final int[] successor = JointMoves.apply(q, second.a, second.b, second.c);
-                    if (JointMoves.odd(successor) != JointMoves.odd(q) + 2) continue;
-                    if (secondGain >= 3) {
-                        final int depth = Math.max(first.depth(), second.depth());
-                        byDepth[depth].computeIfAbsent(second, ignored -> new PendingContinuation()).terminal = true;
-                        continue;
-                    }
-                    // If the second gain is two, a favorable third move has
-                    // gain at least two. The consecutive-edge lemma is
-                    // complete for precisely those supports. Paths with a
-                    // gain-one second are replayed at the leaf because their
-                    // legality also depends on the totally-unoriented stop.
-                    for (int x = 0; x < n; x++) {
-                        final int y = successor[x], z = successor[y];
-                        if (x == y || x == z || y == z
-                                || successor[z] == x && (x > y || x > z)) continue;
-                        final var third = new Triple(x, y, z);
-                        final int depth = Math.max(Math.max(first.depth(), second.depth()), third.depth());
-                        byDepth[depth].computeIfAbsent(second, ignored -> new PendingContinuation())
-                                .thirds.add(third);
-                    }
+                    if (JointMoves.gain(q, second.a, second.b, second.c) >= 2)
+                        byDepth[Math.max(first.depth(), second.depth())].add(second);
                 }
-                for (int d = 0; d < n; d++) {
-                    if (byDepth[d].isEmpty()) continue;
-                    final var continuations = new ArrayList<Continuation>();
-                    for (final var entry : byDepth[d].entrySet()) {
-                        continuations.add(new Continuation(entry.getKey(), entry.getValue().terminal,
-                                List.copyOf(entry.getValue().thirds)));
-                    }
-                    joint[d].add(new Rule(first, List.copyOf(continuations)));
-                }
+                for (int d = 0; d < n; d++) if (!byDepth[d].isEmpty()) joint[d].add(new Rule(first, List.copyOf(byDepth[d])));
             }
             orders = new byte[n * n * n]; transformed = new byte[n * n * n * n];
             for (int a = 0; a < n; a++) for (int b = 0; b < n; b++) for (int c = 0; c < n; c++) {
@@ -229,25 +190,9 @@ public final class IndependentJointRootGenerator {
                 final int key = triple(position[first.a], position[first.b], position[first.c]);
                 if (orders[key] == 0) continue;
                 final int offset = key*n;
-                for (final var continuation : rule.continuations) {
-                    final var second = continuation.second;
-                    final int secondA = transformed[offset + position[second.a]];
-                    final int secondB = transformed[offset + position[second.b]];
-                    final int secondC = transformed[offset + position[second.c]];
-                    final int secondKey = triple(secondA, secondB, secondC);
-                    if (orders[secondKey] == 0) continue;
-                    if (continuation.terminal) return false;
-                    final int secondOffset = secondKey * n;
-                    for (final var third : continuation.thirds) {
-                        final int thirdA = transformed[secondOffset
-                                + transformed[offset + position[third.a]]];
-                        final int thirdB = transformed[secondOffset
-                                + transformed[offset + position[third.b]]];
-                        final int thirdC = transformed[secondOffset
-                                + transformed[offset + position[third.c]]];
-                        if (orders[triple(thirdA, thirdB, thirdC)] != 0) return false;
-                    }
-                }
+                for (final var second : rule.seconds)
+                    if (orders[triple(transformed[offset+position[second.a]], transformed[offset+position[second.b]],
+                            transformed[offset+position[second.c]])] != 0) return false;
             }
             return true;
         }
@@ -265,8 +210,7 @@ public final class IndependentJointRootGenerator {
                 int bit = 0;
                 for (final int value : image) for (int shift = 4; shift >= 0; shift--, bit++)
                     encoded[bit/8] |= (byte)(((value>>>shift)&1) << (7-bit%8));
-                final var pair = CertificateCodec.pairForKey(encoded,n).canonicalRepresentative();
-                if (JointMoves.residual(pair)) consumer.accept(pair);
+                consumer.accept(CertificateCodec.pairForKey(encoded,n).canonicalRepresentative());
                 return;
             }
             final int minimum = cycleOrigin[rank] != rank ? position[cycleOrigin[rank]]+1
@@ -279,9 +223,7 @@ public final class IndependentJointRootGenerator {
                 boolean okay = true, secondAdded = false;
                 if (firstEdge) okay = addEdge(rank);
                 if (okay && secondEdge) { okay = addEdge(predecessor[rank]); secondAdded = true; }
-                if (okay && canonicalPrefix(rank) && predicates(rank)) {
-                    place(rank+1,used|(1<<value));
-                }
+                if (okay && canonicalPrefix(rank) && predicates(rank)) place(rank+1, used|(1<<value));
                 if (secondAdded) removeEdge(predecessor[rank]);
                 if (firstEdge) removeEdge(rank);
             }

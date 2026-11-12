@@ -1,6 +1,6 @@
 package br.unb.cic.td20.joint;
 
-/** Known transposition diameters, indexed by the cyclic-target domain size. */
+/** Established transposition-diameter upper bounds, indexed by cyclic-target domain size. */
 public final class KnownDiameters {
     public static final int ROOT_SYMBOLS = 21;
     public static final int MAX_BUDGET = 11;
@@ -9,7 +9,7 @@ public final class KnownDiameters {
 
     private KnownDiameters() { }
 
-    /** Returns TD(N-1), or Integer.MAX_VALUE when no diameter is assumed. */
+    /** Returns an established upper bound for TD(N-1), or Integer.MAX_VALUE when none is assumed. */
     public static int knownDiameter(final int cyclicDomain) {
         if (cyclicDomain < 0) throw new IllegalArgumentException(
                 "The cyclic domain cannot be negative");

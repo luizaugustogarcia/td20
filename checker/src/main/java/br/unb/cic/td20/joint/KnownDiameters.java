@@ -4,7 +4,7 @@ package br.unb.cic.td20.joint;
 public final class KnownDiameters {
     public static final int ROOT_SYMBOLS = 21;
     public static final int MAX_BUDGET = 11;
-    /** Indexed by cyclic-target domain N and equal to TD(N-1). */
+    /** Indexed by cyclic-target domain N; established upper bounds for TD(N-1). */
     private static final int[] BOUNDS = {0, 0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 8, 9, 9, 10, 10, 11};
     private KnownDiameters() { }
     public static int knownDiameter(final int domain) {

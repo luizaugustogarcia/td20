@@ -280,7 +280,7 @@ def main() -> None:
     parser.add_argument("--binary", type=Path,
                         default=Path("/tmp/td20-unoriented-burnside"))
     parser.add_argument("--output", type=Path,
-                        default=Path("data/joint3-reduction-audit/unoriented-native-v1.json"))
+                        default=Path("data/joint2-reduction-audit/unoriented-native-v1.json"))
     parser.add_argument("--verify-small", type=int, default=0,
                         help="first brute-force every fixed set through N (maximum 9)")
     options = parser.parse_args()

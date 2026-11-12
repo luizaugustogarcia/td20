@@ -51,7 +51,7 @@ public final class CertificateStore implements AutoCloseable {
                     new ColumnFamilyDescriptor(OBSTRUCTIONS, obstructionOptions)), handles);
             database = opened;
             final var marker = database.get(handles.get(0), "td20-schema".getBytes(StandardCharsets.UTF_8));
-            if (!Arrays.equals(marker, "joint2-selection-v1".getBytes(StandardCharsets.UTF_8)))
+            if (!Arrays.equals(marker, "joint2-selection-v2".getBytes(StandardCharsets.UTF_8)))
                 throw new IllegalStateException("Missing or unsupported certificate format marker");
         } catch (final RocksDBException | RuntimeException failure) {
             handles.forEach(ColumnFamilyHandle::close);

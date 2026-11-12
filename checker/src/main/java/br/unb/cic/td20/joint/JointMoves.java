@@ -52,15 +52,23 @@ public final class JointMoves {
         return true;
     }
     /** Checks every first and second triple; no consecutive-edge shortcut. */
+    public static boolean unorientedResidual(final CyclicTargetPair pair) {
+        final int[] p = images(pair), beta = pair.getBeta().getSymbols();
+        if (fixed(p) != 0) throw new IllegalArgumentException("Contract fixed points first");
+        return totallyUnoriented(p, beta) && !favorable(p, beta);
+    }
+
     public static boolean residual(final CyclicTargetPair pair) {
         final int[] p = images(pair), beta = pair.getBeta().getSymbols();
         if (fixed(p) != 0) throw new IllegalArgumentException("Contract fixed points first");
-        if (totallyUnoriented(p, beta)) return false;
+        return !totallyUnoriented(p, beta) && !favorable(p, beta);
+    }
+    private static boolean favorable(final int[] p, final int[] beta) {
         final int n = p.length, initialOdd = odd(p);
         for (int i = 0; i < n - 2; i++) for (int j = i + 1; j < n - 1; j++)
             for (int k = j + 1; k < n; k++) {
                 final int a = beta[i], b = beta[j], c = beta[k];
-                if (gain(p, a, b, c) >= 2) return false;
+                if (gain(p, a, b, c) >= 2) return true;
                 if (gain(p, a, b, c) != 1) continue;
                 final int[] q = apply(p, a, b, c);
                 if (odd(q) != initialOdd + 2) continue;
@@ -70,10 +78,10 @@ public final class JointMoves {
                     for (int t = s + 1; t < n; t++) {
                         final int x = nextBeta[r], y = nextBeta[s], z = nextBeta[t];
                         if (q[x] != x && q[y] != y && q[z] != z && gain(q, x, y, z) >= 2)
-                            return false;
+                            return true;
                     }
             }
-        return true;
+        return false;
     }
     public static int[] transpose(final int[] beta, final int i, final int j, final int k) {
         final int[] result = beta.clone();

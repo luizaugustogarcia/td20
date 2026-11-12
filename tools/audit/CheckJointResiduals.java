@@ -39,7 +39,7 @@ import java.util.stream.IntStream;
  * <p>The residual scope excludes totally unoriented roots, which remain
  * separate obligations. An oriented residual has no immediate gain-at-least-two
  * move and no favorable joint-two prefix: gain pattern (1,3) or (1,2).
- * Totally unoriented states receive no structural reduction at either depth. Structural availability is not a sorting certificate. Neither this
+ * The separate unoriented residual stream applies joint-two selection to roots with even-length cycles. Structural availability is not a sorting certificate. Neither this
  * audit nor an empty residual family proves TD(20).</p>
  */
 public final class CheckJointResiduals {
@@ -163,7 +163,7 @@ public final class CheckJointResiduals {
             result.validPairs++;
             final var analysis = JointReductionAnalysis.analyze(omega, beta);
             result.routes.merge(analysis.route(), 1L, Math::addExact);
-            if (analysis.route() == JointReductionAnalysis.Route.TOTALLY_UNORIENTED
+            if (JointReductionAnalysis.isTotallyUnoriented(omega, beta)
                     || analysis.hasFavorablePrefix()) return;
             result.residualRawPairs++;
             result.representatives.computeIfAbsent(pair.extendedToricClassKey(),
@@ -211,7 +211,7 @@ public final class CheckJointResiduals {
                         "Representative is outside the declared cycle partition");
                 final CyclicTargetPair pair = validatedPair(omega, beta);
                 final var analysis = JointReductionAnalysis.analyze(omega, beta);
-                if (analysis.route() == JointReductionAnalysis.Route.TOTALLY_UNORIENTED) {
+                if (JointReductionAnalysis.isTotallyUnoriented(omega, beta)) {
                     throw new IllegalArgumentException("Totally unoriented pair in oriented residual file");
                 }
                 if (analysis.hasFavorablePrefix()) throw new IllegalArgumentException(

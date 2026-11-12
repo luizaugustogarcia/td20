@@ -14,6 +14,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.junit.jupiter.api.Assertions.*;
 
 class IndependentJointRootGeneratorTest {
+    @Test void invalidEvenLengthsAreRejectedBeforeCyclePlacementReordering() {
+        for (final int invalid : new int[]{0, -2}) {
+            final int[] partition = {7, 3, 2, invalid};
+            assertThrows(IllegalArgumentException.class,
+                    () -> IndependentJointRootGenerator.countUnorientedResiduals(partition));
+            assertThrows(IllegalArgumentException.class,
+                    () -> IndependentJointRootGenerator.countUnorientedResidualsConcurrently(partition, 2, () -> {}));
+        }
+    }
     @Test void fullClassSetsAgreeWithUnprunedPermutationEnumerationThroughNine() {
         for (int n=3;n<=9;n++) {
             final Set<String> actual=new HashSet<>();
@@ -41,6 +50,33 @@ class IndependentJointRootGeneratorTest {
                 if(JointMoves.residual(pair)) expected.add(key(pair));
             } while(next(p));
             assertEquals(expected,actual,"Full class-set mismatch for N="+n);
+        }
+    }
+    @Test void unorientedResidualClassSetsAgreeWithEveryPermutationThroughNine() {
+        for (int n = 3; n <= 9; n++) {
+            final Set<String> expected = new HashSet<>(), actual = new HashSet<>();
+            final int[] p = JointMoves.identity(n);
+            do {
+                if (JointMoves.fixed(p) != 0 || !fullTarget(p)) continue;
+                final var pair = pair(p);
+                if (JointMoves.unorientedResidual(pair)) expected.add(key(pair));
+            } while (next(p));
+            for (final int[] partition : Partitions.generateValidPartitions(n)) {
+                final Set<String> serial = new HashSet<>();
+                IndependentJointRootGenerator.generateUnorientedResiduals(partition, pair -> {
+                    assertTrue(JointMoves.unorientedResidual(pair));
+                    assertTrue(serial.add(key(pair)));
+                    assertTrue(actual.add(key(pair)));
+                });
+                final Set<String> parallel = ConcurrentHashMap.newKeySet();
+                IndependentJointRootGenerator.generateUnorientedResidualsConcurrently(partition, 4, () -> {},
+                        pair -> assertTrue(parallel.add(key(pair))));
+                assertEquals(serial, parallel);
+                assertEquals(serial.size(), IndependentJointRootGenerator.countUnorientedResiduals(partition));
+                assertEquals(serial.size(), IndependentJointRootGenerator.countUnorientedResidualsConcurrently(
+                        partition, 4, () -> {}));
+            }
+            assertEquals(expected, actual, "Complete independent U residual scope at N=" + n);
         }
     }
     @Test void nineteenCycleRegeneratesAll667ResidualClasses() {

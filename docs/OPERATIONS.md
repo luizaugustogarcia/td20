@@ -1,14 +1,18 @@
 # Computational operations
 
-CPU work requires JDK 21, Maven, Bash, and Python 3. Runtime native sources
+Joint-2 includes totally unoriented roots with even-length cycles. All-odd
+totally unoriented roots and all totally unoriented successors stop for the
+reasons proved in the source paper. The active direct count is R + O; R counts
+unoriented residuals. All 83 R counts are complete, with R = 124,395,153. See
+[WORKFLOW.md](WORKFLOW.md) for Java counting and the versioned artifact formats.
+
+CPU work requires JDK 21, Maven, and Bash. Runtime native sources
 are CUDA; standalone C++ tools are independent counting audits.
 See [workflow](WORKFLOW.md) and [proof criteria](RESEARCH_PLAN.md).
 
 ~~~bash
 mvn -pl emitter -am test
 mvn -pl checker -am test
-python3 -B -m unittest discover -s tools/audit -p 'test_*.py'
-python3 -B tools/audit/check_td18_machinery.py --reference ../td18
 tools/td20 inventory
 ~~~
 
@@ -18,22 +22,24 @@ elementary closures. Structural checks accept explicit pending counts.
 ## Counting
 
 ~~~bash
-python3 -B tools/audit/continue_joint2_counts.py --resume
+tools/td20 count-r '-Dexec.args=--publish'
 tools/td20 count-u '-Dexec.args=--output=data/joint2-reduction-audit/unoriented-v1.json'
-python3 -B tools/audit/run_java_joint_counts.py --resume
+tools/td20 count-j '-Dexec.args=--output=data/joint2-reduction-audit/java-production-counts-v1.jsonl'
 tools/td20 count-e '-Dexec.args=--output=data/joint2-reduction-audit/endpoints-v1.json'
 ~~~
 
-The continuation detects CPU concurrency, locks outputs, validates complete
-inventories, publishes rows, reconciles totals, runs tests, and builds TeX.
+The Java R counter detects CPU concurrency, validates its versioned partition
+reports, resumes completed partitions, and optionally publishes the R rows.
+The independent JShell audit in [WORKFLOW.md](WORKFLOW.md) checks every R count
+without reading the emitter artifact. The U, J/C/O, and endpoint counters
+retain their separate scopes; a count is not a sorting result.
 Root counting processes each partition with the bounded adaptive prefix
 scheduler on every CPU available to the JVM, including the final partition.
 Completed long-cycle prefixes that cannot yield an oriented residual are
-discarded; totally unoriented roots remain separate obligations counted by U.
+discarded; totally unoriented residual roots are separate obligations counted by R.
 Whole partitions are atomic resume boundaries; unfinished Java partitions
 restart. Correctly versioned native shard unions may be retained. Superseded
-route formats are rejected. Selection-independent U data may be passed with
---unoriented=PATH. Do not relabel old residual or endpoint artifacts.
+route formats are rejected. Do not relabel old residual or endpoint artifacts.
 Root emission and proof verification reject pending paper counts.
 
 ## Emission and reconstruction
@@ -54,7 +60,7 @@ tools/td20 verify
 | Reverse gain-two second move | 20 | 10 |
 | Reverse gain-one first move | 21 | 11 |
 
-The database schema is joint2-selection-v1. Superseded databases and
+The database schema is joint2-selection-v2. Superseded databases and
 checkpoints are rejected. Use fresh output paths; existing generated data
 is preserved. --td18-db=PATH imports an external source read-only and replays
 each witness within budget. Imports establish neither coverage nor counts.

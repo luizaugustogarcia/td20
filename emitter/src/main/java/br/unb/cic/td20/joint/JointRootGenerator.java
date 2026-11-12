@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * Direct constrained generation of every oriented joint residual class.
+ * Direct constrained generation of oriented or totally unoriented joint residual classes.
  *
  * <p>Disjoint algebraic cycles receive consecutive ranks, whose current-cycle
  * positions are assigned recursively. Cycle origins and equal-cycle ordering
@@ -54,6 +54,33 @@ public final class JointRootGenerator {
                                          final Consumer<CyclicTargetPair> consumer) {
         new Generator(partition, Objects.requireNonNull(cancellationCheck),
                 Objects.requireNonNull(consumer)).run();
+    }
+
+    /** The U residual stream uses the same joint predicates and symmetry scheduler. */
+    public static void generateUnorientedResiduals(final int[] partition,
+                                                   final Consumer<CyclicTargetPair> consumer) {
+        new Generator(partition, NO_CANCELLATION, Objects.requireNonNull(consumer), true).run();
+    }
+
+    public static long countUnorientedResiduals(final int[] partition) {
+        return new Generator(partition, NO_CANCELLATION, null, true).run().jointResidualClasses();
+    }
+
+    public static long generateUnorientedResidualsConcurrently(final int[] partition,
+                                                               final Runnable cancellationCheck,
+                                                               final Consumer<CyclicTargetPair> consumer) {
+        return generateUnorientedResidualsConcurrently(partition, Runtime.getRuntime().availableProcessors(),
+                cancellationCheck, consumer);
+    }
+
+    static long generateUnorientedResidualsConcurrently(final int[] partition, final int workers,
+                                                        final Runnable cancellationCheck,
+                                                        final Consumer<CyclicTargetPair> consumer) {
+        return generateConcurrently(partition, workers, cancellationCheck, Objects.requireNonNull(consumer), true);
+    }
+
+    public static long countUnorientedResidualsConcurrently(final int[] partition) {
+        return generateConcurrently(partition, Runtime.getRuntime().availableProcessors(), NO_CANCELLATION, null, true);
     }
 
     /** Generates disjoint prefix subtrees on every CPU available to the JVM. The sink must be thread-safe. */
@@ -101,9 +128,21 @@ public final class JointRootGenerator {
         return depth;
     }
 
+    private static long generateConcurrently(final int[] partition, final int workers,
+                                             final Runnable cancellationCheck,
+                                             final Consumer<CyclicTargetPair> consumer, final boolean unorientedOnly) {
+        return auditConcurrently(partition, workers, cancellationCheck, consumer, unorientedOnly).counts().jointResidualClasses();
+    }
+
     private static AuditCounts auditConcurrently(final int[] partition, final int workers,
                                                  final Runnable cancellationCheck,
                                                  final Consumer<CyclicTargetPair> consumer) {
+        return auditConcurrently(partition, workers, cancellationCheck, consumer, false);
+    }
+
+    private static AuditCounts auditConcurrently(final int[] partition, final int workers,
+                                                 final Runnable cancellationCheck,
+                                                 final Consumer<CyclicTargetPair> consumer, final boolean unorientedOnly) {
         if (workers < 1) throw new IllegalArgumentException("Positive CPU worker count required");
         Objects.requireNonNull(cancellationCheck);
         final var failure = new AtomicReference<Throwable>();
@@ -111,7 +150,7 @@ public final class JointRootGenerator {
             if (failure.get() != null) throw propagate(failure.get());
             cancellationCheck.run();
         };
-        final var template = new Generator(partition, cancel, consumer);
+        final var template = new Generator(partition, cancel, consumer, unorientedOnly);
         final var pool = new ThreadPoolExecutor(workers, workers, 0L, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(1 << 16),
                 Thread.ofPlatform().daemon(true).name("joint-generation-", 0).factory(),
@@ -207,6 +246,7 @@ public final class JointRootGenerator {
 
     private static final class Generator {
         private final int n;
+        private final boolean unorientedOnly;
         private final int[] parts;
         private final int[] omega;
         private final int[] inverse;
@@ -239,6 +279,7 @@ public final class JointRootGenerator {
         private final long[] clearingByLength = new long[4];
 
         private Generator(final Generator template, final Branch branch) {
+            unorientedOnly = template.unorientedOnly;
             n = template.n; parts = template.parts; omega = template.omega; inverse = template.inverse;
             cycleStart = template.cycleStart; cycleLength = template.cycleLength; previousEqual = template.previousEqual;
             orientationDepth = template.orientationDepth;
@@ -250,9 +291,15 @@ public final class JointRootGenerator {
             images = new int[n]; inverseImages = new int[n]; anchors = new boolean[n];
         }
 
-        @SuppressWarnings("unchecked")
         private Generator(final int[] partition, final Runnable cancellationCheck,
                           final Consumer<CyclicTargetPair> consumer) {
+            this(partition, cancellationCheck, consumer, false);
+        }
+
+        @SuppressWarnings("unchecked")
+        private Generator(final int[] partition, final Runnable cancellationCheck,
+                          final Consumer<CyclicTargetPair> consumer, final boolean unorientedOnly) {
+            this.unorientedOnly = unorientedOnly;
             Objects.requireNonNull(partition);
             parts = partition.clone();
             Arrays.sort(parts);
@@ -396,7 +443,8 @@ public final class JointRootGenerator {
         private void visit(final int depth, final int used) {
             // U is counted and generated separately. Once all longer cycles are assigned,
             // an unoriented prefix cannot acquire orientation from the remaining 2-/3-cycles.
-            if (orientationDepth == 0 || depth == orientationDepth && !hasAssignedOrientation()) return;
+            if (!unorientedOnly && (orientationDepth == 0
+                    || depth == orientationDepth && !hasAssignedOrientation())) return;
             if (frontier != null && depth == frontierDepth) {
                 checkCancellation();
                 frontier.accept(new Branch(depth, used, position.clone(), target.clone(),
@@ -413,6 +461,10 @@ public final class JointRootGenerator {
             else if (previousEqual[depth] >= 0) minimum = position[previousEqual[depth]] + 1;
             for (int x = minimum; x < n; x++) {
                 if ((used & (1 << x)) != 0) continue;
+                // With its least position anchored, an unoriented cycle's remaining
+                // algebraic ranks must occupy strictly decreasing positions.
+                if (unorientedOnly && depth > cycleStart[depth] + 1
+                        && x >= position[depth - 1]) continue;
                 position[depth] = x;
                 final boolean edgeA = omega[depth] <= depth;
                 final boolean edgeB = inverse[depth] < depth;
@@ -462,6 +514,13 @@ public final class JointRootGenerator {
         }
 
         private boolean constraints(final int depth) {
+            if (unorientedOnly && depth == cycleStart[depth] + cycleLength[depth] - 1
+                    && cycleLength[depth] >= 3) {
+                int increases = 0;
+                for (int rank = cycleStart[depth]; rank <= depth; rank++)
+                    if (position[omega[rank]] > position[rank]) increases++;
+                if (increases != 1) return false;
+            }
             for (final Triple triple : fast[depth]) {
                 if (cyclicOrder[index(position[triple.a], position[triple.b],
                         position[triple.c])] != 0) return false;
@@ -526,7 +585,7 @@ public final class JointRootGenerator {
                 images[position[rank]] = position[omega[rank]];
                 anchors[position[rank]] = cycleLength[rank] == parts[0];
             }
-            if (unoriented(images)) { ignoredUnoriented++; return; }
+            if (unoriented(images) != unorientedOnly) { ignoredUnoriented++; return; }
             if (!canonical()) return;
             classes++;
             boolean qualifying = false;
@@ -537,7 +596,7 @@ public final class JointRootGenerator {
                 }
             }
             if (!qualifying) noQualifying++;
-            if (n == KnownDiameters.ROOT_SYMBOLS) {
+            if (!unorientedOnly && n == KnownDiameters.ROOT_SYMBOLS) {
                 int length = SupportClearing.closingLengthCanonicalUnchecked(images);
                 if (length != 0) {
                     cleared++;

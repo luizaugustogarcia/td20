@@ -144,8 +144,10 @@ than by this Burnside calculation, because the absence of the favorable
 prefixes is not determined by annotated type alone. The Java joint count records
 the explicit support-clearing subset separately. A complete summary therefore
 combines `U` from Burnside with `J`, `C`, and `O = J - C` for each of
-the 83 deterministic partition keys. Endpoint counts form a separate
-214-row artifact.
+the 83 deterministic partition keys. The active route also requires the
+totally unoriented residual count `R` from constrained joint generation,
+checked independently; direct root obligations total `R + O`.
+Endpoint counts form a separate 214-row artifact.
 
 Burnside support, rotation, and reflection tasks use exactly the TD(18)
 Java counter and scheduling. Bracelet generation uses the same disjoint

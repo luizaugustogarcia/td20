@@ -23,7 +23,7 @@ class CertificateCheckerTest {
             try(final var database=RocksDB.open(options,directory.toString(),List.of(
                     new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,first),
                     new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles)) {
-                database.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),"joint2-selection-v1".getBytes(StandardCharsets.UTF_8));
+                database.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),"joint2-selection-v2".getBytes(StandardCharsets.UTF_8));
                 handles.forEach(ColumnFamilyHandle::close);
             }
         }
@@ -36,7 +36,7 @@ class CertificateCheckerTest {
         }
     }
     @Test void pendingCountsRejectRootCheckingBeforeDatabaseWork() {
-        var row = new br.unb.cic.td20.joint.JointInventory.Root(1,new int[]{3,2,2},1,-1,-1,-1);
+        var row = new br.unb.cic.td20.joint.JointInventory.Root(1,new int[]{3,2,2},1,-1,-1,-1,-1);
         assertThrows(IllegalStateException.class, () -> CertificateChecker.verifyRoot(row,null,null));
     }
     @Test void partialRangesCannotBeReportedAsComplete() throws Exception {

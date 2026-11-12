@@ -52,13 +52,13 @@ def adapt(relative: str, text: str) -> str:
     elif relative.endswith('certificate/CertificateCodec.java'):
         text = text.replace('size() > 10', 'size() > 11').replace('exceeds ten moves', 'exceeds eleven moves').replace('count > 10', 'count > 11')
     elif relative.endswith('certificate/AsyncCertificateWriter.java'):
-        text = text.replace('joint-selection-v2', 'joint2-selection-v1')
+        text = text.replace('joint-selection-v3', 'joint2-selection-v2')
         text = text.replace('    private static int obligationBudget(int domain) { return domain == 16 ? 8 : domain == 18 ? 9 : 10; }',
                             '    private static int obligationBudget(int domain) {\n        return domain == 18 ? 9 : domain == 20 ? 10 : 11;\n    }')
         text = text.replace('maximumMoves > 10', 'maximumMoves > 11').replace('0..10', '0..11')
     elif relative.endswith('certificate/CertificateStore.java'):
         text = text.replace('Read-only version-2 witness/obstruction schema', 'Read-only TD(20) joint-2 witness/obstruction schema')
-        text = text.replace('joint-selection-v2', 'joint2-selection-v1')
+        text = text.replace('joint-selection-v3', 'joint2-selection-v2')
         text = text.replace('canonical.getBeta().size() == 16 ? 8 : canonical.getBeta().size() == 18 ? 9 : 10',
                             'obligationBudget(canonical.getBeta().size())')
         text = text.replace('return domain == 16 ? 8 : domain == 18 ? 9 : 10;',
@@ -96,7 +96,8 @@ def adapt(relative: str, text: str) -> str:
         text = text.replace('endpointLast = 104', 'endpointLast = 214').replace('substring(12),104', 'substring(12),214').replace('endpointLast != 104', 'endpointLast != 214')
         text = text.replace('arg.startsWith("--td16-db=")', '(arg.startsWith("--td18-db=") || arg.startsWith("--td16-db="))')
         text = text.replace('[--td16-db=PATH]', '[--td18-db=PATH]').replace('or a TD(16) import', 'or a witness import')
-        text = text.replace('        var unoriented = new LongAdder();', '        row.requireCompleteCounts();\n        var unoriented = new LongAdder();', 1)
+    elif relative.endswith('CountTD20UnorientedResiduals.java'):
+        text = text.replace('19', '21')
     elif relative.endswith('CountTD20Bracelets.java'):
         text = text.replace('last = 53', 'last = 83').replace('substring(13),53', 'substring(13),83')
         text = text.replace('endpointLast = 104', 'endpointLast = 214').replace('substring(12),104', 'substring(12),214')
@@ -105,7 +106,7 @@ def adapt(relative: str, text: str) -> str:
     elif relative.endswith('native/CMakeLists.txt'):
         text = text.replace('TD20_NATIVE_MAX_N 19', 'TD20_NATIVE_MAX_N 21').replace('TD20_NATIVE_MAX_DEPTH 10', 'TD20_NATIVE_MAX_DEPTH 11')
     if relative.endswith('avoidance/DiskStateSet.java') or relative.endswith('verification/CheckerStateSet.java'):
-        text = text.replace('byte VERSION = 1', 'byte VERSION = 2').replace('key[1] < 8', 'key[1] < 9')
+        text = text.replace('byte VERSION = 2', 'byte VERSION = 3').replace('key[1] < 8', 'key[1] < 9')
     return text
 
 

@@ -17,7 +17,7 @@ import org.rocksdb.*;
 
 /** Bounded disk deduplication of a regenerated wave of valid-pair classes. */
 public final class DiskStateSet implements AutoCloseable {
-    private static final byte VERSION = 2;
+    private static final byte VERSION = 3;
     private static final byte[] EMPTY = {};
     static { RocksDB.loadLibrary(); }
     private final int bufferKeys = positiveProperty("td20.reconstructionBufferKeys", 1048576);

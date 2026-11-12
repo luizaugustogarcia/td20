@@ -16,7 +16,9 @@ at most eight, comprising 30 underlying partitions.
 Joint-2 tests every immediate gain at least two. Otherwise inspect every
 qualifying gain-one first move followed by every gain-two or gain-three second
 move. Gain three closes; gain two produces a budget-nine endpoint. Totally
-unoriented states receive no structural reduction at either depth. Include
+unoriented roots with only odd-length cycles have no qualifying first move;
+test those with even-length cycles. Totally unoriented successors cannot supply
+the required second gain. Two moves creating only two fixed points are excluded. Include
 supports within even-length cycles and across cycles.
 
 Exit criterion: an emitter-independent coverage derivation, exhaustive
@@ -25,7 +27,9 @@ small-domain class-set agreement, and complete two-wave inverse construction.
 ## 2. Class counts
 
 Every root partition records totally unoriented classes U, oriented joint-2
-residuals J, clearing subset C, and O = J - C. Direct roots total U + O.
+residuals J, clearing subset C, and O = J - C. Let R count totally unoriented
+roots without a favorable prefix. Direct roots total R + O. Every paper
+partition supplies an explicit R count or pending row; missing data never means zero.
 Only powers 9:7, 11:6, 13:7/10/11, and 17:9/13/15 are admitted.
 Retain the selection-independent U count. Route-dependent counts require
 fresh artifacts; missing values remain explicitly pending.
@@ -39,6 +43,14 @@ Exit criterion: complete validated count artifacts, independent small-domain
 class-set equality, and source tables agreeing row for row. Root emission
 and proof verification reject pending counts. Production checking independently
 regenerates every represented class.
+
+
+All 83 Java R counts are complete: R = 124,395,153 and R + O = 2,146,972,300.
+Joint-2 removes 12,579,718,908 former direct unoriented obligations, or 99.02%
+of U. Independent arbitrary-support regeneration agrees in all 83 rows. Versioned
+partition artifacts are in data/unoriented-joint-residuals-v1/ and
+data/unoriented-joint-residuals-checker-v1/. No count discharges a witness or
+an inverse obligation.
 
 ## 3. Direct roots and endpoints
 
@@ -57,8 +69,9 @@ Restore two fixed points and reverse gain two, producing 20-symbol budget-ten
 predecessors. Restore one fixed point and reverse gain one, producing
 21-symbol budget-eleven roots. Enumerate all cyclic gap distributions and
 compatible supports. Require exact forward gain, odd-cycle increase two,
-valid pairs, fixed-point-free predecessors, and the non-totally-unoriented
-precondition imposed by structural routing.
+valid pairs and fixed-point-free predecessors. Only the gain-two intermediate
+must be non-totally-unoriented; the gain-one inverse wave admits roots of either
+orientation, including totally unoriented roots with even-length cycles.
 
 Exit criterion: complete independently regenerated reports for both waves,
 replayed discharges, and no unresolved root. Checkpoints assist execution;

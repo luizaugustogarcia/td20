@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * Independent rank-placement regeneration of oriented joint residuals.
+ * Independent rank-placement regeneration of oriented or totally unoriented joint residuals.
  * Every forbidden predicate is derived by enumerating arbitrary supports in
  * both orientations, including every possible second support. Partial target
  * cycles and twisted canonical comparisons reject only irrevocable prefixes.
@@ -27,24 +27,47 @@ public final class IndependentJointRootGenerator {
     public static void generateResiduals(final int[] partition, final Consumer<CyclicTargetPair> consumer) {
         new Enumeration(partition, NO_CANCELLATION, Objects.requireNonNull(consumer)).run();
     }
+    public static void generateUnorientedResiduals(final int[] partition, final Consumer<CyclicTargetPair> consumer) {
+        new Enumeration(partition, NO_CANCELLATION, Objects.requireNonNull(consumer), true).run();
+    }
+    public static void generateUnorientedResidualsConcurrently(final int[] partition, final int workers,
+                                                               final Runnable cancellationCheck,
+                                                               final Consumer<CyclicTargetPair> consumer) {
+        generateConcurrently(partition, workers, cancellationCheck, Objects.requireNonNull(consumer), true);
+    }
     /** Generates disjoint rank-placement prefix subtrees on every requested CPU. */
     public static void generateResidualsConcurrently(final int[] partition, final int workers,
                                                      final Runnable cancellationCheck,
                                                      final Consumer<CyclicTargetPair> consumer) {
+        generateConcurrently(partition, workers, cancellationCheck, Objects.requireNonNull(consumer), false);
+    }
+    /** Counts the same accepted leaves without decoding or retaining representatives. */
+    public static long countUnorientedResiduals(final int[] partition) {
+        final var enumeration = new Enumeration(partition, NO_CANCELLATION, null, true);
+        enumeration.run();
+        return enumeration.count;
+    }
+    public static long countUnorientedResidualsConcurrently(final int[] partition, final int workers,
+                                                            final Runnable cancellationCheck) {
+        return generateConcurrently(partition, workers, cancellationCheck, null, true);
+    }
+    private static long generateConcurrently(final int[] partition, final int workers,
+                                             final Runnable cancellationCheck,
+                                             final Consumer<CyclicTargetPair> consumer, final boolean unorientedOnly) {
         if (workers < 1) throw new IllegalArgumentException("Positive CPU worker count required");
-        Objects.requireNonNull(cancellationCheck); Objects.requireNonNull(consumer);
+        Objects.requireNonNull(cancellationCheck);
         final var failure = new AtomicReference<Throwable>();
         final Runnable cancel = () -> {
             final var error = failure.get();
             if (error != null) throw propagate(error);
             cancellationCheck.run();
         };
-        final var template = new Enumeration(partition, cancel, consumer);
+        final var template = new Enumeration(partition, cancel, consumer, unorientedOnly);
         final var pool = new ThreadPoolExecutor(workers, workers, 0L, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(Math.max(256, workers * 16)),
                 Thread.ofPlatform().daemon(true).name("independent-joint-", 0).factory(),
                 new ThreadPoolExecutor.CallerRunsPolicy());
-        final List<Future<?>> jobs = new ArrayList<>();
+        final List<Future<Long>> jobs = new ArrayList<>();
         try {
             // Depth five yields tens of thousands of disjoint N=21 subtrees, avoiding
             // the severe tail imbalance of the much larger shallow branches.
@@ -55,14 +78,17 @@ public final class IndependentJointRootGenerator {
                     enumeration.checkCancellation();
                     enumeration.place(branch.rank(), branch.used());
                     enumeration.checkCancellation();
+                    return enumeration.count;
                 } catch (final RuntimeException | Error error) {
                     failure.compareAndSet(null, error);
                     throw error;
                 }
             }));
             template.run();
-            for (final var job : jobs) job.get();
+            long count = template.count;
+            for (final var job : jobs) count = Math.addExact(count, job.get());
             cancel.run();
+            return count;
         } catch (final ExecutionException error) {
             throw propagate(failure.get() == null ? error.getCause() : failure.get());
         } catch (final InterruptedException error) {
@@ -96,6 +122,7 @@ public final class IndependentJointRootGenerator {
     private record Branch(int rank, int used, int[] position, int[] image, int[] inverse,
                           int[] target, int edges) { }
     private static final class Enumeration {
+        final boolean unorientedOnly;
         final int n;
         final int[] parts, algebraic, predecessor, cycleOrigin, cycleLength, equalOrigin;
         final int[] position, image, inverse, target;
@@ -105,11 +132,17 @@ public final class IndependentJointRootGenerator {
         final Runnable cancellationCheck;
         final Consumer<CyclicTargetPair> consumer;
         int edges;
+        long count;
         int frontierDepth;
         Consumer<Branch> frontier;
         @SuppressWarnings("unchecked")
         Enumeration(final int[] partition, final Runnable cancellationCheck,
                     final Consumer<CyclicTargetPair> consumer) {
+            this(partition, cancellationCheck, consumer, false);
+        }
+        Enumeration(final int[] partition, final Runnable cancellationCheck,
+                    final Consumer<CyclicTargetPair> consumer, final boolean unorientedOnly) {
+            this.unorientedOnly = unorientedOnly;
             this.parts = partition.clone(); Arrays.sort(parts);
             for (int i = 0; i < parts.length / 2; i++) {
                 final int value = parts[i]; parts[i] = parts[parts.length - 1 - i]; parts[parts.length - 1 - i] = value;
@@ -118,6 +151,16 @@ public final class IndependentJointRootGenerator {
             if (n < 3 || n > 21 || parts.length == 0 || parts[parts.length - 1] < 2
                     || Arrays.stream(parts).filter(x -> x % 2 == 0).count() % 2 != 0)
                 throw new IllegalArgumentException("Expected an even fixed-point-free partition of 3..21 symbols");
+            if (unorientedOnly) {
+                // Keep the largest-cycle anchor. Placing the other even-length
+                // cycles first makes cross-cycle joint rules available sooner.
+                int next = 1;
+                for (int i = 1; i < parts.length; i++) if (parts[i] % 2 == 0) {
+                    final int value = parts[i];
+                    System.arraycopy(parts, next, parts, next + 1, i - next);
+                    parts[next++] = value;
+                }
+            }
             this.cancellationCheck = cancellationCheck; this.consumer = consumer;
             algebraic = new int[n]; predecessor = new int[n]; cycleOrigin = new int[n]; cycleLength = new int[n];
             equalOrigin = new int[n]; Arrays.fill(equalOrigin, -1);
@@ -125,14 +168,17 @@ public final class IndependentJointRootGenerator {
             Arrays.fill(image, -1); Arrays.fill(inverse, -1); Arrays.fill(target, -1);
             immediate = new List[n]; joint = new List[n];
             for (int i = 0; i < n; i++) { immediate[i] = new ArrayList<>(); joint[i] = new ArrayList<>(); }
-            int origin = 0, preceding = -1, previousLength = -1;
+            int origin = 0;
+            final int[] precedingByLength = new int[n + 1];
+            Arrays.fill(precedingByLength, -1);
             for (final int length : parts) {
-                if (length == previousLength) equalOrigin[origin] = preceding;
+                equalOrigin[origin] = precedingByLength[length];
                 for (int r = 0; r < length; r++) {
                     algebraic[origin + r] = origin + (r + 1) % length;
                     cycleOrigin[origin + r] = origin; cycleLength[origin + r] = length;
                 }
-                preceding = origin; previousLength = length; origin += length;
+                precedingByLength[length] = origin;
+                origin += length;
             }
             for (int i = 0; i < n; i++) predecessor[algebraic[i]] = i;
             final var supports = new ArrayList<Triple>();
@@ -171,6 +217,7 @@ public final class IndependentJointRootGenerator {
             }
         }
         Enumeration(final Enumeration template, final Branch branch) {
+            unorientedOnly = template.unorientedOnly;
             n = template.n; parts = template.parts; algebraic = template.algebraic;
             predecessor = template.predecessor; cycleOrigin = template.cycleOrigin;
             cycleLength = template.cycleLength; equalOrigin = template.equalOrigin;
@@ -184,6 +231,16 @@ public final class IndependentJointRootGenerator {
         int triple(final int a, final int b, final int c) { return (a*n+b)*n+c; }
         boolean ordered(final Triple t) { return orders[triple(position[t.a], position[t.b], position[t.c])] != 0; }
         boolean predicates(final int depth) {
+            if (unorientedOnly && depth > cycleOrigin[depth] + 1) {
+                final int start = cycleOrigin[depth];
+                final int[] support = Arrays.copyOfRange(position, start, depth + 1);
+                Arrays.sort(support);
+                for (int rank = start; rank <= depth; rank++) {
+                    final int at = Arrays.binarySearch(support, position[rank]);
+                    final int nextAssigned = rank == depth ? start : rank + 1;
+                    if (position[nextAssigned] != support[(at + support.length - 1) % support.length]) return false;
+                }
+            }
             for (final var first : immediate[depth]) if (ordered(first)) return false;
             for (final var rule : joint[depth]) {
                 final var first = rule.first;
@@ -205,7 +262,9 @@ public final class IndependentJointRootGenerator {
                 return;
             }
             if (rank == n) {
-                if (JointMoves.totallyUnoriented(image, JointMoves.identity(n))) return;
+                if (JointMoves.totallyUnoriented(image, JointMoves.identity(n)) != unorientedOnly) return;
+                count = Math.incrementExact(count);
+                if (consumer == null) return;
                 final byte[] encoded = new byte[(5*n+7)/8];
                 int bit = 0;
                 for (final int value : image) for (int shift = 4; shift >= 0; shift--, bit++)

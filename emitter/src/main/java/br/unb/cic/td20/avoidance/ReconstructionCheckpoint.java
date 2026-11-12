@@ -8,7 +8,7 @@ import java.util.List;
 
 /** Emission checkpoint inventory; independent proof verification regenerates these sets. */
 public record ReconstructionCheckpoint(long endpoints, long intermediates) {
-    private static final String VERSION = "td20-joint2-reconstruction-checkpoint-v1";
+    private static final String VERSION = "td20-joint2-reconstruction-checkpoint-v2";
     private static final String FILE = "reconstruction-checkpoint.txt";
 
     public ReconstructionCheckpoint {

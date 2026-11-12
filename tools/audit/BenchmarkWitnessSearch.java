@@ -1,6 +1,5 @@
 import br.unb.cic.td20.certificate.AsyncCertificateWriter;
 import br.unb.cic.td20.certificate.CertificateValidator;
-import br.unb.cic.td20.bracelet.DirectTwistedBraceletGenerator;
 import br.unb.cic.td20.joint.JointRootGenerator;
 import br.unb.cic.td20.joint.SupportClearing;
 import br.unb.cic.td20.model.CyclicTargetPair;
@@ -42,7 +41,7 @@ public final class BenchmarkWitnessSearch {
                 if (pairs.size() == samples) throw new SampleComplete();
             };
             if (scope.equals("unoriented"))
-                DirectTwistedBraceletGenerator.generateRepresentatives(partition, new boolean[partition.length], collect);
+                JointRootGenerator.generateUnorientedResiduals(partition, collect);
             else JointRootGenerator.generateResiduals(partition, pair -> {
                 if (!SupportClearing.closes(pair)) collect.accept(pair);
             });

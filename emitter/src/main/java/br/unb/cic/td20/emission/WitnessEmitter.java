@@ -53,7 +53,7 @@ public final class WitnessEmitter {
                 if (options.roots()) for (var row : inventory) if (options.includesPartition(row.number())) {
                     var result = emitRoot(row, (pair, budget) -> settle(pair, budget, writer, null, true), progress);
                     writer.flush();
-                    log.info("Root partition {}: unoriented={}, jointResiduals={}, supportCleared={}, directOriented={}, unresolved={}",
+                    log.info("Root partition {}: unorientedResiduals={}, jointResiduals={}, supportCleared={}, directOriented={}, unresolved={}",
                             row.number(), result.unoriented, result.jointResiduals, result.supportCleared,
                             result.jointResiduals-result.supportCleared, result.unresolved);
                     if (result.unresolved != 0) throw new IllegalStateException("Unresolved direct root witnesses: " + result.unresolved);
@@ -130,10 +130,12 @@ public final class WitnessEmitter {
         row.requireCompleteCounts();
         var unoriented = new LongAdder(); var joint = new LongAdder(); var cleared = new LongAdder();
         var unresolved = new LongAdder();
-        progress.phase(() -> "root partition " + row.number() + ": unoriented=" + unoriented.sum()
+        progress.phase(() -> "root partition " + row.number() + ": unorientedResiduals=" + unoriented.sum()
                 + " jointResiduals=" + joint.sum() + " unresolved=" + unresolved.sum());
-        DirectTwistedBraceletGenerator.generateRepresentativesConcurrently(row.partition(), new boolean[row.partition().length],
-                () -> { }, pair -> {
+        long census = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(
+                row.partition(), new boolean[row.partition().length]);
+        if (census != row.unorientedClasses()) throw new IllegalStateException("Unoriented census disagrees with paper");
+        JointRootGenerator.generateUnorientedResidualsConcurrently(row.partition(), () -> { }, pair -> {
                     unoriented.increment();
                     if (!discharge.apply(pair.canonicalRepresentative(), 11)) unresolved.increment();
                 });
@@ -146,7 +148,7 @@ public final class WitnessEmitter {
                 tasks.submit(() -> { if (!discharge.apply(pair.canonicalRepresentative(), 11)) unresolved.increment(); });
             });
         }
-        if (unoriented.sum() != row.unorientedClasses() || joint.sum() != row.jointResidualClasses()
+        if (unoriented.sum() != row.unorientedResidualClasses() || joint.sum() != row.jointResidualClasses()
                 || cleared.sum() != row.supportClearingClasses() || joint.sum()-cleared.sum() != row.orientedClasses())
             throw new IllegalStateException("Generated root counts disagree with paper at partition " + row.number());
         return new RootResult(unoriented.sum(), joint.sum(), cleared.sum(), unresolved.sum());

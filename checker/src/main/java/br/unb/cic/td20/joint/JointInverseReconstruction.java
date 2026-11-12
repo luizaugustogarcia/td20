@@ -59,7 +59,7 @@ public final class JointInverseReconstruction {
         final var parent = CyclicTargetPair.of(omega,beta);
         final int[] images = JointMoves.images(parent);
         if (JointMoves.fixed(images) != 0) return;
-        if (JointMoves.totallyUnoriented(images,beta.getSymbols())) return;
+        if (expectedGain == 2 && JointMoves.totallyUnoriented(images,beta.getSymbols())) return;
         final var forwardMove = ordered(beta,a,b,c);
         final int[] forwardImages = JointMoves.apply(images,forwardMove.get(0),forwardMove.get(1),forwardMove.get(2));
         if (!Arrays.equals(forwardImages,JointMoves.images(successor))

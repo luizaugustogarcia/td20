@@ -9,7 +9,7 @@ import java.util.List;
 /** Sealed reconstructed-root inventory; independent proof verification regenerates it. */
 public record RootReconstructionCheckpoint(long endpoints, long intermediates,
                                            long propagatedIntermediates, long roots) {
-    private static final String VERSION = "td20-joint2-root-reconstruction-checkpoint-v1";
+    private static final String VERSION = "td20-joint2-root-reconstruction-checkpoint-v2";
     private static final String FILE = "root-reconstruction-checkpoint.txt";
 
     public RootReconstructionCheckpoint {

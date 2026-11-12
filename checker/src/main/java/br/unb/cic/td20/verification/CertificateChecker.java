@@ -50,15 +50,18 @@ public final class CertificateChecker {
     static void verifyRoot(final JointInventory.Root row, final CertificateStore certificates,
                            final VerificationProgress progress) {
         row.requireCompleteCounts();
+        final long census = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(
+                row.partition(), new boolean[row.partition().length]);
+        if (census != row.unorientedClasses()) throw new IllegalStateException("Unoriented census mismatch");
         final var unoriented = new LongAdder();
-        progress.phase(() -> "root partition " + row.number() + " totally unoriented: regenerated=" + unoriented.sum());
+        progress.phase(() -> "root partition " + row.number() + " totally unoriented residuals: regenerated=" + unoriented.sum());
         try (final var verifier = required(certificates, 11)) {
-            DirectTwistedBraceletGenerator.generateRepresentativesConcurrently(row.partition(),
-                    new boolean[row.partition().length], verifier::check, pair -> {
+            IndependentJointRootGenerator.generateUnorientedResidualsConcurrently(row.partition(),
+                    CheckerParallelism.workers(), verifier::check, pair -> {
                         unoriented.increment(); verifier.accept(pair);
                     });
         }
-        if (unoriented.sum() != row.unorientedClasses()) throw new IllegalStateException("Totally unoriented root count mismatch: partition="+row.number());
+        if (unoriented.sum() != row.unorientedResidualClasses()) throw new IllegalStateException("Totally unoriented root count mismatch: partition="+row.number());
         final var oriented = new LongAdder(); final var cleared = new LongAdder();
         progress.phase(() -> "root partition " + row.number() + " oriented joint residuals: regenerated=" + oriented.sum());
         try (final var verifier = required(certificates, 11)) {
@@ -73,7 +76,7 @@ public final class CertificateChecker {
                 || oriented.sum()-cleared.sum() != row.orientedClasses())
             throw new IllegalStateException("Oriented root count mismatch: partition=" + row.number()
                     + " generated=" + oriented.sum() + " cleared=" + cleared.sum());
-        System.out.printf("root partition %d verified: unoriented=%d jointResiduals=%d supportCleared=%d directOriented=%d%n",
+        System.out.printf("root partition %d verified: unorientedResiduals=%d jointResiduals=%d supportCleared=%d directOriented=%d%n",
                 row.number(),unoriented.sum(),oriented.sum(),cleared.sum(),oriented.sum()-cleared.sum());
     }
     static void verifyEndpoint(final JointInventory.Endpoint endpoint, final CertificateStore certificates,

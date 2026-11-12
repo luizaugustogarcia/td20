@@ -67,7 +67,7 @@ class JointReductionAnalysisTest {
             });
         }
         assertTrue(valid[0] > 100);
-        assertTrue(observed.contains(Route.TOTALLY_UNORIENTED));
+        assertTrue(observed.contains(Route.UNORIENTED_ALL_ODD));
         assertTrue(observed.contains(Route.IMMEDIATE_AT_LEAST_TWO));
         assertTrue(observed.contains(Route.NO_QUALIFYING_FIRST_MOVE));
         assertTrue(observed.contains(Route.ONE_THEN_TWO));
@@ -157,13 +157,48 @@ class JointReductionAnalysisTest {
         assertTrue(checked[0] > 100);
     }
 
+    @Test
+    void unorientedEvenPairsParticipateButAllOddUnorientedRootsStop() {
+        final int[] crossing = {2, 3, 0, 1};
+        final int[] beta = {0, 1, 2, 3};
+        assertTrue(isTotallyUnoriented(crossing, beta));
+        final Result result = analyze(crossing, beta);
+        assertEquals(Route.ONE_THEN_THREE, result.route());
+        assertEquals(1, result.firstMoveGain());
+        assertEquals(3, result.secondMoveGain());
+        replayPrefix(crossing, beta, result);
+        final int[] oddOnly = {4, 5, 0, 1, 2, 3};
+        assertEquals(Route.UNORIENTED_ALL_ODD, analyze(oddOnly, new int[]{0,1,2,3,4,5}).route());
+        assertEquals(0, analyze(oddOnly, new int[]{0,1,2,3,4,5}, false).qualifyingFirstMoves());
+    }
+
+    @Test
+    void twoGainOneMovesDoNotSupplyAFavorablePrefix() {
+        final int[] omega = {6,7,0,1,2,3,4,5};
+        final int[] beta = {0,1,2,3,4,5,6,7};
+        final Move first = new Move(0,6,7);
+        final int[] successor = applyToOmega(omega, first);
+        assertEquals(1, gain(omega, first));
+        assertEquals(oddCycleCount(omega) + 2, oddCycleCount(successor));
+        final Contracted contracted = contractFixedPoints(successor, applyToBeta(beta, first));
+        final Move second = new Move(0,5,6);
+        assertEquals(1, gain(contracted.omega(), second));
+        assertEquals(oddCycleCount(contracted.omega()) + 2,
+                oddCycleCount(applyToOmega(contracted.omega(), second)));
+        final Result result = analyze(omega, beta);
+        assertEquals(Route.RETAINED, result.route());
+        assertTrue(result.qualifyingFirstMoves() > 0);
+        assertFalse(result.hasFavorablePrefix());
+    }
+
     private record Expected(Route route, int qualifying, int stopped,
                             int favorableFirsts, int favorablePairs) { }
 
     /** No consecutive-triple criterion and no contraction is used here. */
     private static Expected exhaustive(final int[] omega, final int[] beta, final boolean stop) {
-        if (stop && allUnoriented(omega, beta)) {
-            return new Expected(Route.TOTALLY_UNORIENTED, 0, 0, 0, 0);
+        if (stop && allUnoriented(omega, beta)
+                && cycles(omega).stream().allMatch(cycle -> cycle.length % 2 == 1)) {
+            return new Expected(Route.UNORIENTED_ALL_ODD, 0, 0, 0, 0);
         }
         final var firsts = applicableMoves(beta, omega, false);
         for (final Move first : firsts) {

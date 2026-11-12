@@ -1,5 +1,20 @@
 # Computational workflow
 
+Totally unoriented roots now participate in joint-2 selection when they contain
+even-length cycles. All-odd totally unoriented roots have no qualifying first
+move; totally unoriented successors cannot supply the second gain. Two-step
+prefixes must have gains (1,2) or (1,3). Let U be the full unoriented census and
+R its residual count. The active direct obligation count is R + O, with O = J - C.
+All 83 R counts are complete: R = 124,395,153 and R + O = 2,146,972,300.
+Independent full-inventory count verification agrees in every row. Emission and proof
+checking reject missing or pending counts.
+
+Count R with the Java command CountTD20UnorientedResiduals. Its per-partition
+reports are versioned, deterministic resume boundaries. Use --publish to update
+the explicit paper rows after counting; --n supports small-domain checks, which
+cannot be published to the production inventory. Run the command through Maven
+or JShell using the emitter classpath. Generated artifacts remain untracked.
+
 [The source specification](td20-reduction-count.tex) defines joint-2 coverage.
 TD(18) = 10 is an independently checked premise. TD(20) = 11 is pending
 [all proof exit criteria](RESEARCH_PLAN.md).
@@ -9,7 +24,6 @@ TD(18) = 10 is an independently checked premise. TD(20) = 11 is pending
 ~~~bash
 mvn -pl emitter -am test
 mvn -pl checker -am test
-python3 -B -m unittest discover -s tools/audit -p 'test_*.py'
 tools/td20 inventory
 ~~~
 
@@ -19,16 +33,26 @@ They accept explicit pending counts and do not check sorting certificates.
 ## 2. Generate fresh counts
 
 ~~~bash
-python3 -B tools/audit/continue_joint2_counts.py --resume
+tools/td20 count-r '-Dexec.args=--publish'
 ~~~
 
-The continuation detects CPU concurrency, runs Java counts, validates complete
-partition results, publishes rows, reconciles endpoint totals, and runs tests
-and TeX. It performs no sorting. Outputs use data/joint2-reduction-audit/;
-superseded route formats are rejected. The completed selection-independent
-U artifact may be passed explicitly with --unoriented=PATH. J/C/O and endpoint
-counts require fresh joint-2 data. Direct obligations total U + O, with O = J - C.
-Counting proves set size, never its sorting bound.
+Independently regenerate every R count using the checker and JShell:
+
+~~~bash
+mvn -pl checker -am compile
+jshell --class-path checker/target/classes tools/audit/CheckUnorientedResidualCounts.jsh
+~~~
+
+The audit checks every paper row and writes versioned partition reports in
+data/unoriented-joint-residuals-checker-v1/. It reads no emitter artifact.
+Count checking does not discharge sorting witnesses or inverse obligations.
+
+The Java command detects CPU concurrency, counts the unoriented residual stream
+using the constrained prefix generator, and writes atomic per-partition reports
+in data/unoriented-joint-residuals-v1/. Existing reports are strictly validated
+before reuse. Missing source counts remain pending until published. U and J/C/O
+retain their previous scopes; the new direct count is R + O. Counting proves
+set size, never its sorting bound.
 
 ## 3. Emit direct roots and endpoints
 

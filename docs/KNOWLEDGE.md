@@ -1,5 +1,11 @@
 # Mathematical knowledge and references
 
+Joint-2 includes totally unoriented roots with even-length cycles. All-odd
+totally unoriented roots and all totally unoriented successors stop for the
+reasons proved in the source paper. The active direct count is R + O; R counts
+unoriented residuals. All 83 R counts are complete, with R = 124,395,153. See
+[WORKFLOW.md](WORKFLOW.md) for Java counting and the versioned artifact formats.
+
 [The TD(20) source specification](td20-reduction-count.tex) defines the local
 joint-2 argument. The sibling `../td` repository supplies only the shared
 twisted-bracelet framework and established conventions. The premise
@@ -55,8 +61,9 @@ realizability must be checked before a candidate becomes a pair.
 
 ## Exact joint-2 selection
 
-Roots have 21 nonfixed symbols and budget eleven. Totally unoriented states
-receive no structural reduction at either depth. Immediate gain at least two
+Roots have 21 nonfixed symbols and budget eleven. Totally unoriented roots
+with even-length cycles participate; all-odd totally unoriented roots have no
+qualifying first move. Totally unoriented successors cannot supply the second gain. Immediate gain at least two
 closes by 1 + TD(18) = 11. Otherwise inspect every qualifying gain-one first
 move and every second move creating at least two fixed points. Gain three
 closes by 2 + TD(16) = 11; gain two reaches an 18-symbol budget-nine endpoint.
@@ -88,9 +95,10 @@ inventory consists of the 83 nonincreasing partitions of 21 into parts at
 least two having an even number of even parts. For each partition the source
 table records totally unoriented classes `U`, oriented joint-2 residuals `J`,
 the support-cleared subset `C`, and `O = J - C`. Direct obligations total
-`U + O`. All 83 rows have been reconciled: `U = 12,704,114,061`,
+`R + O`. All 83 rows have been reconciled: `U = 12,704,114,061`,
 `J = 2,051,578,111`, `C = 29,000,964`, and `O = 2,022,577,147`.
-The direct-root obligation count is `U + O = 14,726,691,208`.
+The direct-root obligation count is `R + O = 2,146,972,300`, with
+`R = 124,395,153` totally unoriented residuals.
 
 ## Two inverse waves
 
@@ -98,8 +106,8 @@ Restore gain two in every gap distribution, testing supports with both restored
 symbols and one survivor. This gives 20-symbol budget-ten predecessors.
 Restore gain one in every gap, testing supports with it and two survivors.
 This gives 21-symbol budget-eleven roots. Require valid fixed-point-free,
-non-totally-unoriented predecessors, exact forward gain, and odd-cycle increase
-two. Disk deduplication preserves every compatible class; all paths use (1,2).
+exact forward gain and odd-cycle increase two. Only gain-two intermediates
+must be non-totally-unoriented; the gain-one wave admits roots of either orientation. Disk deduplication preserves every compatible class; all paths use (1,2).
 
 Checked results close represented paths; unresolved classes propagate. The
 checker regenerates all 83 root rows, 214 endpoint annotations, and both waves.

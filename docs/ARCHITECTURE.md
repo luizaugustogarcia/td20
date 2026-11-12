@@ -1,5 +1,11 @@
 # Architecture
 
+Joint-2 includes totally unoriented roots with even-length cycles. All-odd
+totally unoriented roots and all totally unoriented successors stop for the
+reasons proved in the source paper. The active direct count is R + O; R counts
+unoriented residuals. All 83 R counts are complete, with R = 124,395,153. See
+[WORKFLOW.md](WORKFLOW.md) for Java counting and the versioned artifact formats.
+
 [The source specification](td20-reduction-count.tex) defines coverage.
 Emitter and checker are separate Maven modules; the checker has no emitter
 artifact dependency. Their interface is the versioned certificate format,
@@ -18,7 +24,8 @@ valid-pair classes.
 
 Joint-2 uses the TD(18) two-move rule on 21-symbol roots: immediate gain at
 least two, otherwise qualifying gain one followed by gain two or three.
-Totally unoriented states stop structural routing at either depth. Emitter
+Totally unoriented all-odd roots stop; roots with even-length cycles participate.
+Totally unoriented successors cannot supply the required second gain. Emitter
 prefix predicates reject forbidden supports as soon as positions are known.
 The checker derives predicates independently using arbitrary supports in both
 orientations. Exhaustive small-domain replay compares complete class sets.
@@ -50,7 +57,7 @@ Missing obstruction markers cannot omit work. Checkpoints, checksums, and
 sidecars are not proof inputs. Complete records must reach identity. Diameter
 closures replay a prefix and check the actual contracted remainder's bound.
 
-The database schema is joint2-selection-v1 under td20-schema. Raw canonical
+The database schema is joint2-selection-v2 under td20-schema. Raw canonical
 keys encode omega in five bits per symbol with standard beta implicit. Values
 distinguish complete results and diameter closures and store at most eleven
 transpositions. Unknown kinds, lengths, padding, incorrect replay, and missing

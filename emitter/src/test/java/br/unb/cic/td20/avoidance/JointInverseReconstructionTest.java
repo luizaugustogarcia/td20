@@ -28,7 +28,7 @@ class JointInverseReconstructionTest {
             final Map<Child, CyclicTargetPair> children = new HashMap<>();
             permutations(IntStream.range(0, n).toArray(), 0, omega -> {
                 for (int x = 0; x < omega.length; x++) if (omega[x] == x) return;
-                if (!fullTarget(omega) || totallyUnoriented(omega)) return;
+                if (!fullTarget(omega)) return;
                 final int oddBefore = oddCycles(omega);
                 final ExtendedToricClassKey parentKey = pair(omega,
                         IntStream.range(0, omega.length).toArray()).extendedToricClassKey();
@@ -43,6 +43,7 @@ class JointInverseReconstructionTest {
                             int gain = 0;
                             for (int x = 0; x < successor.length; x++) if (successor[x] == x) gain++;
                             if (gain < 1 || gain > 2 || oddCycles(successor) != oddBefore + 2) continue;
+                            if (gain == 2 && totallyUnoriented(omega)) continue;
                             if (gain == 1 && sameEvenCycle(omega, a, b, c)) evenCycleFirstMoves[0]++;
                             // Exchange the adjacent half-open intervals [a,b) and [b,c).
                             final int[] beta = new int[omega.length];

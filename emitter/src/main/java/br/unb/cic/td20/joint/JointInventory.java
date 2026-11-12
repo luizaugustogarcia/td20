@@ -21,24 +21,26 @@ public final class JointInventory {
 
     public record Root(int number, int[] partition, long unorientedClasses,
                        long jointResidualClasses, long supportClearingClasses,
-                       long orientedClasses) {
+                       long orientedClasses, long unorientedResidualClasses) {
         public Root {
             partition = partition.clone();
+            if (unorientedResidualClasses < -1 || unorientedResidualClasses > unorientedClasses)
+                throw new IllegalArgumentException("Invalid unoriented residual count");
             boolean pending = jointResidualClasses == -1 && supportClearingClasses == -1 && orientedClasses == -1;
             if (number < 1 || unorientedClasses < 0 || !pending && (jointResidualClasses < 0
                     || supportClearingClasses < 0 || orientedClasses < 0
                     || supportClearingClasses > jointResidualClasses
                     || orientedClasses != jointResidualClasses - supportClearingClasses))
                 throw new IllegalArgumentException("Invalid joint root inventory counts");
-            if (!pending) Math.addExact(unorientedClasses, orientedClasses);
+            if (!pending) Math.addExact(unorientedResidualClasses, orientedClasses);
         }
 
-        public boolean countsComplete() { return jointResidualClasses >= 0; }
+        public boolean countsComplete() { return jointResidualClasses >= 0 && unorientedResidualClasses >= 0; }
         public void requireCompleteCounts() {
             if (!countsComplete()) throw new IllegalStateException("Pending joint-2 counts: partition=" + number);
         }
         @Override public int[] partition() { return partition.clone(); }
-        public long directClasses() { requireCompleteCounts(); return Math.addExact(unorientedClasses, orientedClasses); }
+        public long directClasses() { requireCompleteCounts(); return Math.addExact(unorientedResidualClasses, orientedClasses); }
     }
 
     public record Endpoint(int number, int[] partition, boolean[] orientedByPart) {
@@ -73,6 +75,7 @@ public final class JointInventory {
         return line;
     }
     public static List<Root> read(final Path paper) throws IOException {
+        final var residuals = UnorientedResidualInventory.read(paper, 83);
         final List<Root> rows = new ArrayList<>();
         final List<int[]> expected = Partitions.generateValidPartitions(KnownDiameters.ROOT_SYMBOLS);
         int lineNumber = 0;
@@ -93,7 +96,7 @@ public final class JointInventory {
             }
             rows.add(new Root(number, partition, Long.parseLong(matcher.group(3)),
                     Long.parseLong(matcher.group(4)), Long.parseLong(matcher.group(5)),
-                    Long.parseLong(matcher.group(6))));
+                    Long.parseLong(matcher.group(6)), residuals.get(number)));
         }
         if (rows.size() != expected.size()) throw new IllegalArgumentException(
                 "Incomplete joint inventory: expected " + expected.size() + " rows, found " + rows.size());

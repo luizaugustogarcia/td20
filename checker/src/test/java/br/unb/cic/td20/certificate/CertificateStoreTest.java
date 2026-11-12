@@ -16,7 +16,7 @@ class CertificateStoreTest {
     static { RocksDB.loadLibrary(); }
     private static final CyclicTargetPair PAIR = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(0,1,2));
     private static void database(final Path path, final byte[] value, final boolean marker) throws Exception {
-        database(path,value,marker ? "joint2-selection-v1" : null);
+        database(path,value,marker ? "joint2-selection-v2" : null);
     }
     private static void database(final Path path, final byte[] value, final String marker) throws Exception {
         try (final var options = new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true);

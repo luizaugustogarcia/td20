@@ -27,7 +27,7 @@ class JointRootGeneratorTest {
                 for (int x = 0; x < omega.length; x++) if (omega[x] == x) return;
                 if (!fullTarget(omega) || !leastNumericDihedralImage(omega)) return;
                 final var analysis = JointReductionAnalysis.analyze(omega, beta);
-                if (analysis.route() == JointReductionAnalysis.Route.TOTALLY_UNORIENTED
+                if (JointReductionAnalysis.isTotallyUnoriented(omega, beta)
                         || analysis.hasFavorablePrefix()) return;
                 assertTrue(expected.add(decode(omega).extendedToricClassKey()));
             });
@@ -36,11 +36,42 @@ class JointRootGeneratorTest {
                 JointRootGenerator.generateResiduals(partition, pair -> {
                     final var outcome = JointReductionAnalysis.analyze(pair);
                     assertFalse(outcome.hasFavorablePrefix());
-                    assertNotEquals(JointReductionAnalysis.Route.TOTALLY_UNORIENTED, outcome.route());
+                    assertNotEquals(JointReductionAnalysis.Route.UNORIENTED_ALL_ODD, outcome.route());
                     assertTrue(actual.add(pair.extendedToricClassKey()), "Duplicate generated class");
                 });
             }
             assertEquals(expected, actual, "Complete class sets at N=" + n);
+        }
+    }
+
+    @Test
+    void unorientedResidualClassSetsAgreeWithUnprunedPermutationsThroughNine() {
+        for (int n = 3; n <= 9; n++) {
+            final int[] beta = IntStream.range(0, n).toArray();
+            final Set<ExtendedToricClassKey> expected = new HashSet<>();
+            permutations(beta.clone(), 0, omega -> {
+                for (int x = 0; x < omega.length; x++) if (omega[x] == x) return;
+                if (!fullTarget(omega) || !leastNumericDihedralImage(omega)
+                        || !JointReductionAnalysis.isTotallyUnoriented(omega, beta)) return;
+                if (!JointReductionAnalysis.analyze(omega, beta).hasFavorablePrefix())
+                    assertTrue(expected.add(decode(omega).extendedToricClassKey()));
+            });
+            final Set<ExtendedToricClassKey> actual = new HashSet<>();
+            for (final int[] partition : Partitions.generateValidPartitions(n)) {
+                final Set<ExtendedToricClassKey> serial = new HashSet<>();
+                JointRootGenerator.generateUnorientedResiduals(partition, pair -> {
+                    assertFalse(JointReductionAnalysis.analyze(pair).hasFavorablePrefix());
+                    assertTrue(serial.add(pair.extendedToricClassKey()));
+                    assertTrue(actual.add(pair.extendedToricClassKey()));
+                });
+                assertEquals(serial.size(), JointRootGenerator.countUnorientedResiduals(partition));
+                final Set<ExtendedToricClassKey> parallel = java.util.concurrent.ConcurrentHashMap.newKeySet();
+                long counted = JointRootGenerator.generateUnorientedResidualsConcurrently(partition, 4, () -> {},
+                        pair -> assertTrue(parallel.add(pair.extendedToricClassKey())));
+                assertEquals(serial, parallel);
+                assertEquals(serial.size(), counted);
+            }
+            assertEquals(expected, actual, "Complete unoriented residual scope at N=" + n);
         }
     }
 
@@ -52,7 +83,7 @@ class JointRootGeneratorTest {
             assertTrue(keys.add(pair.extendedToricClassKey()), "Duplicate 19-cycle class");
             final var outcome = JointReductionAnalysis.analyze(pair);
             assertFalse(outcome.hasFavorablePrefix());
-            assertNotEquals(JointReductionAnalysis.Route.TOTALLY_UNORIENTED, outcome.route());
+            assertNotEquals(JointReductionAnalysis.Route.UNORIENTED_ALL_ODD, outcome.route());
             if (outcome.route() == JointReductionAnalysis.Route.NO_QUALIFYING_FIRST_MOVE) noFirst[0]++;
             assertFalse(SupportClearing.closes(pair));
         });

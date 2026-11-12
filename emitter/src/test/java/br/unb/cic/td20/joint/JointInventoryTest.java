@@ -20,7 +20,7 @@ class JointInventoryTest {
         assertEquals(83, rows.size());
         assertEquals(12_704_114_061L, rows.stream().mapToLong(JointInventory.Root::unorientedClasses).sum());
         for (final var row : rows) {
-            if (row.countsComplete()) assertEquals(row.unorientedClasses() + row.orientedClasses(), row.directClasses());
+            if (row.countsComplete()) assertEquals(row.unorientedResidualClasses() + row.orientedClasses(), row.directClasses());
             else assertThrows(IllegalStateException.class, row::directClasses);
         }
         assertArrayEquals(new int[]{21}, rows.getFirst().partition());
@@ -98,6 +98,19 @@ class JointInventoryTest {
         assertEquals(11, KnownDiameters.knownDiameter(20));
         assertEquals(Integer.MAX_VALUE, KnownDiameters.knownDiameter(21));
         assertEquals(4, KnownDiameters.threeNorm(new int[]{5, 4, 1, 1}));
+    }
+
+    @Test
+    void missingDuplicateOrOverCensusUnorientedResidualCountsReject() throws Exception {
+        String original = Files.readString(paper());
+        String macro = Character.toString(92) + "unorientedresidualrow{1}{0}";
+        for (String changed : new String[]{original.replace(macro, ""),
+                original.replace(macro, macro + System.lineSeparator() + macro),
+                original.replace(macro, Character.toString(92) + "unorientedresidualrow{1}{1}")}) {
+            Path corrupt = directory.resolve("missing-residual.tex");
+            Files.writeString(corrupt, changed);
+            assertThrows(IllegalArgumentException.class, () -> JointInventory.read(corrupt));
+        }
     }
 
     private static Path paper() {

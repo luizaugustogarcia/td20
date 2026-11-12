@@ -25,7 +25,7 @@ import org.rocksdb.*;
 public final class AsyncCertificateWriter implements AutoCloseable {
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
     private static final byte[] SCHEMA_KEY = "td20-schema".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] SCHEMA_VALUE = "joint2-selection-v1".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SCHEMA_VALUE = "joint2-selection-v2".getBytes(StandardCharsets.UTF_8);
     private static final byte[] EMPTY = {};
     static { RocksDB.loadLibrary(); }
     private final DBOptions options;

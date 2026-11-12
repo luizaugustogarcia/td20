@@ -60,7 +60,7 @@ public final class JointInverseReconstruction {
         int[] omega = JointReductionAnalysis.applyToOmega(successorOmega, inverse);
         for (int x = 0; x < omega.length; x++) if (omega[x] == x) return;
         int[] beta = JointReductionAnalysis.applyToBeta(successorBeta, inverse);
-        if (JointReductionAnalysis.isTotallyUnoriented(omega, beta)) return;
+        if (gain == 2 && JointReductionAnalysis.isTotallyUnoriented(omega, beta)) return;
         Move forward = ordered(beta, a, b, c);
         int[] replay = JointReductionAnalysis.applyToOmega(omega, forward);
         if (!Arrays.equals(replay, successorOmega)

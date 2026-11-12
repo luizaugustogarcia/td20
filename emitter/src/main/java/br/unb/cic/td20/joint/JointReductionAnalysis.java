@@ -16,19 +16,20 @@ import java.util.Objects;
  * Otherwise every qualifying gain-one move is considered, followed by every
  * move creating at least two fixed points after contraction. A qualifying
  * move increases the number of odd-length algebraic cycles by two. Totally
- * unoriented pairs receive no structural reduction at either depth.</p>
+ * unoriented roots with only odd-length cycles have no qualifying first move.
+ * Totally unoriented successors cannot supply a second gain of at least two.</p>
  *
  * <p>A move creating two fixed points uses consecutive algebraic symbols
  * x, omega(x), omega squared(x). Their order in beta finds every such move,
  * including supports on even-length cycles, in at most N order tests.
  * The optional boolean overloads expose the order predicates for diagnostic
- * comparison; structural selection uses the default unoriented stop.</p>
+ * comparison; structural selection stops all-odd totally unoriented roots and all totally unoriented successors.</p>
  */
 public final class JointReductionAnalysis {
     private JointReductionAnalysis() { }
 
     public enum Route {
-        TOTALLY_UNORIENTED,
+        UNORIENTED_ALL_ODD,
         IMMEDIATE_AT_LEAST_TWO,
         ONE_THEN_THREE,
         ONE_THEN_TWO,
@@ -104,8 +105,9 @@ public final class JointReductionAnalysis {
             throw new IllegalArgumentException(
                     "omega * beta must be a full cycle before analysis");
         }
-        if (stopTotallyUnoriented && isTotallyUnorientedUnchecked(omega, beta)) {
-            return empty(Route.TOTALLY_UNORIENTED);
+        if (stopTotallyUnoriented && isTotallyUnorientedUnchecked(omega, beta)
+                && !hasEvenLengthCycle(omega)) {
+            return empty(Route.UNORIENTED_ALL_ODD);
         }
         final List<Move> immediate = fastMovesUnchecked(omega, beta);
         if (!immediate.isEmpty()) {
@@ -191,6 +193,17 @@ public final class JointReductionAnalysis {
             if (inCyclicOrder(positions, a, b, c)) result.add(new Move(a, b, c));
         }
         return List.copyOf(result);
+    }
+
+    private static boolean hasEvenLengthCycle(final int[] omega) {
+        final boolean[] seen = new boolean[omega.length];
+        for (int start = 0; start < omega.length; start++) {
+            if (seen[start]) continue;
+            int length = 0, x = start;
+            do { seen[x] = true; length++; x = omega[x]; } while (x != start);
+            if (length % 2 == 0) return true;
+        }
+        return false;
     }
 
     public static boolean isTotallyUnoriented(final int[] omega, final int[] beta) {

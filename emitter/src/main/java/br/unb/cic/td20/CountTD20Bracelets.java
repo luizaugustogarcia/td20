@@ -45,26 +45,29 @@ public final class CountTD20Bracelets {
             if (phase.equals("roots") || phase.equals("all")) {
                 var tasks = new ArrayList<Future<RootCount>>();
                 for (var row : inventory) if (row.number() >= first && row.number() <= last) tasks.add(pool.submit(() -> {
+                    row.requireCompleteCounts();
+                    long r = JointRootGenerator.countUnorientedResiduals(row.partition());
                     long u = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(row.partition(),new boolean[row.partition().length]);
                     var counts = JointRootGenerator.count(row.partition());
-                    if (u != row.unorientedClasses() || counts.jointResidualClasses() != row.jointResidualClasses()
+                    if (u != row.unorientedClasses() || r != row.unorientedResidualClasses() || counts.jointResidualClasses() != row.jointResidualClasses()
                             || counts.supportClearingClasses() != row.supportClearingClasses() || counts.orientedClasses() != row.orientedClasses())
                         throw new IllegalStateException("Count disagrees with paper at partition " + row.number() + ": U=" + u + " " + counts);
                     completed.incrementAndGet();
-                    return new RootCount(row,u,counts);
+                    return new RootCount(row,u,r,counts);
                 }));
-                long unoriented = 0, joint = 0, cleared = 0, oriented = 0, noFirst = 0;
+                long unoriented = 0, residual = 0, joint = 0, cleared = 0, oriented = 0, noFirst = 0;
                 for (var task : tasks) {
                     var count = task.get(); var c = count.counts;
                     System.out.printf("partition=%d lengths=%s unoriented=%d jointResiduals=%d supportCleared=%d directOriented=%d noQualifyingFirst=%d prefixNodes=%d%n",
                             count.row.number(),Arrays.toString(count.row.partition()),count.unoriented,c.jointResidualClasses(),
                             c.supportClearingClasses(),c.orientedClasses(),c.noQualifyingFirstMoveClasses(),c.prefixNodes());
+                    residual = Math.addExact(residual,count.residual);
                     unoriented = Math.addExact(unoriented,count.unoriented); joint = Math.addExact(joint,c.jointResidualClasses());
                     cleared = Math.addExact(cleared,c.supportClearingClasses()); oriented = Math.addExact(oriented,c.orientedClasses());
                     noFirst = Math.addExact(noFirst,c.noQualifyingFirstMoveClasses());
                 }
-                System.out.printf("Root counts checked: partitions=%d-%d unoriented=%d jointResiduals=%d supportCleared=%d directOriented=%d directTotal=%d noQualifyingFirst=%d%n",
-                        first,last,unoriented,joint,cleared,oriented,Math.addExact(unoriented,oriented),noFirst);
+                System.out.printf("Root counts checked: partitions=%d-%d unoriented=%d jointResiduals=%d supportCleared=%d directOriented=%d unorientedResiduals=%d directTotal=%d noQualifyingFirst=%d%n",
+                        first,last,unoriented,joint,cleared,oriented,residual,Math.addExact(residual,oriented),noFirst);
             }
             if (phase.equals("endpoints") || phase.equals("all")) {
                 var tasks = new ArrayList<Future<EndpointCount>>();
@@ -86,7 +89,7 @@ public final class CountTD20Bracelets {
         } finally { reporter.shutdownNow(); DirectTwistedBraceletGenerator.shutdownExecutor(); }
         System.out.printf("Counting complete in %.3f seconds; sorting witnesses were not checked.%n", (System.nanoTime()-started)/1e9);
     }
-    private record RootCount(JointInventory.Root row, long unoriented, JointRootGenerator.Counts counts) { }
+    private record RootCount(JointInventory.Root row, long unoriented, long residual, JointRootGenerator.Counts counts) { }
     private record EndpointCount(JointInventory.Endpoint endpoint, long count) { }
     private static int[] range(String value, int maximum) {
         String[] parts = value.split("-", -1);

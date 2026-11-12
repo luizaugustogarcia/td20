@@ -24,7 +24,7 @@ cmake -S emitter/src/native -B emitter/target/native \
 # Keep the remaining VRAM available for CUDA contexts and allocator overhead.
 # 64 additional GPU queue entries give 96 pending searches in total.
 # 192 producers cover 32 active + 96 pending searches and 64 CPU workers.
-# Reconstructed classes get at most 10 ms in the CPU prefix before the full
+# Every root, endpoint, and reconstructed class gets at most 10 ms before the full
 # original obligation falls through to CUDA.
 # Reuse certificates on subsequent runs; no existing data is deleted.
 nohup ./tools/td20 emit -B -Dstyle.color=never \
@@ -35,7 +35,7 @@ nohup ./tools/td20 emit -B -Dstyle.color=never \
     -Dtd20.twistedBraceletWorkers=192 \
     -Dtd20.cpuPrefixDepth="${TD20_CPU_PREFIX_DEPTH:-4}" \
     -Dtd20.cpuPrefixMaxTriples=8192 \
-    -Dtd20.reconstructionCpuPrefixMillis="${TD20_RECONSTRUCTION_CPU_PREFIX_MILLIS:-10}" \
+    -Dtd20.cpuPrefixMillis="${TD20_CPU_PREFIX_MILLIS:-10}" \
     -Dtd20.certificateQueueCapacity=1048576 \
     -Dtd20.certificateLookupBatchSize=262144 \
     -Dtd20.reconstructionBufferKeys=1048576 \

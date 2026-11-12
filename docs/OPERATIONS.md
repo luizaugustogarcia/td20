@@ -66,7 +66,11 @@ CPU workers are detected automatically. Properties td20.twistedBraceletWorkers,
 td20.reconstructionBufferKeys, td20.certificateLookupBatchSize, and
 td20.certificateQueueCapacity control concurrency and bounded memory.
 CUDA uses td20.gpuDevices, td20.gpuSlots, and td20.gpuBudgetMB.
-CPU-prefix timeout or miss sends the unchanged full-budget obligation to GPU.
+Every CPU prefix has a general 10 ms wall-clock limit, configured with
+td20.cpuPrefixMillis. This applies to roots, endpoints, and reconstruction.
+The depth and support limits td20.cpuPrefixDepth and td20.cpuPrefixMaxTriples
+can end a search earlier. A timeout or miss sends the unchanged full-budget
+obligation to GPU.
 CUDA tests run only when configured explicitly.
 
 Storage estimates require actual compression measurements and inverse-wave

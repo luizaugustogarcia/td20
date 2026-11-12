@@ -53,7 +53,11 @@ public final class WitnessSearch {
 
     /** Searches the full budget, accepting identity or a replayed known-diameter closure at any depth. */
     public static SearchResult search(final CyclicTargetPair input, final int maximumMoves) {
-        return search(input, maximumMoves, Long.MAX_VALUE, WitnessSearch::dispatchGpu);
+        return search(input, maximumMoves, WitnessSearch::dispatchGpu);
+    }
+
+    static SearchResult search(CyclicTargetPair input, int maximumMoves, GpuSearch dispatcher) {
+        return search(input, maximumMoves, Long.MAX_VALUE, dispatcher);
     }
 
     /** Reuses stored certificates, then sends an unresolved reconstructed class directly to CUDA. */

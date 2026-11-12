@@ -18,12 +18,20 @@ import java.util.concurrent.CancellationException;
 public final class CpuPrefixSearch {
     private static final int DEFAULT_DEPTH = 3;
     private static final int DEFAULT_TRIPLE_LIMIT = 8192;
+    private static final long DEFAULT_TIMEOUT_MILLIS = 10;
     private static final ThreadLocal<Workspace> WORKSPACE = ThreadLocal.withInitial(Workspace::new);
 
     private CpuPrefixSearch() { }
 
     public static Optional<SortingCertificate> search(CyclicTargetPair pair, int maximumMoves) {
-        return recordedSearch(pair, maximumMoves, Long.MAX_VALUE);
+        return recordedSearch(pair, maximumMoves, Math.multiplyExact(timeoutMillis(), 1_000_000L));
+    }
+
+    /** General wall-clock limit for roots, endpoints, and reconstructed classes. */
+    public static long timeoutMillis() {
+        long value = Long.getLong("td20.cpuPrefixMillis", DEFAULT_TIMEOUT_MILLIS);
+        if (value < 0) throw new IllegalArgumentException("td20.cpuPrefixMillis must not be negative");
+        return value;
     }
 
     static Optional<SortingCertificate> searchWithinNanos(CyclicTargetPair pair, int maximumMoves,

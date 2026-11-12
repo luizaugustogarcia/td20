@@ -475,6 +475,8 @@ a replayable prefix and is accepted only when its used moves plus the checked
 diameter of the contracted remainder fits the active budget.
 
 The emitter may use bounded CPU prefixes and CUDA move ordering as heuristics.
+The default CPU prefix deadline is $10$ milliseconds for every root, endpoint,
+and reconstructed class; depth and support limits may end the prefix earlier.
 A miss or timeout retains the unchanged obligation with its full budget.
 Totally unoriented states may be searched normally; the prohibition in
 Section~\ref{sec:selection} concerns structural reduction, not witness search.

@@ -25,10 +25,30 @@ JOINT_ADAPTERS = {
 def adapt(relative: str, text: str) -> str:
     """Apply literal, reviewable changes to the reference; never strip algorithms."""
     text = text.replace('td18', 'td20').replace('TD18', 'TD20').replace('TD(18)', 'TD(20)')
+    # User-requested scheduling exception: one CPU deadline for all phases.
+    if relative == 'emitter/pom.xml':
+        text = text.replace('td20.reconstructionCpuPrefixMillis', 'td20.cpuPrefixMillis')
+    if relative.endswith('search/CpuPrefixSearch.java'):
+        text = text.replace('    private static final int DEFAULT_TRIPLE_LIMIT = 8192;',
+                            '    private static final int DEFAULT_TRIPLE_LIMIT = 8192;\n'
+                            '    private static final long DEFAULT_TIMEOUT_MILLIS = 10;')
+        text = text.replace('        return recordedSearch(pair, maximumMoves, Long.MAX_VALUE);',
+                            '        return recordedSearch(pair, maximumMoves, Math.multiplyExact(timeoutMillis(), 1_000_000L));\n'
+                            '    }\n\n'
+                            '    /** General wall-clock limit for roots, endpoints, and reconstructed classes. */\n'
+                            '    public static long timeoutMillis() {\n'
+                            '        long value = Long.getLong("td20.cpuPrefixMillis", DEFAULT_TIMEOUT_MILLIS);\n'
+                            '        if (value < 0) throw new IllegalArgumentException("td20.cpuPrefixMillis must not be negative");\n'
+                            '        return value;')
     if relative.endswith('base/GPUSortingSearch.java'):
         text = text.replace('maxMoves > 10', 'maxMoves > 11').replace('beta.length > 19', 'beta.length > 21')
     elif relative.endswith('search/WitnessSearch.java'):
         text = text.replace('between 1 and 10', 'between 1 and 11')
+        text = text.replace('        return search(input, maximumMoves, Long.MAX_VALUE, WitnessSearch::dispatchGpu);',
+                            '        return search(input, maximumMoves, WitnessSearch::dispatchGpu);\n'
+                            '    }\n\n'
+                            '    static SearchResult search(CyclicTargetPair input, int maximumMoves, GpuSearch dispatcher) {\n'
+                            '        return search(input, maximumMoves, Long.MAX_VALUE, dispatcher);')
     elif relative.endswith('certificate/CertificateCodec.java'):
         text = text.replace('size() > 10', 'size() > 11').replace('exceeds ten moves', 'exceeds eleven moves').replace('count > 10', 'count > 11')
     elif relative.endswith('certificate/AsyncCertificateWriter.java'):
@@ -48,6 +68,24 @@ def adapt(relative: str, text: str) -> str:
     elif relative.endswith('verification/CheckerStateSet.java'):
         text = text.replace('key[1] > 10', 'key[1] > 11').replace('key[2] > 19', 'key[2] > 21')
     elif relative.endswith('emission/WitnessEmitter.java'):
+        text = text.replace('import br.unb.cic.td20.search.WitnessSearch;',
+                            'import br.unb.cic.td20.search.WitnessSearch;\nimport br.unb.cic.td20.search.CpuPrefixSearch;')
+        text = text.replace('    private static final long RECONSTRUCTION_CPU_PREFIX_MILLIS = reconstructionCpuPrefixMillis();\n', '')
+        text = text.replace('        if (options.help) { usage(); return; }',
+                            '        if (options.help) { usage(); return; }\n'
+                            '        log.info("General CPU prefix deadline: {} ms before GPU fallback (roots, endpoints, reconstruction)",\n'
+                            '                CpuPrefixSearch.timeoutMillis());')
+        text = text.replace('                    log.info("Reconstruction CPU prefix deadline: {} ms before GPU fallback",\n'
+                            '                            RECONSTRUCTION_CPU_PREFIX_MILLIS);\n', '')
+        text = text.replace('        var result = WitnessSearch.searchWithCpuPrefixTimeout(\n'
+                            '                pair, budget, RECONSTRUCTION_CPU_PREFIX_MILLIS);',
+                            '        var result = WitnessSearch.search(pair, budget);')
+        text = text.replace('    private static long reconstructionCpuPrefixMillis() {\n'
+                            '        long value = Long.getLong("td20.reconstructionCpuPrefixMillis", 10L);\n'
+                            '        if (value < 0) throw new IllegalArgumentException(\n'
+                            '                "td20.reconstructionCpuPrefixMillis must not be negative");\n'
+                            '        return value;\n'
+                            '    }\n\n', '')
         text = text.replace('settleReconstructed(pair, 9, writer)', 'settleReconstructed(pair, TEN, writer)')
         text = text.replace('settleReconstructed(pair, 10, writer)', 'settleReconstructed(pair, 11, writer)')
         text = text.replace('settleReconstructed(pair, TEN, writer)', 'settleReconstructed(pair, 10, writer)')
@@ -103,6 +141,7 @@ def main() -> None:
     options = parser.parse_args()
     checked = check(options.reference.resolve())
     print(json.dumps({'shared_machinery_matches_td18': True, 'source_files_checked': len(checked),
+                      'general_cpu_prefix_deadline_adapter': True,
                       'joint_adapters_require_independent_java_tests': True}, indent=2))
 
 

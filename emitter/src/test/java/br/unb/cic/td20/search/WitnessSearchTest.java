@@ -111,6 +111,36 @@ class WitnessSearchTest {
                 () -> WitnessSearch.searchWithCpuPrefixTimeout(pair(), 2, -1, (input,budget) -> null));
     }
     @Test
+    void generalTimeoutFallsThroughAndReusesCheckedCertificates(@TempDir Path path) {
+        String previous = System.getProperty("td20.cpuPrefixMillis");
+        System.setProperty("td20.cpuPrefixMillis", "0");
+        try (var writer = new AsyncCertificateWriter(path, 60)) {
+            WitnessSearch.installWriter(writer);
+            try {
+                var input = pair();
+                String before = input.toString();
+                var result = WitnessSearch.search(input, 2, (unchanged, budget) -> {
+                    assertEquals(2, budget);
+                    assertEquals(input.extendedToricClassKey(), unchanged.extendedToricClassKey());
+                    return new GPUSortingSearch.SearchOutcome(GPUSortingSearch.Disposition.DIAMETER_CLOSURE,
+                            java.util.List.of(new int[]{0,1,2}));
+                });
+                assertEquals(WitnessSearch.Disposition.DIAMETER_CLOSURE, result.disposition());
+                assertEquals(before, input.toString());
+                writer.flush();
+                assertEquals(result, WitnessSearch.search(input, 2, (unused, budget) -> {
+                    fail("A checked stored result must avoid CPU and GPU searches"); return null;
+                }));
+                System.setProperty("td20.cpuPrefixMillis", "-1");
+                assertThrows(IllegalArgumentException.class, () -> CpuPrefixSearch.search(input, 2));
+            } finally { WitnessSearch.uninstallWriter(writer); }
+        } finally {
+            if (previous == null) System.clearProperty("td20.cpuPrefixMillis");
+            else System.setProperty("td20.cpuPrefixMillis", previous);
+        }
+    }
+
+    @Test
     void cpuClosureIsPersistedReplayedAndNotACompleteWitness(@TempDir Path path) {
         try (var writer = new AsyncCertificateWriter(path,60)) {
             WitnessSearch.installWriter(writer);

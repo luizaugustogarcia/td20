@@ -12,6 +12,7 @@ import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.runtime.ProjectPaths;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.search.WitnessSearch;
+import br.unb.cic.td20.search.CpuPrefixSearch;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,12 +28,13 @@ import org.slf4j.LoggerFactory;
 /** Generates the joint-selection obligations and persists replayed sorting witnesses. */
 public final class WitnessEmitter {
     private static final Logger log = LoggerFactory.getLogger(WitnessEmitter.class);
-    private static final long RECONSTRUCTION_CPU_PREFIX_MILLIS = reconstructionCpuPrefixMillis();
     private WitnessEmitter() { }
 
     public static void main(String[] arguments) throws IOException {
         var options = Options.parse(arguments, ProjectPaths.root(Path.of("")));
         if (options.help) { usage(); return; }
+        log.info("General CPU prefix deadline: {} ms before GPU fallback (roots, endpoints, reconstruction)",
+                CpuPrefixSearch.timeoutMillis());
         var inventory = JointInventory.read(options.paper);
         Files.createDirectories(options.database.getParent());
         Files.createDirectories(options.work.getParent());
@@ -67,8 +69,6 @@ public final class WitnessEmitter {
                     }
                 if (options.avoidance()) {
                     progress.phase(() -> "final inverse reconstruction");
-                    log.info("Reconstruction CPU prefix deadline: {} ms before GPU fallback",
-                            RECONSTRUCTION_CPU_PREFIX_MILLIS);
                     var result = options.resumeWork == null
                             ? JointAvoidance.resolve(endpoints, work,
                                     pair -> settleReconstructed(pair, 10, writer),
@@ -120,18 +120,10 @@ public final class WitnessEmitter {
     }
 
     static boolean settleReconstructed(CyclicTargetPair pair, int budget, AsyncCertificateWriter writer) {
-        var result = WitnessSearch.searchWithCpuPrefixTimeout(
-                pair, budget, RECONSTRUCTION_CPU_PREFIX_MILLIS);
+        var result = WitnessSearch.search(pair, budget);
         if (result.disposition() != WitnessSearch.Disposition.RESIDUAL) return true;
         writer.enqueueObstruction(pair, budget);
         return false;
-    }
-
-    private static long reconstructionCpuPrefixMillis() {
-        long value = Long.getLong("td20.reconstructionCpuPrefixMillis", 10L);
-        if (value < 0) throw new IllegalArgumentException(
-                "td20.reconstructionCpuPrefixMillis must not be negative");
-        return value;
     }
 
     static RootResult emitRoot(JointInventory.Root row, PairDischarge discharge, Progress progress) {

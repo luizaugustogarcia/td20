@@ -19,7 +19,6 @@ Computation:
   emit         Generate roots/endpoints, emit witnesses, and reconstruct residuals
   avoidance    Regenerate endpoint residuals and search reconstructed roots
   verify       Independently regenerate obligations and check certificates on CPU
-  prune        Retain exactly the classes used by full independent verification
 
 Build and help:
   build-gpu    Build the native CUDA library and package both modules
@@ -31,7 +30,6 @@ Examples:
   tools/td20 avoidance -Dtd20.args=--endpoints=1-10
   tools/td20 avoidance -Dtd20.args=--resume-work=/path/to/previous/work
   tools/td20 verify '-Dexec.args=--phase=roots --partitions=1-1'
-  tools/td20 prune '-Dexec.args=--replace-source'
   tools/td20 --dry-run emit
 
 Phases: roots, endpoints, avoidance, all (count supports roots/endpoints/all).
@@ -109,8 +107,6 @@ case "$command" in
                 fi
                 ;;
     verify)     args=(-pl checker compile exec:java) ;;
-    prune)      args=(-pl checker compile exec:java
-                     -Dexec.mainClass=br.unb.cic.td20.PruneCertificates) ;;
     build-gpu)  args=(-Pgpu package) ;;
     *) printf 'Unknown command: %s\n' "$command" >&2; usage >&2; exit 2 ;;
 esac

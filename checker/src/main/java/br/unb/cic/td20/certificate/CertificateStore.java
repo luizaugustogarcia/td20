@@ -14,8 +14,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.function.BiConsumer;
-import java.util.Objects;
 import br.unb.cic.td20.runtime.CheckerParallelism;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
@@ -29,10 +27,6 @@ import org.rocksdb.RocksDBException;
 /** Read-only TD(20) joint-2 witness/obstruction schema, with independent replay. */
 public final class CertificateStore implements AutoCloseable {
     public static final int FORMAT_VERSION = 2;
-    private static final int MAX_RESULT_MOVES = 11;
-    public static final String SCHEMA_KEY = "td20-schema";
-    public static final String SCHEMA_VALUE = "joint2-selection-v2";
-    private static final String PREVIOUS_SCHEMA_VALUE = "joint2-selection-v1";
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
     static { RocksDB.loadLibrary(); }
     private final DBOptions options = new DBOptions().setMaxOpenFiles(256);
@@ -44,22 +38,8 @@ public final class CertificateStore implements AutoCloseable {
     private final ExecutorService replayWorkers = Executors.newFixedThreadPool(workers,
             Thread.ofPlatform().daemon(true).name("certificate-replay-", 0).factory());
     private final RocksDB database;
-    private final BiConsumer<byte[], byte[]> retained;
 
     public CertificateStore(final Path directory) {
-        this(directory, null, false);
-    }
-    /** Replays compatible stored results for a new certificate; never imports route counts. */
-    public static CertificateStore forPruning(final Path directory, final BiConsumer<byte[], byte[]> retained) {
-        return new CertificateStore(directory, Objects.requireNonNull(retained), true);
-    }
-    /** Strict current-schema reader that records the classes used by an independent audit. */
-    public static CertificateStore forAudit(final Path directory, final BiConsumer<byte[], byte[]> retained) {
-        return new CertificateStore(directory, Objects.requireNonNull(retained), false);
-    }
-    private CertificateStore(final Path directory, final BiConsumer<byte[], byte[]> retained,
-                             final boolean acceptPreviousResults) {
-        this.retained = retained;
         RocksDB opened = null;
         try (final var listing = new Options()) {
             final var families = RocksDB.listColumnFamilies(listing, directory.toString());
@@ -70,12 +50,10 @@ public final class CertificateStore implements AutoCloseable {
                     new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, witnessOptions),
                     new ColumnFamilyDescriptor(OBSTRUCTIONS, obstructionOptions)), handles);
             database = opened;
-            final var marker = database.get(handles.get(0), SCHEMA_KEY.getBytes(StandardCharsets.UTF_8));
-            if (!Arrays.equals(marker, SCHEMA_VALUE.getBytes(StandardCharsets.UTF_8))
-                    && !(acceptPreviousResults && Arrays.equals(marker, PREVIOUS_SCHEMA_VALUE.getBytes(StandardCharsets.UTF_8))))
+            final var marker = database.get(handles.get(0), "td20-schema".getBytes(StandardCharsets.UTF_8));
+            if (!Arrays.equals(marker, "joint2-selection-v2".getBytes(StandardCharsets.UTF_8)))
                 throw new IllegalStateException("Missing or unsupported certificate format marker");
         } catch (final RocksDBException | RuntimeException failure) {
-            replayWorkers.shutdownNow();
             handles.forEach(ColumnFamilyHandle::close);
             if (opened != null) opened.close();
             closeOptions();
@@ -85,14 +63,12 @@ public final class CertificateStore implements AutoCloseable {
     public Optional<List<Cycle>> find(final CyclicTargetPair pair, final int maximumMoves) {
         if (maximumMoves < 0) throw new IllegalArgumentException("Negative move budget");
         final var canonical = pair.canonicalRepresentative();
-        final byte[] key = CertificateCodec.keyFor(canonical);
-        final byte[] value = get(handles.get(0), key);
+        final byte[] value = get(handles.get(0), CertificateCodec.keyFor(canonical));
         if (value == null) return Optional.empty();
         final var result = CertificateCodec.decodeResult(value);
         // Replay stored data even when the derived bound exceeds the requested budget.
-        if (storedBudget(canonical, result) > maximumMoves) return Optional.empty();
-        if (retained != null) retained.accept(key, value);
-        return Optional.of(result.moves());
+        CertificateValidator.validate(canonical, result, obligationBudget(canonical.getBeta().size()));
+        return CertificateValidator.requiredBudget(canonical, result) <= maximumMoves ? Optional.of(result.moves()) : Optional.empty();
     }
     /** Position-preserving RocksDB multiGet followed by parallel independent replay of every hit. */
     public boolean[] findAll(final List<CyclicTargetPair> pairs, final int maximumMoves) {
@@ -127,8 +103,8 @@ public final class CertificateStore implements AutoCloseable {
                 if (value == null) continue;
                 final var result = CertificateCodec.decodeResult(value);
                 final var pair = canonical[i];
-                present[i] = storedBudget(pair, result) <= maximumMoves;
-                if (present[i] && retained != null) retained.accept(keys[i], value);
+                CertificateValidator.validate(pair, result, obligationBudget(pair.getBeta().size()));
+                present[i] = CertificateValidator.requiredBudget(pair, result) <= maximumMoves;
             }
         });
         return present;
@@ -156,39 +132,12 @@ public final class CertificateStore implements AutoCloseable {
             iterator.status();
         } catch (final RocksDBException failure) { throw new IllegalStateException("Cannot read obstruction keys", failure); }
     }
-    public long resultCount() {
-        long count = 0;
-        final byte[] marker = SCHEMA_KEY.getBytes(StandardCharsets.UTF_8);
-        try (final var iterator = database.newIterator(handles.get(0), reads)) {
-            for (iterator.seekToFirst(); iterator.isValid(); iterator.next())
-                if (!Arrays.equals(iterator.key(), marker)) count = Math.incrementExact(count);
-            iterator.status();
-            return count;
-        } catch (final RocksDBException failure) { throw new IllegalStateException("Cannot count stored results", failure); }
-    }
-    /** Checks exact keys and values, including the schema, with bounded memory. */
-    public void requireSameResults(final CertificateStore used) {
-        try (final var stored = database.newIterator(handles.get(0), reads);
-             final var accepted = used.database.newIterator(used.handles.get(0), used.reads)) {
-            stored.seekToFirst(); accepted.seekToFirst();
-            while (stored.isValid() && accepted.isValid()) {
-                if (!Arrays.equals(stored.key(), accepted.key()) || !Arrays.equals(stored.value(), accepted.value()))
-                    throw new IllegalStateException("Persisted certificate differs from exactly the results used by verification");
-                stored.next(); accepted.next();
-            }
-            stored.status(); accepted.status();
-            if (stored.isValid() || accepted.isValid())
-                throw new IllegalStateException("Persisted certificate contains surplus or missing results");
-        } catch (final RocksDBException failure) { throw new IllegalStateException("Cannot audit retained results", failure); }
-    }
     private byte[] get(final ColumnFamilyHandle family, final byte[] key) {
         try { return database.get(family, reads, key); }
         catch (final RocksDBException failure) { throw new IllegalStateException("Cannot read certificate", failure); }
     }
-    private static int storedBudget(final CyclicTargetPair pair, final SortingCertificate result) {
-        final int budget = CertificateValidator.requiredBudget(pair, result);
-        if (budget > MAX_RESULT_MOVES) throw new IllegalArgumentException("Sorting result exceeds the certificate move budget");
-        return budget;
+    private static int obligationBudget(final int domain) {
+        return domain == 18 ? 9 : domain == 20 ? 10 : 11;
     }
     private void parallelRanges(final int size, final RangeAction action) {
         final int taskCount = Math.min(workers, size);
@@ -214,14 +163,8 @@ public final class CertificateStore implements AutoCloseable {
     }
     @FunctionalInterface private interface RangeAction { void run(int first, int last); }
     @Override public void close() {
-        replayWorkers.shutdown();
-        boolean interrupted = false;
-        for (;;) {
-            try { if (replayWorkers.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)) break; }
-            catch (final InterruptedException failure) { interrupted = true; }
-        }
+        replayWorkers.shutdownNow();
         handles.forEach(ColumnFamilyHandle::close); database.close(); closeOptions();
-        if (interrupted) Thread.currentThread().interrupt();
     }
     private void closeOptions() { reads.close(); witnessOptions.close(); obstructionOptions.close(); options.close(); }
 }

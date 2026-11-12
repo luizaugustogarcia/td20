@@ -82,35 +82,6 @@ CUDA tests run only when configured explicitly.
 Storage estimates require actual compression measurements and inverse-wave
 inventories.
 
-## Pruning completed certificates
-
-~~~bash
-tools/td20 prune
-tools/td20 prune '-Dexec.args=--replace-source'
-~~~
-
-The first command writes a fresh certificates-pruned database. The second
-replaces certificates and deletes its superseded files only after full checks
-pass. Use --source=PATH, --output=NEW_PATH, --paper=PATH, and --work=NEW_PATH
-to select paths. Output and work must be fresh and separate from the source.
-Both databases are locked against concurrent writers during pruning.
-
-Pruning regenerates every current root, endpoint, and both inverse waves. It
-copies the original typed witness or closure only when replay succeeds within
-the requested budget. A second full check of the persisted copy records its
-used classes independently; an exact comparison of keys and values rejects
-any surplus or missing result. A versioned pruning-report-v1.txt records exact
-record counts, byte sizes, completed checks, and surplusClasses=0. Missing
-endpoint results still trigger inverse reconstruction without relying on old
-obstruction markers. Failure before publication preserves the source.
-
-Only this migration reader also accepts the immediately preceding certificate
-route marker. It imports replayed results, never obsolete route counts,
-obstruction markers, or checkpoints. Normal proof checking remains strict.
-The retained classes are exactly those used by the current checker; this is
-not a claim of a globally minimum certificate over alternative proof routes.
-Generated databases, work directories, logs, and reports remain untracked.
-
 ## Independent checking and TeX
 
 ~~~bash

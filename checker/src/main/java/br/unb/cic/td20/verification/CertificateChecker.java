@@ -19,20 +19,6 @@ import java.util.concurrent.atomic.AtomicLong;
 /** CPU-only regeneration of all requested obligations, followed by witness replay. */
 public final class CertificateChecker {
     private CertificateChecker() { }
-    /** Full regeneration and replay; the caller shuts down the shared generator after its final pass. */
-    public static void verifyAll(final Path paper, final CertificateStore certificates, final Path work) throws IOException {
-        Files.createDirectory(work);
-        final var inventory = JointInventory.read(paper);
-        final var endpoints = JointInventory.endpoints();
-        try (final var progress = new VerificationProgress();
-             final var residuals = new CheckerStateSet(work.resolve("endpoint-residuals"))) {
-            for (final var row : inventory) verifyRoot(row, certificates, progress);
-            for (final var endpoint : endpoints) verifyEndpoint(endpoint, certificates, residuals, progress);
-            residuals.seal();
-            verifyAvoidance(certificates, residuals, work, progress);
-            System.out.println("All regenerated obligations in the complete joint-selection scope are verified.");
-        }
-    }
     public static void main(final String[] arguments) throws IOException {
         final var options = Options.parse(arguments,ProjectPaths.root(Path.of("")));
         if (options.help) { usage(); return; }

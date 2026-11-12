@@ -5,8 +5,6 @@
 \usepackage[hidelinks]{hyperref}
 \newcommand{\TD}{\operatorname{TD}}
 \newcommand{\jointrow}[6]{#1 & $(#2)$ & #3 & #4 & #5 & #6\\}
-\newcommand{\pendingjointrow}[2]{#1 & $(#2)$ & \multicolumn{4}{c}{\emph{pending exact artifacts}}\\}
-\newcommand{\unorientedjointrow}[3]{#1 & $(#2)$ & #3 & \multicolumn{3}{c}{\emph{pending joint-residual count}}\\}
 \newtheorem{proposition}{Proposition}
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
@@ -29,9 +27,8 @@ is followed by every second move creating at least two fixed points. Gain
 three closes by $\TD(16)=9$; gain two reaches an $18$-symbol endpoint with
 nine moves left. Totally unoriented states receive no structural reduction
 at either depth. There are $83$ root partitions and $214$ endpoint annotations.
-Endpoint failures are covered by two inverse waves. The endpoint count is
-complete, and completed root-partition counts are reported alongside explicit
-pending rows. Totally unoriented counts are independent of selection.
+Endpoint failures are covered by two inverse waves. The endpoint and root counts are complete and have been reconciled row for
+row. Totally unoriented counts are independent of selection.
 Equality remains conditional on full independent verification.
 \end{abstract}
 
@@ -193,16 +190,16 @@ route admits only the following paper-explicit powers, where the exponent is
 relative to $\beta_S$.
 \begin{table}[ht]
 \centering
-\caption{Admitted root support clearings.  Counts are pending.}
+\caption{Admitted root support clearings.  Exact counts by least clearing length.}
 \label{tab:clearing}
 \begin{tabular}{@{}rllr@{}}
 \toprule
 $|S|$ & $\gamma$ & Checked bound & Cleared classes\\
 \midrule
-9  & $\beta_S^7$ & $5+\TD(11)=11$ & pending\\
-11 & $\beta_S^6$ & $6+\TD(9)=11$ & pending\\
-13 & $\beta_S^7,\beta_S^{10},\beta_S^{11}$ & $7+\TD(7)=11$ & pending\\
-17 & $\beta_S^9,\beta_S^{13},\beta_S^{15}$ & $9+\TD(3)=11$ & pending\\
+9  & $\beta_S^7$ & $5+\TD(11)=11$ & 27559987\\
+11 & $\beta_S^6$ & $6+\TD(9)=11$ & 1119597\\
+13 & $\beta_S^7,\beta_S^{10},\beta_S^{11}$ & $7+\TD(7)=11$ & 321358\\
+17 & $\beta_S^9,\beta_S^{13},\beta_S^{15}$ & $9+\TD(3)=11$ & 22\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -308,7 +305,7 @@ All $83$ totally unoriented counts and all $214$ endpoint counts are complete.
 
 {\small
 \begin{longtable}{@{}rlrrrr@{}}
-\caption{Complete root-partition inventory; completed counts are shown explicitly.}
+\caption{Complete root-partition inventory; exact class counts.}
 \label{tab:roots}\\
 \toprule
 No. & Partition & $U$ & $J$ & $C$ & $O$\\
@@ -380,35 +377,35 @@ No. & Partition & $U$ & $J$ & $C$ & $O$\\
 \jointrow{55}{7,4,4,4,2}{6243210}{96}{0}{96}
 \jointrow{56}{7,4,4,3,3}{13787166}{15914299}{0}{15914299}
 \jointrow{57}{7,4,2,2,2,2,2}{15697800}{0}{0}{0}
-\unorientedjointrow{58}{7,3,3,2,2,2,2}{59890248}
-\unorientedjointrow{59}{6,6,5,2,2}{4680565}
-\unorientedjointrow{60}{6,6,4,3,2}{20056590}
-\unorientedjointrow{61}{6,6,3,3,3}{5000924}
-\unorientedjointrow{62}{6,5,5,3,2}{28737690}
-\unorientedjointrow{63}{6,5,4,4,2}{41355210}
-\unorientedjointrow{64}{6,5,4,3,3}{61411800}
-\unorientedjointrow{65}{6,5,2,2,2,2,2}{36017730}
-\unorientedjointrow{66}{6,4,4,4,3}{29337926}
-\unorientedjointrow{67}{6,4,3,2,2,2,2}{403200900}
-\unorientedjointrow{68}{6,3,3,3,2,2,2}{408724200}
-\unorientedjointrow{69}{5,5,5,4,2}{19982642}
-\unorientedjointrow{70}{5,5,5,3,3}{14843641}
-\unorientedjointrow{71}{5,5,4,4,3}{64315328}
-\unorientedjointrow{72}{5,5,3,2,2,2,2}{297050588}
-\unorientedjointrow{73}{5,4,4,4,4}{15507348}
-\unorientedjointrow{74}{5,4,4,2,2,2,2}{435282150}
-\unorientedjointrow{75}{5,4,3,3,2,2,2}{2648587080}
-\unorientedjointrow{76}{5,3,3,3,3,2,2}{1003251060}
-\unorientedjointrow{77}{5,2,2,2,2,2,2,2,2}{36634104}
-\unorientedjointrow{78}{4,4,4,3,2,2,2}{1294438650}
-\unorientedjointrow{79}{4,4,3,3,3,2,2}{2938891586}
-\unorientedjointrow{80}{4,3,3,3,3,3,2}{886699600}
-\unorientedjointrow{81}{4,3,2,2,2,2,2,2,2}{656255250}
-\unorientedjointrow{82}{3,3,3,3,3,3,3}{31772431}
-\unorientedjointrow{83}{3,3,3,2,2,2,2,2,2}{1165021974}
+\jointrow{58}{7,3,3,2,2,2,2}{59890248}{141466}{0}{141466}
+\jointrow{59}{6,6,5,2,2}{4680565}{0}{0}{0}
+\jointrow{60}{6,6,4,3,2}{20056590}{0}{0}{0}
+\jointrow{61}{6,6,3,3,3}{5000924}{66885}{0}{66885}
+\jointrow{62}{6,5,5,3,2}{28737690}{5785798}{0}{5785798}
+\jointrow{63}{6,5,4,4,2}{41355210}{0}{0}{0}
+\jointrow{64}{6,5,4,3,3}{61411800}{5847144}{0}{5847144}
+\jointrow{65}{6,5,2,2,2,2,2}{36017730}{0}{0}{0}
+\jointrow{66}{6,4,4,4,3}{29337926}{0}{0}{0}
+\jointrow{67}{6,4,3,2,2,2,2}{403200900}{0}{0}{0}
+\jointrow{68}{6,3,3,3,2,2,2}{408724200}{0}{0}{0}
+\jointrow{69}{5,5,5,4,2}{19982642}{2083140}{0}{2083140}
+\jointrow{70}{5,5,5,3,3}{14843641}{584964496}{0}{584964496}
+\jointrow{71}{5,5,4,4,3}{64315328}{14873115}{0}{14873115}
+\jointrow{72}{5,5,3,2,2,2,2}{297050588}{0}{0}{0}
+\jointrow{73}{5,4,4,4,4}{15507348}{263}{0}{263}
+\jointrow{74}{5,4,4,2,2,2,2}{435282150}{0}{0}{0}
+\jointrow{75}{5,4,3,3,2,2,2}{2648587080}{0}{0}{0}
+\jointrow{76}{5,3,3,3,3,2,2}{1003251060}{185079130}{0}{185079130}
+\jointrow{77}{5,2,2,2,2,2,2,2,2}{36634104}{0}{0}{0}
+\jointrow{78}{4,4,4,3,2,2,2}{1294438650}{0}{0}{0}
+\jointrow{79}{4,4,3,3,3,2,2}{2938891586}{0}{0}{0}
+\jointrow{80}{4,3,3,3,3,3,2}{886699600}{0}{0}{0}
+\jointrow{81}{4,3,2,2,2,2,2,2,2}{656255250}{0}{0}{0}
+\jointrow{82}{3,3,3,3,3,3,3}{31772431}{0}{0}{0}
+\jointrow{83}{3,3,3,2,2,2,2,2,2}{1165021974}{0}{0}{0}
 \midrule
 \multicolumn{2}{l}{Subtotal (rows $1$--$54$)} & 61438670 & 1236822279 & 29000964 & 1207821315\\
-\multicolumn{2}{l}{Total} & 12704114061 & \multicolumn{3}{c}{\emph{pending joint-residual count}}\\
+\multicolumn{2}{l}{Total} & 12704114061 & 2051578111 & 29000964 & 2022577147\\
 \end{longtable}}
 
 The full endpoint cover contains $1\,806\,057\,392\,878$ classes.

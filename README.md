@@ -20,9 +20,10 @@ on 21 symbols with budget eleven. Every gap and support is forward replayed.
 The completed selection-independent count is U = 12,704,114,061 totally
 unoriented root classes. The full 214-annotation endpoint cover contains
 1,806,057,392,878 classes: 614,986,821,324 elementary closures and
-1,191,070,571,554 classes requiring discharge. Root J/C/O counts are still
-running; the source publishes each completed partition. Count artifacts are
-in data/joint2-reduction-audit/. These endpoint counts precede witness search
+1,191,070,571,554 classes requiring discharge. All 83 root counts are complete:
+J = 2,051,578,111, C = 29,000,964, and O = 2,022,577,147. The direct-root
+obligation count U + O is 14,726,691,208. Count artifacts are in
+data/joint2-reduction-audit/. These counts precede witness search
 and can include unreachable endpoints. Existing witnesses and checked closures
 can reduce explicit search; the actual unsolved residue for inverse
 reconstruction remains unknown. Sorting certificates remain pending.

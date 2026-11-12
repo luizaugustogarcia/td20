@@ -156,8 +156,7 @@ unoriented, since no remaining 2-cycle or admissible 3-cycle can orient a
 residual. U remains a separately counted obligation set. Reports retain their
 actual implementation provenance.
 
-The final totals are intentionally not stated here until all complete
-versioned artifacts and the source table agree row for row. See
+The complete versioned artifacts and source table now agree row for row. See
 [the source specification](td20-reduction-count.tex) for the exact predicates
 and two inverse waves. No sorting-failure count is an input to Burnside
 counting or joint selection.

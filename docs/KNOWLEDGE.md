@@ -88,7 +88,9 @@ inventory consists of the 83 nonincreasing partitions of 21 into parts at
 least two having an even number of even parts. For each partition the source
 table records totally unoriented classes `U`, oriented joint-2 residuals `J`,
 the support-cleared subset `C`, and `O = J - C`. Direct obligations total
-`U + O`. Those totals remain pending until complete artifacts agree.
+`U + O`. All 83 rows have been reconciled: `U = 12,704,114,061`,
+`J = 2,051,578,111`, `C = 29,000,964`, and `O = 2,022,577,147`.
+The direct-root obligation count is `U + O = 14,726,691,208`.
 
 ## Two inverse waves
 
@@ -102,7 +104,8 @@ two. Disk deduplication preserves every compatible class; all paths use (1,2).
 Checked results close represented paths; unresolved classes propagate. The
 checker regenerates all 83 root rows, 214 endpoint annotations, and both waves.
 Missing markers, checksums, and sidecars cannot remove work. A count is not
-a witness. The selection-independent U count is retained; J/C/O are pending.
+a witness. Root and endpoint counting are complete; sorting, inverse coverage,
+and complete proof verification remain pending.
 
 The Java package root is `br.unb.cic.td20`. See
 [the architecture](ARCHITECTURE.md) for module boundaries.

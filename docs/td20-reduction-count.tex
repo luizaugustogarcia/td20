@@ -29,9 +29,10 @@ is followed by every second move creating at least two fixed points. Gain
 three closes by $\TD(16)=9$; gain two reaches an $18$-symbol endpoint with
 nine moves left. Totally unoriented states receive no structural reduction
 at either depth. There are $83$ root partitions and $214$ endpoint annotations.
-Endpoint failures are covered by two inverse waves. The route-dependent
-counts are pending; completed totally unoriented counts are independent of
-selection. Equality remains conditional on full independent verification.
+Endpoint failures are covered by two inverse waves. The endpoint count is
+complete, and completed root-partition counts are reported alongside explicit
+pending rows. Totally unoriented counts are independent of selection.
+Equality remains conditional on full independent verification.
 \end{abstract}
 
 \section{Pairs, moves, and premises}
@@ -298,6 +299,13 @@ remain explicitly pending.  Every completed row uses one machine-readable
 \texttt{jointrow} with its four exact nonnegative counts.  Aggregate $J,C,O$
 values appear only after all $83$ partition results are complete.
 
+At 08:28 UTC on 12 November 2026, $J,C,O$ counts were complete for rows
+$1$--$54$, with $29$ rows still pending. The snapshot subtotal for rows
+$1$--$54$ refers only to those partitions, including their $U$ classes;
+it is not a full root total. These rows contribute $1\,269\,259\,985$
+direct obligations with budget eleven.
+All $83$ totally unoriented counts and all $214$ endpoint counts are complete.
+
 {\small
 \begin{longtable}{@{}rlrrrr@{}}
 \caption{Complete root-partition inventory; completed counts are shown explicitly.}
@@ -368,10 +376,10 @@ No. & Partition & $U$ & $J$ & $C$ & $O$\\
 \jointrow{51}{7,6,3,3,2}{6592050}{10755049}{0}{10755049}
 \jointrow{52}{7,5,5,2,2}{3127054}{39811433}{0}{39811433}
 \jointrow{53}{7,5,4,3,2}{26372380}{15243294}{0}{15243294}
-\unorientedjointrow{54}{7,5,3,3,3}{6488500}
-\unorientedjointrow{55}{7,4,4,4,2}{6243210}
-\unorientedjointrow{56}{7,4,4,3,3}{13787166}
-\unorientedjointrow{57}{7,4,2,2,2,2,2}{15697800}
+\jointrow{54}{7,5,3,3,3}{6488500}{770299774}{0}{770299774}
+\jointrow{55}{7,4,4,4,2}{6243210}{96}{0}{96}
+\jointrow{56}{7,4,4,3,3}{13787166}{15914299}{0}{15914299}
+\jointrow{57}{7,4,2,2,2,2,2}{15697800}{0}{0}{0}
 \unorientedjointrow{58}{7,3,3,2,2,2,2}{59890248}
 \unorientedjointrow{59}{6,6,5,2,2}{4680565}
 \unorientedjointrow{60}{6,6,4,3,2}{20056590}
@@ -399,23 +407,13 @@ No. & Partition & $U$ & $J$ & $C$ & $O$\\
 \unorientedjointrow{82}{3,3,3,3,3,3,3}{31772431}
 \unorientedjointrow{83}{3,3,3,2,2,2,2,2,2}{1165021974}
 \midrule
+\multicolumn{2}{l}{Subtotal (rows $1$--$54$)} & 61438670 & 1236822279 & 29000964 & 1207821315\\
 \multicolumn{2}{l}{Total} & 12704114061 & \multicolumn{3}{c}{\emph{pending joint-residual count}}\\
 \end{longtable}}
 
-% BEGIN JOINT2 TOTALS
-\begin{center}
-\begin{tabular}{@{}lr@{}}
-\toprule
-Obligation set & Classes\\
-\midrule
-Direct roots $U+O$ (budget eleven) & pending\\
-All endpoint classes & 1806057392878\\
-Elementary endpoint closures & 614986821324\\
-Endpoint classes requiring discharge (budget nine) & 1191070571554\\
-\bottomrule
-\end{tabular}
-\end{center}
-% END JOINT2 TOTALS
+The full endpoint cover contains $1\,806\,057\,392\,878$ classes.
+Elementary closures discharge $614\,986\,821\,324$ classes, leaving
+$1\,191\,070\,571\,554$ classes requiring a nine-move discharge or inverse coverage.
 
 The endpoint totals count the full $214$-annotation cover before witness
 search. The cover can include classes that are never reached by joint-2

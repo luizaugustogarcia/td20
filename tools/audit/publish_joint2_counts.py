@@ -196,25 +196,26 @@ def render(summary: dict, paper: str) -> str:
         "The route-dependent\ncounts are pending; completed totally unoriented counts are independent of\nselection.",
         "Joint residual counts have been reconciled row for row; completed totally\nunoriented counts are independent of selection.")
     paper = paper.replace(
+        "The endpoint count is\ncomplete, and completed root-partition counts are reported alongside explicit\npending rows. Totally unoriented counts are independent of selection.",
+        "The endpoint and root counts are complete and have been reconciled row for\nrow. Totally unoriented counts are independent of selection.")
+    paper = paper.replace(
         "Final class totals\nawait completion and row-for-row reconciliation.",
         "Final class totals\nhave been reconciled row for row in the combined count artifact.")
     endpoints = summary["endpoint_counts"]
-    aggregate_rows = [
-        (r"Direct roots $U+O$ (budget eleven)", summary["direct_root_class_obligations"]),
-        ("All endpoint classes", endpoints["all_endpoint_classes"]),
-        ("Elementary endpoint closures", endpoints["elementary_closure_classes"]),
-        ("Endpoint classes requiring discharge (budget nine)", endpoints["classes_requiring_discharge"]),
-    ]
-    aggregate = "% BEGIN JOINT2 TOTALS\n" + "\n".join([
-        r"\begin{center}", r"\begin{tabular}{@{}lr@{}}", r"\toprule",
-        r"Obligation set & Classes\\", r"\midrule",
-        *(label + " & " + str(value) + r"\\" for label, value in aggregate_rows),
-        r"\bottomrule", r"\end{tabular}", r"\end{center}", "% END JOINT2 TOTALS",
-    ])
-    paper, replaced = re.subn(r"% BEGIN JOINT2 TOTALS\n.*?% END JOINT2 TOTALS",
-                              lambda _: aggregate, paper, flags=re.DOTALL)
+    formatted = {key: format(value, ",").replace(",", r"\,")
+                 for key, value in endpoints.items()}
+    endpoint_prose = (
+        f"The full endpoint cover contains ${formatted['all_endpoint_classes']}$ classes.\n"
+        f"Elementary closures discharge ${formatted['elementary_closure_classes']}$ classes, leaving\n"
+        f"${formatted['classes_requiring_discharge']}$ classes requiring a nine-move discharge or inverse coverage.")
+    number = r"\$[0-9]+(?:\\,[0-9]{3})*\$"
+    paper, replaced = re.subn(
+        r"The full endpoint cover contains " + number + r" classes\.\s+"
+        + r"Elementary closures discharge " + number + r" classes, leaving\s+"
+        + number + r" classes requiring a nine-move discharge or inverse coverage\.",
+        lambda _: endpoint_prose, paper)
     if replaced != 1:
-        raise ValueError("Missing or duplicate aggregate count block")
+        raise ValueError("Missing or duplicate endpoint-count statement")
     if "\\pendingjointrow{" in paper or "\\unorientedjointrow{" in paper \
             or "pending exact artifacts" in paper or "pending joint-residual count" in paper:
         raise ValueError("Pending keyed count material remains")

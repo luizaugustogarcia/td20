@@ -220,9 +220,12 @@ class JointTwoPublisherTest(unittest.TestCase):
         self.assertIn("td20_proved=false", final_text)
         self.assertIn("sorting_certificates_checked=false", final_text)
         self.assertNotIn("pending exact artifacts", final_text)
-        self.assertIn(r"All endpoint classes & 11\\", final_text)
-        self.assertIn(r"Elementary endpoint closures & 3\\", final_text)
-        self.assertIn(r"Endpoint classes requiring discharge (budget nine) & 8\\", final_text)
+        self.assertIn("The endpoint and root counts are complete", final_text)
+        self.assertIn("The full endpoint cover contains $11$ classes.", final_text)
+        self.assertIn("Elementary closures discharge $3$ classes, leaving", final_text)
+        self.assertIn("$8$ classes requiring a nine-move discharge or inverse coverage.", final_text)
+        self.assertNotIn("JOINT2 TOTALS", final_text)
+        self.assertNotIn("Obligation set & Classes", final_text)
         subprocess.run([
             sys.executable, str(FINAL_SCRIPT), "--summary", str(summary_path),
             "--paper", str(paper), "--in-place",
@@ -278,6 +281,24 @@ class JointTwoPublisherTest(unittest.TestCase):
         self.assertEqual(83, rendered.count("\\jointrow{"))
         self.assertNotIn("pending joint-residual count", rendered)
         self.assertNotIn("pending exact artifacts", rendered)
+
+    def test_final_rejects_missing_or_duplicate_endpoint_counts(self):
+        original = self.paper.read_text()
+        statement = re.search(r"The full endpoint cover contains .*?inverse coverage\.",
+                              original, flags=re.DOTALL)
+        self.assertIsNotNone(statement)
+        summary_path = self.write_json("summary.json", self.summary)
+        for index, replacement in enumerate(("", statement[0] + "\n" + statement[0])):
+            with self.subTest(index=index):
+                self.paper.write_text(original.replace(statement[0], replacement))
+                output = self.directory / f"missing-or-duplicate-{index}.tex"
+                result = subprocess.run([
+                    sys.executable, str(FINAL_SCRIPT), "--summary", str(summary_path),
+                    "--paper", str(self.paper), "--output", str(output),
+                ], capture_output=True, text=True)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("endpoint-count statement", result.stderr)
+                self.assertFalse(output.exists())
 
     def test_final_rejects_incomplete_or_inconsistent_summaries(self):
         changes = []

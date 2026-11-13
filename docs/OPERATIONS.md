@@ -75,7 +75,9 @@ CUDA uses td20.gpuDevices, td20.gpuSlots, and td20.gpuBudgetMB.
 Every CPU prefix has a general 10 ms wall-clock limit, configured with
 td20.cpuPrefixMillis. This applies to roots, endpoints, and reconstruction.
 The depth and support limits td20.cpuPrefixDepth and td20.cpuPrefixMaxTriples
-can end a search earlier. A timeout or miss sends the unchanged full-budget
+can end a search earlier. Java defines the default depth of three; Maven and
+the server launcher pass a depth only for an explicit override.
+A timeout or miss sends the unchanged full-budget
 obligation to GPU.
 CUDA tests run only when configured explicitly.
 

@@ -27,13 +27,17 @@ cmake -S emitter/src/native -B emitter/target/native \
 # Every root, endpoint, and reconstructed class gets at most 10 ms before the full
 # original obligation falls through to CUDA.
 # Reuse certificates on subsequent runs; no existing data is deleted.
+cpu_prefix_args=()
+if [[ -n ${TD20_CPU_PREFIX_DEPTH:-} ]]; then
+    cpu_prefix_args+=("-Dtd20.cpuPrefixDepth=$TD20_CPU_PREFIX_DEPTH")
+fi
 nohup ./tools/td20 emit -B -Dstyle.color=never \
     -Dtd20.gpuDevices=0,1,2,3 \
     -Dtd20.gpuSlots=8 \
     -Dtd20.gpuBudgetMB=1792 \
     -Dtd20.gpuQueueCapacity=64 \
     -Dtd20.twistedBraceletWorkers=192 \
-    -Dtd20.cpuPrefixDepth="${TD20_CPU_PREFIX_DEPTH:-4}" \
+    "${cpu_prefix_args[@]}" \
     -Dtd20.cpuPrefixMaxTriples=8192 \
     -Dtd20.cpuPrefixMillis="${TD20_CPU_PREFIX_MILLIS:-10}" \
     -Dtd20.certificateQueueCapacity=1048576 \

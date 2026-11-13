@@ -17,7 +17,7 @@
         <td20.gpuBudgetMB>1024</td20.gpuBudgetMB>
         <td20.gpuQueueCapacity></td20.gpuQueueCapacity>
         <td20.gpuStatsPeriodSeconds>10</td20.gpuStatsPeriodSeconds>
-        <td20.cpuPrefixDepth>3</td20.cpuPrefixDepth>
+        <td20.cpuPrefixJvmArgument></td20.cpuPrefixJvmArgument>
         <td20.cpuPrefixMaxTriples>8192</td20.cpuPrefixMaxTriples>
         <td20.cpuPrefixMillis>10</td20.cpuPrefixMillis>
         <td20.cpuStatsPeriodSeconds>${td20.gpuStatsPeriodSeconds}</td20.cpuStatsPeriodSeconds>
@@ -53,7 +53,7 @@
                         <goals><goal>exec</goal></goals>
                         <configuration>
                             <executable>java</executable>
-                            <commandlineArgs>-classpath %classpath -Djava.library.path=${project.build.directory}/native -Dtd20.gpuDevices=${td20.gpuDevices} -Dtd20.gpuSlots=${td20.gpuSlots} -Dtd20.gpuBudgetMB=${td20.gpuBudgetMB} -Dtd20.gpuQueueCapacity=${td20.gpuQueueCapacity} -Dtd20.gpuStatsPeriodSeconds=${td20.gpuStatsPeriodSeconds} -Dtd20.cpuPrefixDepth=${td20.cpuPrefixDepth} -Dtd20.cpuPrefixMaxTriples=${td20.cpuPrefixMaxTriples} -Dtd20.cpuPrefixMillis=${td20.cpuPrefixMillis} -Dtd20.cpuStatsPeriodSeconds=${td20.cpuStatsPeriodSeconds} -Dtd20.twistedBraceletWorkers=${td20.twistedBraceletWorkers} -Dtd20.certificateDb=${td20.certificateDb} -Dtd20.certificateFlushSeconds=${td20.certificateFlushSeconds} -Dtd20.certificateQueueCapacity=${td20.certificateQueueCapacity} -Dtd20.certificateLookupBatchSize=${td20.certificateLookupBatchSize} -Dtd20.reconstructionBufferKeys=${td20.reconstructionBufferKeys} ${exec.mainClass} ${td20.args}</commandlineArgs>
+                            <commandlineArgs>-classpath %classpath -Djava.library.path=${project.build.directory}/native -Dtd20.gpuDevices=${td20.gpuDevices} -Dtd20.gpuSlots=${td20.gpuSlots} -Dtd20.gpuBudgetMB=${td20.gpuBudgetMB} -Dtd20.gpuQueueCapacity=${td20.gpuQueueCapacity} -Dtd20.gpuStatsPeriodSeconds=${td20.gpuStatsPeriodSeconds} ${td20.cpuPrefixJvmArgument} -Dtd20.cpuPrefixMaxTriples=${td20.cpuPrefixMaxTriples} -Dtd20.cpuPrefixMillis=${td20.cpuPrefixMillis} -Dtd20.cpuStatsPeriodSeconds=${td20.cpuStatsPeriodSeconds} -Dtd20.twistedBraceletWorkers=${td20.twistedBraceletWorkers} -Dtd20.certificateDb=${td20.certificateDb} -Dtd20.certificateFlushSeconds=${td20.certificateFlushSeconds} -Dtd20.certificateQueueCapacity=${td20.certificateQueueCapacity} -Dtd20.certificateLookupBatchSize=${td20.certificateLookupBatchSize} -Dtd20.reconstructionBufferKeys=${td20.reconstructionBufferKeys} ${exec.mainClass} ${td20.args}</commandlineArgs>
                         </configuration>
                     </execution>
                 </executions>
@@ -69,6 +69,15 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>cpu-prefix-depth</id>
+            <activation>
+                <property><name>td20.cpuPrefixDepth</name></property>
+            </activation>
+            <properties>
+                <td20.cpuPrefixJvmArgument>-Dtd20.cpuPrefixDepth=${td20.cpuPrefixDepth}</td20.cpuPrefixJvmArgument>
+            </properties>
+        </profile>
         <profile>
             <id>gpu</id>
             <build>

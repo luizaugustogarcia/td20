@@ -19,6 +19,7 @@ mkdir -p logs
 cmake -S emitter/src/native -B emitter/target/native \
     -DCMAKE_BUILD_TYPE=Release -DTD20_CUDA_ARCHITECTURES=120-real \
     >> logs/emission.log 2>&1
+./tools/td20 build-gpu >> logs/emission.log 2>&1
 
 # 32 active searches; 14 GiB of queue storage per GPU (56 GiB total).
 # Keep the remaining VRAM available for CUDA contexts and allocator overhead.

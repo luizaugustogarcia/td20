@@ -12,8 +12,8 @@
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
 \newtheorem{corollary}{Corollary}
-\title{Joint Selection of Two Reductions to Prove $\TD(20)=11$\\
-\large Direct class generation and a certificate-conditional upper bound}
+\title{Joint Selection of Two Reductions Toward $\TD(20)=11$\\
+\large Direct class generation and a conditional computational proof}
 \author{}
 \date{}
 \begin{document}
@@ -33,11 +33,13 @@ totally unoriented successors cannot supply the required second gain.
 There are $83$ root partitions and $214$ endpoint annotations.
 Endpoint failures are covered by two inverse waves. The endpoint counts, unoriented census, and oriented counts are complete.
 The totally unoriented residual counter has completed all $83$ rows, with
-$R=124\,395\,153$. Independent production regeneration agrees in every row.
+$R=124\,395\,153$, against the selection-independent census
+$U=12\,704\,114\,061$. The oriented count after support clearing is
+$O=2\,022\,577\,147$. Independent production regeneration agrees in every row.
 Equality remains conditional on full independent verification.
 \end{abstract}
 
-\section{Pairs, moves, and premises}
+\section{Pairs, moves, and independent premises}
 Let $\TD(n)$ denote the maximum distance under transpositions in $S_n$, and
 let $N=n+1$.  A \emph{cyclic-target pair} is $(\omega,\beta)$ on
 $\{0,\ldots,N-1\}$, where $\omega$ is even, $\beta$ is the current $N$-cycle,
@@ -61,17 +63,19 @@ count and sorting computation below.
 A sorting \emph{transposition} is represented by a $3$-cycle
 $\tau=(a\ b\ c)$ whose distinct symbols occur in this cyclic order in $\beta$.
 It acts by
-\[
-  (\omega,\beta)\longmapsto(\omega\tau^{-1},\tau\beta),
-\]
+\begin{equation}
+ (\omega,\beta)\longmapsto(\omega\tau^{-1},\tau\beta).
+ \label{eq:move}
+\end{equation}
 and preserves $\rho$.  The term $2$-cycle is reserved for the algebraic
-object.  Let $c_{\rm odd}(\omega)$ count all odd-length algebraic cycles,
+object.  Let $c_{\mathrm{odd}}(\omega)$ count all odd-length algebraic cycles,
 including fixed points, and define
-\[
-  \kappa(\omega)=\frac{N-c_{\rm odd}(\omega)}2
-  =\sum_\gamma\left\lfloor\frac{|\gamma|}{2}\right\rfloor.
-\]
-A \emph{$2$-move} increases $c_{\rm odd}$ by two.  It is \emph{qualifying}
+\begin{equation}
+ \kappa(\omega)=\frac{N-c_{\mathrm{odd}}(\omega)}2
+ =\sum_\gamma\left\lfloor\frac{|\gamma|}{2}\right\rfloor.
+ \label{eq:norm}
+\end{equation}
+A \emph{$2$-move} increases $c_{\mathrm{odd}}$ by two.  It is \emph{qualifying}
 when it also creates a fixed point.  Its \emph{gain} is the number of newly
 created fixed points.  Every qualifying move decreases $\kappa$ by one.
 
@@ -87,14 +91,11 @@ contraction preserves distance and $\kappa$ \cite{framework}.  We contract
 before invoking any fixed-point-free encoding or generator.
 
 This project takes $\TD(18)=10$ as a premise supplied by the completed TD(18)
-route.  The lower-order values needed below are
-\[
-\begin{array}{c|rrrrrrrrrrrrrrrrrrr}
-n&0&1&2&3&4&5&6&7&8&9&10&11&12&13&14&15&16&17&18\\
-\hline
-\TD(n)&0&0&1&2&3&3&4&4&5&5&6&6&7&8&8&9&9&10&10.
-\end{array}
-\]
+route.  The lower-order values needed below, for $n=0,\ldots,18$, are
+\begin{equation}
+ 0,0,1,2,3,3,4,4,5,5,6,6,7,8,8,9,9,10,10.
+ \label{eq:diameters}
+\end{equation}
 The entries through $15$ are established in \cite{eriksson}; $\TD(16)=9$
 is the independently certified result in \cite{framework}; and $\TD(17)=10$
 is the established value used by the TD(18) route, with bounds discussed in
@@ -105,7 +106,7 @@ At any later state, a known-diameter closure is used only after checking that
 moves already used plus the diameter of the contracted remainder does not
 exceed the active budget.
 
-\section{Exact joint-2 selection}
+\section{The joint selection rule}
 \label{sec:selection}
 Let a \emph{root} be a fixed-point-free valid pair on $21$ symbols.
 Apply the following rule.
@@ -138,7 +139,7 @@ move creating at least two fixed points and are stopped. Known-diameter
 closure is still permitted.
 
 \begin{lemma}[Complete short-move test]
-\label{lem:consecutive}
+\label{lem:fast}
 For fixed-point-free $(\omega,\beta)$, every transposition creating at
 least two fixed points has, up to cyclic writing, support
 $(x,\omega(x),\omega^2(x))$, with distinct symbols in this order in
@@ -197,7 +198,7 @@ contracted remainder does not fit the remaining known-diameter budget.
 \label{sec:endpoints}
 The root $3$-norm is at most ten. Both moves leading to an $18$-symbol
 endpoint decrease it by one, by definition for the first and
-Lemma~\ref{lem:consecutive} for the second. Contraction preserves it, so every
+Lemma~\ref{lem:fast} for the second. Contraction preserves it, so every
 endpoint has $\kappa\leq8$.
 The endpoint inventory contains every fixed-point-free even annotated type
 on $18$ symbols with $\kappa\leq8$. Enumerate partitions into parts at
@@ -220,110 +221,160 @@ is assumed in advance.
 
 \subsection{Budget-valid support clearing}
 \label{sec:clearing}
-A support-clearing sequence uses only symbols of one algebraic cycle and fixes
-its whole support.  Restriction to that support commutes with its moves, so a
-certified local sequence lifts through every companion interleaving.  The
-route admits only the following paper-explicit powers, where the exponent is
-relative to $\beta_S$.
+A \emph{support-clearing sequence} for $\gamma$ consists of applicable
+transpositions supported on its support $S$ and fixes every symbol of $S$.
+Restricting the current cycle to $S$ commutes with each move, while the
+algebraic action leaves companion cycles unchanged. Thus a local
+support-clearing sequence lifts to every valid companion interleaving.
+Table~\ref{tab:clearing} lists the explicit configurations with a sequence
+of length at most $(k+1)/2$, as certified in \cite{framework},
+\nolinkurl{prop:td16-odd-cycle-reduction} and its local power classification.
+The local candidate is not assumed to have a full target.
+The power test is invariant under the class symmetries. Indeed, a support
+reflection $f$ sends $\gamma=\beta_S^e$ to
+$f\gamma^{-1}f=(f\beta_Sf)^{-e}=\beta_{f(S)}^e$; rotations and relabeling
+also preserve the exponent.
 \begin{table}[ht]
 \centering
-\caption{Admitted root support clearings.  Exact counts by least clearing length.}
+\caption{Root support clearings. Powers are relative to the induced current
+cycle; a class is counted once, at its least closing length.}
 \label{tab:clearing}
 \begin{tabular}{@{}rllr@{}}
 \toprule
-$|S|$ & $\gamma$ & Checked bound & Cleared classes\\
+$k$ & $\gamma$ & Global bound & Cleared classes\\
 \midrule
-9  & $\beta_S^7$ & $5+\TD(11)=11$ & 27559987\\
-11 & $\beta_S^6$ & $6+\TD(9)=11$ & 1119597\\
-13 & $\beta_S^7,\beta_S^{10},\beta_S^{11}$ & $7+\TD(7)=11$ & 321358\\
+9  & $\beta_S^7$ & $5+\TD(11)=11$ & 27\,559\,987\\
+11 & $\beta_S^6$ & $6+\TD(9)=11$ & 1\,119\,597\\
+13 & $\beta_S^7,\beta_S^{10},\beta_S^{11}$ & $7+\TD(7)=11$ & 321\,358\\
 17 & $\beta_S^9,\beta_S^{13},\beta_S^{15}$ & $9+\TD(3)=11$ & 22\\
 \bottomrule
 \end{tabular}
 \end{table}
 A class matching more than one row is charged once at its least clearing
-length.  No length-seven or length-fifteen pattern is inherited from TD(18),
-and no unlisted local power is assumed.
+length.  Length-seven clearing gives $4+\TD(13)=12$, exceeding the budget;
+length-five clearing gives $3+\TD(15)=12$. The length-nine power
+$\beta_S^5$ is excluded, and no length-fifteen clearing is assumed.
+No unlisted local power is used. The test removes $29\,000\,964$ oriented
+joint residuals; every remaining class is covered by direct generation or
+endpoint reconstruction.
 
-\section{Encoding, symmetry, and generation}
-The shared framework \cite{framework} supplies fixed-content encoding and the
-orbit correspondence.  A color represents an algebraic cycle.  An unoriented
-color contributes repeated unranked beads; an oriented color contributes each
-cyclic rank once.  Positions follow $\beta$.  Auxiliary symmetries rename equal
-annotated colors and shift oriented rank origins.  Standardization names colors
-by first occurrence and makes each first oriented rank zero.
+\section{Encoding, symmetry, counting, and direct generation}
+\label{sec:generation}
+The shared framework in \cite{framework}, Section
+\nolinkurl{sec:twisted-bracelets}, supplies fixed-content encoding and orbit
+correspondence. For a fixed-point-free annotated type, let a color represent
+an algebraic cycle. An unoriented color contributes repeated unranked beads;
+an oriented color contributes each cyclic rank once. Positions follow
+$\beta$. A ranked order decoding to the unoriented order is excluded.
+Colors determine supports and ranks determine oriented cyclic order.
 
-Rotation and reflection of positions, coupled under reflection with inversion
-of oriented cyclic ranks, give the \emph{twisted dihedral action}.  A twisted
-bracelet is an orbit, not a canonical word; twisted reflection is not ordinary
-word reversal.  Decoder equivariance and full-target realizability identify
-realizable bracelets with extended-toric classes.  Candidate-orbit
-deduplication uses \texttt{TwistedBraceletKey}; valid-pair classes use
-\texttt{ExtendedToricClassKey}.  A \texttt{CyclicTargetCandidate} remains
-unchecked until conversion to a valid pair.
+Auxiliary symmetries rename equal annotated colors and shift oriented rank
+origins. Auxiliary standardization chooses colors by first occurrence and
+sets each first oriented rank to zero. Rotation and reflection of positions
+coupled with inversion of oriented ranks give the \emph{twisted dihedral
+action}. A twisted bracelet is an orbit, not a canonical output word.
+Reflection is not ordinary word reversal. Decoder equivariance and target
+realizability invariance identify realizable bracelets with extended-toric
+classes of pairs (\cite{framework},
+\nolinkurl{thm:bracelet-class-correspondence}); distance is invariant on these
+classes. Fixed points are explicit in the model, but the generation theorem
+used here requires fixed-point freedom, ensured by contraction.
 
-Totally unoriented residual roots use the constrained generator with each
-completed algebraic support forced into reverse current-cycle order. Annotated
-endpoints use the fixed-content generator.  For oriented roots, the constrained generator fixes algebraic
-cycle labels and recursively assigns current-cycle positions.  It may reject a
-partial assignment only after an immediate or joint-2 forbidden route is fully
-determined, or when it cannot complete to an oriented residual. For the latter
-test, once all cycles of length at least four are assigned, discard the prefix
-in the oriented stream if those cycles are all unoriented: every oriented $3$-cycle has an immediate
-gain-three move, and every $2$-cycle is unoriented. This excludes only the
-separately generated totally unoriented residual stream. Its prefixes reject
-an orientation as soon as an algebraic support is complete; the same joint
-forbidden predicates and twisted comparisons are applied. Every surviving leaf is decoded, checked for a full target,
-canonicalized under the complete twisted action, and checked for the selected
-stream orientation. The complete consecutive-edge lemma and preservation of surviving
-support order make the first/second prefix predicates exact. Independent
-exhaustive small-domain replay checks the resulting class set. Support clearing
-partitions the residual stream into $C$ and $O$.
+In code, \nolinkurl{TwistedBraceletKey} identifies candidate orbits and
+\nolinkurl{ExtendedToricClassKey} identifies valid pair classes.
+\nolinkurl{CyclicTargetCandidate} remains unchecked until conversion with
+\nolinkurl{asCyclicTargetPair()} or \nolinkurl{requireCyclicTargetPair()}.
+The fixed-content generator compares standardized prefixes under rotations
+and twisted reflections, rejects forced proper target cycles, and emits
+one representative per realizable orbit; see \cite{framework},
+\nolinkurl{thm:twisted-generation-correctness}. Totally unoriented residual roots use the constrained joint generator with
+unoriented support order enforced on every completed cycle. Endpoints use
+each prescribed fixed-content annotation.
 
-The CPU implementation is Java, including the Burnside counter and the
-joint-2 generator; native sorting sources use CUDA. The generation, counting,
-search, scheduling, persistence, and checking machinery follows the TD(18)
-implementation, with the TD(20) domains and budgets and two-step joint
-reduction/reconstruction. Let a task own a disjoint prefix subtree together
-with its complete mutable state; immutable tables are shared. Bracelet and
-Burnside tasks use the TD(18) prefix and symmetry decomposition. Joint emitter
-and checker prefixes use the same bounded worker pools as TD(18). The emitter retains its adaptive
-frontier; the checker uses an independent prefix frontier.
-For its totally unoriented stream, the checker keeps the largest-cycle anchor
-and places the remaining even-length cycles before the other odd-length cycles.
+For an independent count, fix $\beta=(0\ 1\ \cdots\ N-1)$. Let $I$
+count realizable permutations of the annotated type, $R_\nu$ those
+commuting with $\beta^\nu$, and $S_\nu$ those satisfying
+$f_\nu\omega^{-1}f_\nu=\omega$, where $f_\nu(x)=\nu-x\pmod N$.
+Burnside's identity gives
+\[
+ B=\frac{I+\sum_{\nu=1}^{N-1}R_\nu+\sum_{\nu=0}^{N-1}S_\nu}{2N}.
+\]
+The exact identity term uses orientation refinement and full-cycle character
+sums; rotations use centralizer enumeration, and reflections use alternating
+paths of involutions. See \nolinkurl{docs/td20-burnside-counting.md} for
+the derivation and independent small-domain checks. All terms enforce full
+target realizability. Counting does not supply sorting witnesses.
+
+\subsection{Direct oriented residual generation}
+Fix a cycle-length partition, label its algebraic cycles consecutively, and
+let $v(x)$ be the position of label $x$ in the current cycle. A recursion
+assigns these positions injectively. For each possible qualifying gain-one
+support, precompute its algebraic successor and every consecutive nonfixed
+successor triple. Forbid the conjunction that the first move is applicable
+in $\beta$ and the second in the updated current cycle. Each conjunction
+depends on at most six positions, so it rejects a partial assignment as
+soon as those positions are known. Immediate gain-at-least-two moves give
+three-position constraints. Lemma~\ref{lem:fast} and exhaustive first-support
+construction make the constraints exactly the absence of favorable prefixes.
+
+Choose the least position as each algebraic cycle's origin, order equal
+cycles by their origins, and assign position zero to a largest cycle.
+Every orbit has such a writing. Compare rotations placing zero in a largest
+cycle and the corresponding twisted reflections. A position reflection $f$
+acts on algebraic images as $\omega\mapsto f\omega^{-1}f$.
+The least surviving writing is unique per candidate orbit. Reject forced
+proper target cycles early; at every leaf require a full target and reject
+totally unoriented pairs. The output is exactly the oriented joint residual
+class stream. Support clearing gives the final oriented direct-root stream.
+These constraints act during prefix construction. The totally unoriented
+stream uses the same forbidden predicates and symmetry tests, and enforces
+reverse current-cycle order whenever an algebraic support is completely
+assigned. Its output is exactly the totally unoriented residual stream.
+
+For this stream, the independent checker keeps the largest-cycle anchor and
+places the remaining even-length cycles before the other odd-length cycles.
 Increasing anchor positions are enforced for every repeated length, including
 cycles separated by this order. Permuting disjoint algebraic cycle labels
 induces a bijection of rank placements with identical actual algebraic images.
 The same largest-cycle anchors and twisted comparisons select the orbit
 representatives, and every forbidden support is tested once fully determined.
 Thus the placement order changes when a prefix can be rejected, not the class set.
-Worker counts are detected from JVM-visible processors, with the same
-configurable worker and GPU-slot allowances. Completion joins every worker
-and sums exact counts. A Java partition report is atomically published only
-after this join. Only reports with the active joint-2 format and checked implementation
-provenance may be reused. Superseded route reports are rejected.
 
-For an independent all-unoriented count, fix
-$\beta=(0\ 1\ \cdots\ N-1)$.  Let $I$ count realizable permutations of an
-annotated type, $R_\nu$ those commuting with $\beta^\nu$, and $S_\nu$ those
-satisfying $f_\nu\omega^{-1}f_\nu=\omega$, where
-$f_\nu(x)=\nu-x\pmod N$.  Burnside's identity is
-\[
- B=\frac{I+\sum_{\nu=1}^{N-1}R_\nu+\sum_{\nu=0}^{N-1}S_\nu}{2N}.
-\]
-All terms enforce full-target realizability.  The identity term uses
-orientation refinement and full-cycle character sums; rotations use
-centralizer enumeration; reflections use alternating paths of involutions.
-The independent derivation is in
-\nolinkurl{docs/td20-burnside-counting.md}.  Counting provides no sorting
-witness.
+The TD(20) implementation also rejects an oriented-stream prefix once all
+cycles of length at least four have been placed and are unoriented: every
+oriented $3$-cycle has an immediate gain-three move, and every $2$-cycle is
+unoriented. The separately generated totally unoriented residual stream is
+retained. Disjoint prefix subtrees use bounded worker pools and exact joined
+counts. Java partition reports are atomically published after all workers
+complete; superseded-route formats and incomplete shard unions are rejected.
+These implementation checks supplement the shared generation argument.
 
-\section{Root and endpoint counts}
+\section{Complete root counts}
 \label{sec:counts}
 Evenness of $\omega$ is equivalent to an even number of even-length cycles.
 There are exactly $83$ nonincreasing partitions of $21$ into parts at least
 two satisfying this parity condition.  Let $U$ count all totally unoriented root classes and $R$ their residual
 classes after joint-2 selection. Let $J$ count oriented joint-2 residuals before support clearing, $C$ the
 cleared subset, and $O=J-C$.  A row contributes $R+O$ direct obligations.
+
+The complete counts are
+\[
+ U=12\,704\,114\,061,\quad J=2\,051\,578\,111,\quad
+ C=29\,000\,964,\quad O=2\,022\,577\,147,
+\]
+\[
+ R=124\,395\,153,\qquad R+O=2\,146\,972\,300.
+\]
+Of the $J$ classes, $847\,739\,882$ have no qualifying first move and
+$1\,203\,838\,229$ have qualifying moves but no favorable pair. The singleton
+partition $(21)$ contributes $2\,106$: two without a qualifying first move
+and $2\,104$ with such moves but no favorable pair. These are structural
+availability counts, not sorting-failure counts. All-odd rows have $R=U$
+by Lemma~\ref{lem:unoriented-first}, and zero-census rows have $R=0$.
+The reduction removes $12\,579\,718\,908$ former direct unoriented
+obligations, or $99.02\%$ of $U$. Row $83$, of type
+$(3,3,3,2,2,2,2,2,2)$, has $U=1\,165\,021\,974$ and $R=0$.
+The direct total excludes final inverse reconstruction obligations.
 
 Exact counts require completion and reconciliation of these artifacts:
 \begin{enumerate}
@@ -567,7 +618,7 @@ residue for inverse reconstruction is determined only by subsequent witness
 checking; its size is not a premise or a completed count here.
 
 The previous combined artifact format
-\nolinkurl{td20-joint2-selection-summary-v2} records the retained $U,J,C,O$
+\nolinkurl{td20-joint2-selection-summary-v1} records the retained $U,J,C,O$
 counts, the support-clearing split, and the endpoint totals. Its $U+O$ direct
 total belongs to the superseded route. The active route additionally requires
 every explicit $R$ row and its versioned count and regeneration reports.
@@ -576,46 +627,11 @@ Its direct total is $R+O$. The previous summary's explicit
 \nolinkurl{td20_proved=false} fields prevent a count from masquerading as a
 proof result.
 
-\section{Two-wave inverse coverage}\label{sec:inverse}
-An \emph{endpoint residual} is an $18$-symbol class without a checked
-nine-move discharge. A search miss is not a lower bound. Every endpoint
-obligation follows the same gain pattern $(1,2)$.
-\begin{enumerate}
-\item Restore two fixed points in every cyclic gap distribution and reverse
-all supports containing both restored symbols and one surviving symbol.
-Require a fixed-point-free, non-totally-unoriented valid predecessor, exact
-forward gain two, and odd-cycle increase two. Deduplicate the $20$-symbol
-classes with budget ten; discharge checked results and propagate the rest.
-\item Restore one fixed point in every gap and reverse every support
-containing it and two surviving symbols. Require a fixed-point-free,
-valid predecessor of either orientation, exact forward gain one, and
-odd-cycle increase two. Deduplicate the $21$-symbol roots; every remaining
-class needs a checked eleven-move result.
-\end{enumerate}
-Ordered restored labels along current-cycle traversal after an old anchor
-enumerate every gap multiplicity vector, including both restored symbols in
-one gap. Disk-backed sets use deterministic extended-toric keys. No route
-tags are required because the inverse gains are fixed.
-\begin{proposition}[Inverse coverage]
-Every root routed to an unresolved endpoint is discharged at the endpoint or
-intermediate wave, or occurs among the final budget-eleven root obligations.
-\end{proposition}
-\begin{proof}
-Take an actual gain-$(1,2)$ path. Its second move uses both newly fixed
-symbols and one survivor. Their gaps and support are enumerated; reversing
-the actual support passes forward replay and produces the predecessor.
-Likewise, the first move uses its newly fixed symbol and two survivors,
-which occur in the second wave. The intermediate is non-totally-unoriented because it admits the second
-move. The root can have either orientation; the gain-one wave does not
-exclude totally unoriented predecessors. Relabeling restored symbols and class canonicalization
-transport supports and gaps bijectively, so deduplication loses no compatible
-root. An endpoint result costs at most $2+9=11$ from the root and an
-intermediate result at most $1+10=11$. Otherwise the final root result costs
-at most eleven moves.
-\end{proof}
-Extra generated roots are checked within the same budget. Completeness does
-not depend on a predicted obstruction set.
-
+The active helper \nolinkurl{tools/audit/summarize_joint_counts.py} reconciles
+the retained $U,J,C,O$ report with every explicit paper $R$ row, rejecting
+missing, duplicate, pending, or inconsistent rows. Its format is
+\nolinkurl{td20-joint-selection-summary-v3}; the active direct total is $R+O$.
+It checks count coverage, not witnesses or final inverse obligations.
 
 The Java command \nolinkurl{CountTD20UnorientedResiduals} counts $R$ using the
 constrained generator. It writes one deterministic partition report with
@@ -633,30 +649,122 @@ record the domain, partition number and key, count, implementation, and
 completeness flag. Count-only regeneration visits the same accepted leaves
 as class emission, without decoding or retaining representatives.
 
-\section{Certificates and completion}
-Generation, sorting, and checking are separate.  Direct roots use budget
-$11$, endpoints budget $9$, and inverse waves budgets $10$ and $11$.
-A complete witness must sort its represented class.  A diameter closure stores
-a replayable prefix and is accepted only when its used moves plus the checked
-diameter of the contracted remainder fits the active budget.
+\section{Final reconstruction from endpoint failures}
+\label{sec:inverse}\label{sec:avoidance}
+An \emph{endpoint residual} is a generated $18$-symbol class without a
+checked discharge within nine moves. A bounded-search miss is not a lower
+bound. Process residuals after endpoint generation and witness checking.
+The verifier regenerates the entire endpoint inventory and treats every
+missing nine-move discharge as a residual, even if the stored obstruction
+marker is absent.
+Only a gain-one then gain-two prefix leads to this domain. Its complete
+inverse construction is as follows.
+\begin{enumerate}
+\item Restore two fixed points in every cyclic gap distribution of the
+$18$-symbol endpoint, producing $20$ symbols. Label restored symbols in
+current-cycle traversal order. Reverse every transposition supported on
+both restored symbols and one original symbol. Retain valid, fixed-point-free,
+non-totally-unoriented predecessors whose exact forward replay creates those
+two fixed points and increases the odd-length-cycle count by two.
+\item Deduplicate predecessors by extended-toric class. A checked GPU sorting
+result within ten moves, including a persisted known-diameter closure,
+also closes every root path reaching that predecessor after one move.
+Propagate every other class.
+\item Restore one fixed point in every cyclic gap of each propagated
+$20$-symbol predecessor. Reverse every support containing that symbol and
+any two original symbols. Retain valid fixed-point-free roots of either orientation and whose exact forward replay is qualifying with gain one.
+\item Deduplicate roots by extended-toric class. Each needs a persisted
+known-diameter closure or a complete sorting witness within eleven transpositions. Such a
+root witness starts at the root and uses the full root budget.
+\end{enumerate}
+Deduplication uses a disk set with deterministic class keys. Multiple
+constructions impose one obligation per class and budget. Intermediate
+budget-ten discharges are persisted and independently replayed.
 
-The emitter may use bounded CPU prefixes and CUDA move ordering as heuristics.
-The default CPU prefix deadline is $10$ milliseconds for every root, endpoint,
-and reconstructed class; depth and support limits may end the prefix earlier.
-A miss or timeout retains the unchanged obligation with its full budget.
-Totally unoriented states may be searched normally; the successor stop in
-Section~\ref{sec:selection} concerns the required second gain, not witness search.
-Every persisted set and certificate uses a versioned format, deterministic
-keys, and exact counts.  The database schema value is \nolinkurl{joint2-selection-v2}.
-Superseded route schemas and checkpoints are rejected. Read-only imports
-supply individually replayed witnesses, never class counts or coverage.
+\begin{proposition}[Inverse coverage]
+Every root selected for an $18$-symbol endpoint is discharged by a checked
+nine-move endpoint result or appears in the inverse construction, unless
+a checked intermediate ten-move closure already covers its path.
+\end{proposition}
+\begin{proof}
+Restore the two fixed points created by the actual second move in their
+actual cyclic gaps. Both lie in that move's support, since all other
+algebraic images are unchanged; its third symbol is an original endpoint
+symbol. Thus the first inverse wave contains the actual predecessor.
+Permuting only restored labels bijects supports and preserves pair classes,
+so the chosen restored-label order loses no class. Forward replay admits
+the actual edge. The first move likewise uses its newly fixed symbol and
+two others, so its actual gap and support occur in the second wave.
+Only the gain-two intermediate must be non-totally-unoriented, since it
+admits the second move; the gain-one root may be totally unoriented. Taking a class representative transports moves and gap choices
+bijectively. A complete endpoint result costs at most $2+9=11$ from the
+root, and an intermediate result costs at most $1+10=11$. Otherwise the
+independently verified root result uses at most eleven moves.
+\end{proof}
+The construction may include extra roots; each is checked within the same
+budget. Its completeness does not depend on a predicted obstruction set.
 
-The checker has no emitter dependency.  It regenerates all $83$ root keys,
-all $214$ endpoint annotations, every direct class, and both inverse
-waves from the certificate database.  Missing obstruction markers cannot omit
-work.  Checksums, manifests, and checkpoints are not proof inputs.  Each
-record is decoded and replayed; malformed, missing, over-budget, or incorrect
-records leave an unresolved obligation.
+\section{Certificates and completion criteria}
+The workflow separates exhaustive generation, sorting, and independent
+verification. The Java emitter generates classes on CPU and may first try a
+bounded CPU sorting prefix for direct roots and endpoints. It replays and
+persists every successful prefix as a complete witness or a known-diameter
+closure; a prefix miss leaves the
+original obligation and its full budget for CUDA search. Prefix move ordering
+introduces no structural reduction, including at totally unoriented states.
+Reconstructed classes are deduplicated, checked for previously established
+sorting witnesses, and given the same sound CPU prefix heuristic under a
+wall-clock deadline. A prefix miss or timeout retains no partial path and
+sends the unchanged class with its full budget to GPU search.
+The checker has no emitter dependency and independently regenerates roots,
+endpoints, and inverse waves. The certificate format is their interface.
+Every direct root requires a checked budget-eleven result, either a complete
+sorting witness or a known-diameter closure. The same alternatives apply to
+endpoints with budget nine and reconstructed intermediates with budget ten.
+
+The GPU sorter permits only transpositions whose change in
+$c_{\mathrm{odd}}$ is zero or two. At every search depth, including depth
+zero and states with existing fixed points, it accepts identity or exits when
+the established diameter of the contracted remainder fits the unused budget.
+Its search depth is bounded by the full obligation budget.
+A search miss under these restrictions is not a lower bound.
+
+The database has two column families. In the default family, the reserved
+UTF-8 key \nolinkurl{td20-schema} has value \nolinkurl{joint2-selection-v2};
+other entries map raw canonical instance keys to sorting-result records.
+The \nolinkurl{obstructions} family maps raw keys to empty values. Instance
+symbols use five bits, and the standard current cycle is implicit in the raw
+key, so canonicalization precedes persistence. A sorting-result value starts
+with one kind byte (zero for complete, one for diameter closure) and one
+move-count byte, followed by exactly that many fifteen-bit symbol triples,
+with zero padding to a byte boundary. A zero-move record is permitted when
+identity or the initial known diameter already closes the budget. Records
+contain at most eleven transpositions. Unknown kinds, inconsistent lengths,
+nonzero padding, and missing required records are rejected.
+
+Every result is replayed for applicability and target preservation. Complete
+witnesses must reach identity. For a diameter closure, the checker counts the
+actual remaining nonfixed symbols, uses the independent diameter table, and
+checks the replayed move count plus that diameter against the requested budget.
+The GPU's stopping flag is not a proof input. A valid result with a larger
+required budget is a miss for a smaller budget; malformed or incorrect data
+is rejected. Optional external complete witnesses are opened read-only and
+replayed. A partial imported database never establishes completeness.
+
+An obstruction marker is not proof of a lower bound. Missing markers cannot
+reduce the regenerated obligation set. Checksums and sidecar manifests are
+not proof inputs. A diameter-closure record is a checked upper-bound argument,
+not a complete sorting witness. The checker replays its stored transpositions
+and verifies contraction and the remaining diameter directly from the
+database. Every missing endpoint discharge retains its inverse-coverage
+obligation; every missing direct-root or required reconstructed-root discharge
+prevents completion.
+
+The documented TD(20) scheduling exception applies a ten-millisecond CPU
+prefix deadline to direct roots, endpoints, and both reconstructed waves,
+through \nolinkurl{td20.cpuPrefixMillis}. Depth and support limits can stop it
+earlier. Every miss or timeout preserves the full original GPU obligation.
+Superseded route schemas and checkpoints are rejected.
 
 \begin{theorem}[Conditional upper bound]
 Assume $\TD(18)=10$, the lower-order diameter and shared-framework premises,

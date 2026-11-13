@@ -33,6 +33,10 @@ final = load("final_joint2_publisher", FINAL_SCRIPT)
 def pending_paper() -> str:
     """Tests use a pending fixture regardless of production count progress."""
     paper = PAPER.read_text()
+    # These publishers retain the pre-R envelope; isolate that legacy fixture.
+    paper = paper.replace(
+        r"\newcommand{\jointrow}[6]{#1 & $(#2)$ & #3 & \csname residual#1\endcsname & #4 & #5 & #6\\}",
+        r"\newcommand{\jointrow}[6]{#1 & $(#2)$ & #3 & #4 & #5 & #6\\}")
     paper = re.sub(r"^\\(?:pendingjointrow|unorientedjointrow|jointrow)\{(\d+)\}\{([^}]+)\}[^\n]*$",
                    lambda match: rf"\pendingjointrow{{{match[1]}}}{{{match[2]}}}",
                    paper, flags=re.MULTILINE)
@@ -44,7 +48,7 @@ def pending_paper() -> str:
     paper = re.sub(r"^\\multicolumn\{2\}\{l\}\{Total\}[^\n]*$",
         lambda _: r"\multicolumn{2}{l}{Total} & \multicolumn{4}{c}{\emph{pending exact artifacts}}\\",
         paper, flags=re.MULTILINE)
-    paper = re.sub(r"^((?:9  |11 |13 |17 )[^\n]+ & )(?:pending|[0-9]+)(\\\\)$",
+    paper = re.sub(r"^((?:9  |11 |13 |17 )[^\n]+ & )(?:pending|[0-9]+(?:\\,[0-9]{3})*)(\\\\)$",
                    lambda match: match[1] + "pending" + match[2], paper, flags=re.MULTILINE)
     return paper.replace("Exact counts by least clearing length.", "Counts are pending.")
 
@@ -220,7 +224,7 @@ class JointTwoPublisherTest(unittest.TestCase):
         self.assertIn("td20_proved=false", final_text)
         self.assertIn("sorting_certificates_checked=false", final_text)
         self.assertNotIn("pending exact artifacts", final_text)
-        self.assertIn("The endpoint and root counts are complete", final_text)
+        self.assertIn("The endpoint counts, unoriented census, and oriented counts are complete.", final_text)
         self.assertIn("The full endpoint cover contains $11$ classes.", final_text)
         self.assertIn("Elementary closures discharge $3$ classes, leaving", final_text)
         self.assertIn("$8$ classes requiring a nine-move discharge or inverse coverage.", final_text)

@@ -102,3 +102,5 @@
   for asynchronous persistence.
 - Run mvn -pl emitter -am test and mvn -pl checker -am test for CPU-side work.
   Run CUDA-dependent tests only when the environment is configured for them.
+
+- Run Java entry points through JShell; use tools/td20 for prepared classpaths.

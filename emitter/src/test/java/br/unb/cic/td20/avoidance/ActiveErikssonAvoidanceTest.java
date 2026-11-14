@@ -2,6 +2,7 @@ package br.unb.cic.td20.avoidance;
 
 import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.ExtendedToricClassKey;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,26 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActiveErikssonAvoidanceTest {
+    @Test void splitStagesPreserveEveryRootInBothInverseBranches(@TempDir Path directory) throws Exception {
+        Path source=Files.createDirectory(directory.resolve("source"));
+        try (var set=new DiskStateSet(source.resolve("after-one"))) {
+            set.add(pair(ErikssonRoute.ROOT_SYMBOLS-1),ErikssonRoute.ROOT_BUDGET-1);
+            set.add(pair(ErikssonRoute.ROOT_SYMBOLS),ErikssonRoute.ROOT_BUDGET-1);
+            assertEquals(2,set.seal());
+        }
+        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1).write(source);
+        Set<ExtendedToricClassKey> expected=ConcurrentHashMap.newKeySet(),actual=ConcurrentHashMap.newKeySet();
+        var baseline=ErikssonAvoidance.resume(source,Files.createDirectory(directory.resolve("baseline")),(p,b)->{
+            if (b<ErikssonRoute.ROOT_BUDGET) return false;
+            assertTrue(expected.add(p.extendedToricClassKey())); return true;
+        },null);
+        var split=ErikssonAvoidance.resume(source,Files.createDirectory(directory.resolve("split")),
+                (p,b)->false,(p,b)->{
+                    if (b<ErikssonRoute.ROOT_BUDGET) return false;
+                    assertTrue(actual.add(p.extendedToricClassKey())); return true;
+                },null);
+        assertFalse(expected.isEmpty()); assertEquals(expected,actual); assertEquals(baseline,split);
+    }
     @Test void resumedAfterTwoWaveProducesBothAfterOneDomains(@TempDir Path directory) throws Exception {
         Path source=Files.createDirectory(directory.resolve("source")),work=Files.createDirectory(directory.resolve("next"));
         try (var set=new DiskStateSet(source.resolve("after-two"))) {

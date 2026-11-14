@@ -47,7 +47,7 @@ class ErikssonWitnessEmitterTest {
         try (var writer = new AsyncCertificateWriter(directory.resolve("certificates"), 60)) {
             WitnessSearch.installWriter(writer);
             try {
-                assertTrue(ErikssonWitnessEmitter.settleReconstructed(pair, 2, writer));
+                assertTrue(ErikssonWitnessEmitter.settleReconstructedCpu(pair, 2));
                 writer.flush();
                 assertEquals(1, writer.findResult(pair, 2).orElseThrow().moves().size());
             } finally { WitnessSearch.uninstallWriter(writer); }

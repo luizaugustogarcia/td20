@@ -77,15 +77,20 @@ public final class DiskStateSet implements AutoCloseable {
     public void add(CyclicTargetPair pair, int maximumMoves) {
         // Orbit minimization is CPU work and must not serialize all producers on the disk lock.
         var state = new State(pair.canonicalRepresentative(), maximumMoves);
-        byte[] raw = CertificateCodec.keyFor(state.pair());
-        byte[] key = ByteBuffer.allocate(raw.length + 3).put(VERSION).put((byte) maximumMoves)
-                .put((byte) pair.getBeta().size()).put(raw).array();
+        byte[] key = encode(state);
         synchronized (this) {
             requireOpen();
             if (readOnly || size >= 0) throw new IllegalStateException("State set is sealed");
             pending.add(ByteBuffer.wrap(key));
             if (pending.size() >= bufferKeys) flushPending();
         }
+    }
+
+    static byte[] encode(State state) {
+        var pair = state.pair().canonicalRepresentative();
+        byte[] raw = CertificateCodec.keyFor(pair);
+        return ByteBuffer.allocate(raw.length + 3).put(VERSION).put((byte) state.maximumMoves())
+                .put((byte) pair.getBeta().size()).put(raw).array();
     }
 
     private void flushPending() {
@@ -173,7 +178,7 @@ public final class DiskStateSet implements AutoCloseable {
         }
     }
 
-    private static State decode(byte[] key, byte[] value) {
+    static State decode(byte[] key, byte[] value) {
         if (key.length < 4 || key[0] != VERSION || value.length != 0)
             throw new IllegalStateException("Malformed reconstruction state");
         return new State(CertificateCodec.pairForKey(Arrays.copyOfRange(key, 3, key.length),

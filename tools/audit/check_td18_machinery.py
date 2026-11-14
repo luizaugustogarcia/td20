@@ -68,9 +68,8 @@ def adapt(relative: str, text: str) -> str:
                             '        log.info("General CPU prefix deadline: {} ms for all phases",CpuPrefixSearch.timeoutMillis());')
         text = text.replace('                    log.info("Reconstruction CPU prefix deadline: {} ms before GPU fallback",\n'
                             '                            RECONSTRUCTION_CPU_PREFIX_MILLIS);\n', '')
-        text = text.replace('        var result = WitnessSearch.searchWithCpuPrefixTimeout(\n'
-                            '                pair, budget, RECONSTRUCTION_CPU_PREFIX_MILLIS);',
-                            '        var result = WitnessSearch.search(pair, budget);')
+        text = text.replace('pair, budget, RECONSTRUCTION_CPU_PREFIX_MILLIS);',
+                            'pair, budget, CpuPrefixSearch.timeoutMillis());')
         begin = text.find('    private static long reconstructionCpuPrefixMillis() {')
         if begin >= 0:
             end = text.index('\n    }', begin) + len('\n    }')

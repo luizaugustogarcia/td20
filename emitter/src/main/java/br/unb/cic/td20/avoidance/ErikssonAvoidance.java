@@ -15,6 +15,11 @@ public final class ErikssonAvoidance {
     public record Result(long endpoints,long afterTwo,long afterOne,long roots,long unresolved) { }
     public static Result resolve(DiskStateSet endpoints,Path work,BiPredicate<CyclicTargetPair,Integer> discharge,
                                  Function<List<DiskStateSet.State>,boolean[]> lookup) {
+        return resolve(endpoints,work,discharge,(pair,budget)->false,lookup);
+    }
+    public static Result resolve(DiskStateSet endpoints,Path work,BiPredicate<CyclicTargetPair,Integer> cpu,
+                                 BiPredicate<CyclicTargetPair,Integer> gpu,
+                                 Function<List<DiskStateSet.State>,boolean[]> lookup) {
         long count=endpoints.seal();
         try (var afterTwo=new DiskStateSet(work.resolve("after-two"))) {
             endpoints.forEachConcurrently(workers(),state -> {
@@ -23,60 +28,71 @@ public final class ErikssonAvoidance {
             });
             var checkpoint=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_TWO,count,afterTwo.seal(),-1,-1);
             checkpoint.write(work);
-            return afterTwo(checkpoint,afterTwo,work,discharge,lookup);
+            return afterTwo(checkpoint,afterTwo,work,cpu,gpu,lookup);
         }
     }
     public static Result resume(Path source,Path work,BiPredicate<CyclicTargetPair,Integer> discharge,
+                                Function<List<DiskStateSet.State>,boolean[]> lookup) {
+        return resume(source,work,discharge,(pair,budget)->false,lookup);
+    }
+    public static Result resume(Path source,Path work,BiPredicate<CyclicTargetPair,Integer> cpu,
+                                BiPredicate<CyclicTargetPair,Integer> gpu,
                                 Function<List<DiskStateSet.State>,boolean[]> lookup) {
         var checkpoint=ErikssonCheckpoint.read(source);
         String name=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? "after-two":checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? "after-one":"roots";
         long count=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? checkpoint.afterTwo():checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? checkpoint.afterOne():checkpoint.roots();
         try (var states=DiskStateSet.openSealed(source.resolve(name),count)) {
             return switch (checkpoint.stage()) {
-                case AFTER_TWO -> afterTwo(checkpoint,states,work,discharge,lookup);
-                case AFTER_ONE -> afterOne(checkpoint,states,work,discharge,lookup);
-                case ROOTS -> roots(checkpoint,states,discharge,lookup);
+                case AFTER_TWO -> afterTwo(checkpoint,states,work,cpu,gpu,lookup);
+                case AFTER_ONE -> afterOne(checkpoint,states,work,cpu,gpu,lookup);
+                case ROOTS -> roots(checkpoint,states,work,cpu,gpu,lookup);
             };
         }
     }
     private static Result afterTwo(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
-                                    BiPredicate<CyclicTargetPair,Integer> discharge,Function<List<DiskStateSet.State>,boolean[]> lookup) {
+                                    BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
+                                    Function<List<DiskStateSet.State>,boolean[]> lookup) {
         try (var afterOne=new DiskStateSet(work.resolve("after-one"))) {
-            states.forEachConcurrently(workers(),checked(lookup,1),state -> {},state -> {
+            ReconstructionPipeline.process(states,work.resolve("after-two-search.queue"),workers(),
+                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,1),cpu,gpu,state -> {
                 require(state,1);
-                if (discharge.test(state.pair(),state.maximumMoves())) return;
                 for (int gain:new int[]{2,3}) ErikssonInverseReconstruction.preimages(state.pair(),gain,
                         parent -> afterOne.add(parent,ErikssonRoute.ROOT_BUDGET-1));
             });
             var next=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),checkpoint.afterTwo(),afterOne.seal(),-1);
-            next.write(work); return afterOne(next,afterOne,work,discharge,lookup);
+            next.write(work); return afterOne(next,afterOne,work,cpu,gpu,lookup);
         }
     }
     private static Result afterOne(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
-                                    BiPredicate<CyclicTargetPair,Integer> discharge,Function<List<DiskStateSet.State>,boolean[]> lookup) {
+                                    BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
+                                    Function<List<DiskStateSet.State>,boolean[]> lookup) {
         try (var roots=new DiskStateSet(work.resolve("roots"))) {
-            states.forEachConcurrently(workers(),checked(lookup,2),state -> {},state -> {
+            ReconstructionPipeline.process(states,work.resolve("after-one-search.queue"),workers(),
+                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,2),cpu,gpu,state -> {
                 require(state,2);
-                if (discharge.test(state.pair(),state.maximumMoves())) return;
                 int gain=state.pair().getBeta().size()==ErikssonRoute.ROOT_SYMBOLS-1 ? 1:0;
                 ErikssonInverseReconstruction.preimages(state.pair(),gain,parent -> roots.add(parent,ErikssonRoute.ROOT_BUDGET));
             });
             var next=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.ROOTS,checkpoint.endpoints(),checkpoint.afterTwo(),checkpoint.afterOne(),roots.seal());
-            next.write(work); return roots(next,roots,discharge,lookup);
+            next.write(work); return roots(next,roots,work,cpu,gpu,lookup);
         }
     }
-    private static Result roots(ErikssonCheckpoint checkpoint,DiskStateSet states,BiPredicate<CyclicTargetPair,Integer> discharge,
+    private static Result roots(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
+                                 BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
                                  Function<List<DiskStateSet.State>,boolean[]> lookup) {
         AtomicLong unresolved=new AtomicLong();
-        states.forEachConcurrently(workers(),checked(lookup,3),state -> {},state -> {
-            require(state,3); if (!discharge.test(state.pair(),state.maximumMoves())) unresolved.incrementAndGet();
+        ReconstructionPipeline.process(states,work.resolve("roots-search.queue"),workers(),
+                ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,3),cpu,gpu,state -> {
+            require(state,3); unresolved.incrementAndGet();
         });
         return new Result(checkpoint.endpoints(),checkpoint.afterTwo(),checkpoint.afterOne(),checkpoint.roots(),unresolved.get());
     }
     private static int workers() { return DirectTwistedBraceletGenerator.configuredWorkerCount(); }
     private static Function<List<DiskStateSet.State>,boolean[]> checked(Function<List<DiskStateSet.State>,boolean[]> lookup,int stage) {
-        if (lookup==null) return null;
-        return batch -> { for (var state:batch) require(state,stage); return lookup.apply(batch); };
+        return batch -> {
+            for (var state:batch) require(state,stage);
+            return lookup==null ? new boolean[batch.size()]:lookup.apply(batch);
+        };
     }
     private static void require(DiskStateSet.State state,int stage) {
         int n=state.pair().getBeta().size(),budget=ErikssonRoute.ROOT_BUDGET;

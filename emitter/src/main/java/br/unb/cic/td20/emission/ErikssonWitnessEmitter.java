@@ -70,8 +70,10 @@ public final class ErikssonWitnessEmitter {
                 if (options.avoidance()) {
                     progress.phase(() -> "final inverse reconstruction");
                     var result=options.resumeWork==null
-                            ? ErikssonAvoidance.resolve(endpoints,work,(pair,budget)->settleReconstructed(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch)
-                            : ErikssonAvoidance.resume(options.resumeWork,work,(pair,budget)->settleReconstructed(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch);
+                            ? ErikssonAvoidance.resolve(endpoints,work,ErikssonWitnessEmitter::settleReconstructedCpu,
+                                    (pair,budget)->settleReconstructedGpu(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch)
+                            : ErikssonAvoidance.resume(options.resumeWork,work,ErikssonWitnessEmitter::settleReconstructedCpu,
+                                    (pair,budget)->settleReconstructedGpu(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch);
                     writer.flush();
                     log.info("Final reconstruction: {}", result);
                     if (result.unresolved() != 0) throw new IllegalStateException("Unresolved reconstructed roots: " + result.unresolved());
@@ -113,8 +115,14 @@ public final class ErikssonWitnessEmitter {
         return false;
     }
 
-    static boolean settleReconstructed(CyclicTargetPair pair, int budget, AsyncCertificateWriter writer) {
-        var result = WitnessSearch.search(pair, budget);
+    static boolean settleReconstructedCpu(CyclicTargetPair pair, int budget) {
+        var result = WitnessSearch.searchCpu(
+                pair, budget, CpuPrefixSearch.timeoutMillis());
+        return result.disposition() != WitnessSearch.Disposition.RESIDUAL;
+    }
+
+    static boolean settleReconstructedGpu(CyclicTargetPair pair, int budget, AsyncCertificateWriter writer) {
+        var result = WitnessSearch.searchGpu(pair, budget);
         if (result.disposition() != WitnessSearch.Disposition.RESIDUAL) return true;
         writer.enqueueObstruction(pair, budget);
         return false;

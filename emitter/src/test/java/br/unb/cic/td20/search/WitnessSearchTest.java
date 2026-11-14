@@ -159,4 +159,19 @@ class WitnessSearchTest {
             }
         }
     }
+    @Test void cpuStagePersistsClosuresAndLeavesMissesForTheGpuWithoutObstructionMarkers(@TempDir Path path) {
+        try (var writer = new AsyncCertificateWriter(path,60)) {
+            WitnessSearch.installWriter(writer);
+            try {
+                assertEquals(WitnessSearch.Disposition.RESIDUAL,WitnessSearch.searchCpu(pair(),2,0).disposition());
+                writer.flush(); assertTrue(writer.findResult(pair(),2).isEmpty());
+                writer.forEachObstruction(key -> fail("A heuristic CPU miss is not a final discharge miss"));
+                assertEquals(WitnessSearch.Disposition.DIAMETER_CLOSURE,WitnessSearch.searchCpu(pair(),2,1000).disposition());
+                writer.flush();
+                assertEquals(1,writer.findResult(pair(),2).orElseThrow().moves().size());
+                assertEquals(WitnessSearch.Disposition.DIAMETER_CLOSURE,WitnessSearch.searchCpu(pair(),2,0).disposition());
+                assertThrows(IllegalArgumentException.class,()->WitnessSearch.searchCpu(pair(),2,-1));
+            } finally { WitnessSearch.uninstallWriter(writer); }
+        }
+    }
 }

@@ -72,6 +72,13 @@ public final class WitnessSearch {
         return searchWithCpuPrefixTimeout(input, maximumMoves, maximumMillis, WitnessSearch::dispatchGpu);
     }
 
+    /** Replays stored results and persists CPU closures without entering a GPU queue. */
+    public static SearchResult searchCpu(final CyclicTargetPair input, final int maximumMoves,
+                                         final long maximumMillis) {
+        if (maximumMillis < 0) throw new IllegalArgumentException("CPU prefix timeout cannot be negative");
+        return search(input, maximumMoves, Math.multiplyExact(maximumMillis, 1_000_000L), null);
+    }
+
     @FunctionalInterface
     interface GpuSearch { GPUSortingSearch.SearchOutcome search(CyclicTargetPair pair, int maximumMoves); }
 
@@ -101,6 +108,7 @@ public final class WitnessSearch {
                     : CpuPrefixSearch.searchWithinNanos(pair, maximumMoves, cpuPrefixNanos);
             if (cpu.isPresent()) return persist(pair, cpu.orElseThrow(), maximumMoves, writer);
         }
+        if (dispatcher == null) return SearchResult.residual();
         final var outcome = dispatcher.search(pair, maximumMoves);
         if (outcome.disposition() == GPUSortingSearch.Disposition.RESIDUAL) return SearchResult.residual();
         final var moves = outcome.moves().stream().map(move -> Cycle.of(move[0], move[1], move[2])).toList();

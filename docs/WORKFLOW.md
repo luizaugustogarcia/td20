@@ -57,6 +57,12 @@ resume with `--phase=avoidance --resume-work=PATH`; its version, route, domain,
 budget, record validity and exact count are checked. Incompatible checkpoints are
 rejected. Resume is a computation convenience, not proof verification.
 
+CPU sorting and GPU dispatch use separate worker pools with an append-only disk
+handoff, so waiting for GPU results cannot stop the CPU scan. Progress reports
+give per-wave coverage and backlog counts. Every handoff is drained before
+sealing the next wave; interrupted handoffs are regenerated from the sealed
+source rather than trusted as complete coverage.
+
 ## Verify complete coverage
 
 ```bash

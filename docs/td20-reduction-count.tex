@@ -511,7 +511,10 @@ within the stated budgets. Missing obstruction markers cannot omit a branch.
 Every persisted set has a version, deterministic keys, explicit budgets,
 domains and counts, and rejects missing data. Large inverse sets are disk-backed;
 asynchronous certificate persistence uses bounded queues. A witness proves an
-upper bound only for its represented class. The CPU checker regenerates every
+upper bound only for its represented class. During emission, separate CPU and
+GPU worker pools communicate through a versioned disk queue. Every source
+class is accounted for and every queued search is joined before the next wave
+is sealed; interrupted queues are regenerated from the sealed source wave. The CPU checker regenerates every
 root obligation, every endpoint class and every inverse wave, and replays
 witnesses from the certificate database. Emitter checkpoints are performance
 state, not proof inputs. Checkpoint versions identify the exact route and state layout; checksums and sidecar manifests are not proof inputs.

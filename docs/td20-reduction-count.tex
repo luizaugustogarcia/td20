@@ -5,799 +5,524 @@
 \usepackage[hyphens]{url}
 \usepackage[hidelinks]{hyperref}
 \newcommand{\TD}{\operatorname{TD}}
-\newcommand{\jointrow}[6]{#1 & $(#2)$ & #3 & \csname residual#1\endcsname & #4 & #5 & #6\\}
 \newcommand{\pending}{\textit{pending}}
-\newcommand{\unorientedresidualrow}[2]{\expandafter\gdef\csname residual#1\endcsname{#2}}
 \newtheorem{proposition}{Proposition}
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
 \newtheorem{corollary}{Corollary}
-\title{Joint Selection of Two Reductions Toward $\TD(20)=11$\\
-\large Direct class generation and a conditional computational proof}
-\author{}
-\date{}
-\begin{document}
-\setlength{\emergencystretch}{3em}
-\maketitle
 
+\newcommand{\erikssonrow}[5]{#1 & $(#2)$ & #3 & #4 & #5 & \number\numexpr#3+#4-#5\relax\\}
+\newcommand{\erikssonpendingrow}[2]{#1 & $(#2)$ & \pending & \pending & \pending & \pending\\}
+\title{Eriksson reduction and a third transposition toward $\TD(20)=11$\\
+\large Complete root generation, two-sided inverse coverage, and conditional verification}
+\author{}\date{}
+\begin{document}\setlength{\emergencystretch}{3em}\maketitle
 \begin{abstract}
-The objective is a checked proof that $\TD(20)=11$. The established
-reverse-permutation lower bound is $\TD(20)\geq11$. We use joint selection of
-two reductions from the independently checked TD(18) project, taking
-$\TD(18)=10$ as an established premise. An immediate gain of at least two
-closes within eleven moves. Otherwise every qualifying gain-one first move
-is followed by every second move creating at least two fixed points. Gain
-three closes by $\TD(16)=9$; gain two reaches an $18$-symbol endpoint with
-nine moves left. Totally unoriented roots with even-length cycles participate;
-totally unoriented successors cannot supply the required second gain.
-There are $83$ root partitions and $214$ endpoint annotations.
-Endpoint failures are covered by two inverse waves. The endpoint counts, unoriented census, and oriented counts are complete.
-The totally unoriented residual counter has completed all $83$ rows, with
-$R=124\,395\,153$, against the selection-independent census
-$U=12\,704\,114\,061$. The oriented count after support clearing is
-$O=2\,022\,577\,147$. Independent production regeneration agrees in every row.
-Equality remains conditional on full independent verification.
+The active route uses two transpositions producing three fixed symbols, followed
+by a transposition producing at least two more, on either endpoint of a
+cyclic-target pair. Domains have 21 symbols and root budget 11.
+Unselected roots are generated directly. The endpoint cover consists of all
+143 fixed-point-free even annotated types on 16 symbols, with budget
+8. The checker independently regenerates roots, endpoints, and all inverse
+waves and replays intrinsic sorting certificates. This document is a conditional
+proof program; it does not establish $\TD(20)=11$ without the complete
+checked artifacts in \nolinkurl{docs/RESEARCH_PLAN.md}.
 \end{abstract}
+\section{Pairs, moves, fixed symbols, and premises}
+Let $N=n+1$. Let a cyclic-target pair be $(\omega,\beta)$ with even algebraic
+permutation $\omega$, current $N$-cycle $\beta$, and target $\rho=\omega\beta$
+also an $N$-cycle. Composition is from right to left. A transposition is an
+applicable $3$-cycle $\tau$ ordered around the current cycle, acting as
+$(\omega,\beta)\mapsto(\omega\tau^{-1},\tau\beta)$. Reserve $2$-cycle for an
+algebraic cycle of length two. The gain counts newly fixed symbols. Existing
+fixed points are first-class data and are contracted from both cycles before
+using fixed-point-free generation or move tests. Contraction preserves distance
+by the shared framework~\cite{framework},
+\nolinkurl{prop:contraction-preserves-distance}.
 
-\section{Pairs, moves, and independent premises}
-Let $\TD(n)$ denote the maximum distance under transpositions in $S_n$, and
-let $N=n+1$.  A \emph{cyclic-target pair} is $(\omega,\beta)$ on
-$\{0,\ldots,N-1\}$, where $\omega$ is even, $\beta$ is the current $N$-cycle,
-and $\rho=\omega\beta$ is the target $N$-cycle.  Composition is from right to
-left.  An unchecked candidate is not treated as a pair until these conditions
-have been verified.  Sorting means reaching $\omega=\mathrm{id}$.
+A cycle on support $S$ is unoriented when it is the inverse of the current
+cycle restricted to $S$; otherwise it is oriented. Define the $3$-norm by
+$\kappa=(N-c_{\rm odd}(\omega))/2$, where $c_{\rm odd}$ includes fixed points.
+A qualifying $2$-move increases that count by two and creates a fixed point.
+The active rule does not require every first move to be qualifying and permits
+first gain zero. It therefore imposes no unjustified $\kappa\leq6$ restriction
+on the new endpoint inventory.
 
-\begin{proposition}[Established lower bound]\label{prop:td20-lower}
-The transposition diameter satisfies $\TD(20)\geq11$.
-\end{proposition}
-\begin{proof}
-Meidanis, Walter, and Dias proved that the reverse permutation in $S_n$ has
-transposition distance $\lfloor n/2\rfloor+1$ for $n\geq3$
-\cite{MeidanisWalterDias1997}; the shared source records this formula and its
-use as a diameter lower bound~\cite{framework}.  At $n=20$ this distance is
-$11$.  Since $\TD(20)$ is the maximum distance over $S_{20}$, the claimed
-lower bound follows.  It is independent of $\TD(18)=10$ and of every class
-count and sorting computation below.
-\end{proof}
+This project uses $\TD(18)=10$ as the explicit completed premise supplied for this project. The local TD(18) repository is not asserted to have completed that proof. The smaller established diameters and the resulting upper bound $\TD(19)\leq11$ are also premises.
+A known-diameter closure at a contracted domain of $m$ symbols is valid with
+remaining budget $b$ exactly when $\TD(m-1)\leq b$ (distance zero for $m\leq1$).
+A root with an existing fixed point closes using the established smaller bound.
+The reverse root is separately closed by Eriksson et al.'s formula
+$\lceil 21/2\rceil=11$~\cite{eriksson}.
 
-A sorting \emph{transposition} is represented by a $3$-cycle
-$\tau=(a\ b\ c)$ whose distinct symbols occur in this cyclic order in $\beta$.
-It acts by
-\begin{equation}
- (\omega,\beta)\longmapsto(\omega\tau^{-1},\tau\beta).
- \label{eq:move}
-\end{equation}
-and preserves $\rho$.  The term $2$-cycle is reserved for the algebraic
-object.  Let $c_{\mathrm{odd}}(\omega)$ count all odd-length algebraic cycles,
-including fixed points, and define
-\begin{equation}
- \kappa(\omega)=\frac{N-c_{\mathrm{odd}}(\omega)}2
- =\sum_\gamma\left\lfloor\frac{|\gamma|}{2}\right\rfloor.
- \label{eq:norm}
-\end{equation}
-A \emph{$2$-move} increases $c_{\mathrm{odd}}$ by two.  It is \emph{qualifying}
-when it also creates a fixed point.  Its \emph{gain} is the number of newly
-created fixed points.  Every qualifying move decreases $\kappa$ by one.
+\section{Joint selection on both endpoints}
+Sorting distance on cycles is symmetric. Moving either endpoint by one edge
+of its undirected transposition graph costs one in a triangle-inequality upper
+bound. Interchanging endpoints is represented by $(\omega^{-1},\rho)$ and
+costs nothing. This operation is used inside the argument; it is not silently
+added to extended-toric class equivalence.
 
-For an algebraic cycle $\gamma$ with support $S$, let $\beta_S$ be the current
-cycle restricted to $S$.  Define $\gamma$ to be \emph{unoriented} when
-$\gamma=\beta_S^{-1}$ and oriented otherwise.  Every algebraic $2$-cycle is
-unoriented.  A pair is \emph{totally unoriented} when all its cycles are
-unoriented.
-
-Fixed points are first-class data.  Contraction deletes them from current and
-target cycles and relabels the remainder.  The shared framework proves that
-contraction preserves distance and $\kappa$ \cite{framework}.  We contract
-before invoking any fixed-point-free encoding or generator.
-
-This project takes $\TD(18)=10$ as a premise supplied by the completed TD(18)
-route.  The lower-order values needed below, for $n=0,\ldots,18$, are
-\begin{equation}
- 0,0,1,2,3,3,4,4,5,5,6,6,7,8,8,9,9,10,10.
- \label{eq:diameters}
-\end{equation}
-The entries through $15$ are established in \cite{eriksson}; $\TD(16)=9$
-is the independently certified result in \cite{framework}; and $\TD(17)=10$
-is the established value used by the TD(18) route, with bounds discussed in
-\cite{korchmaros}. The last entry is the independently checked TD(18) premise.  The elementary extension
-bound $\TD(n)\leq\TD(n-1)+1$ gives $\TD(19)\leq11$.  Hence a root already
-containing a fixed point closes within the root budget after contraction.
-At any later state, a known-diameter closure is used only after checking that
-moves already used plus the diameter of the contracted remainder does not
-exceed the active budget.
-
-\section{The joint selection rule}
-\label{sec:selection}
-Let a \emph{root} be a fixed-point-free valid pair on $21$ symbols.
-Apply the following rule.
+Lemma 5.1 of Eriksson et al.~\cite{eriksson} gives three bonds using two block
+moves for a non-reverse permutation, permitting moves on either side. The
+lemma is not asserted to be a literal two-move forward prefix preserving the
+original target. Bonds correspond to algebraic fixed points. Test all choices,
+not only one construction promised by the lemma:
 \begin{enumerate}
-\item A totally unoriented root containing only odd-length cycles is a
-direct obligation with budget eleven. It has no qualifying first move.
-Totally unoriented roots containing even-length cycles enter the tests below.
-\item Seek any transposition of gain at least two. Contraction
-leaves at most $19$ symbols, so $1+\TD(18)=11$ closes the root.
-\item If none exists, examine every qualifying first transposition of gain
-exactly one. Contract its fixed point, giving a $20$-symbol successor.
-A totally unoriented successor has no structural outgoing edge.
-\item For each other successor, seek every second transposition of gain
-at least two. A gain of three leaves $17$ symbols and closes by
-$2+\TD(16)=11$. A gain of two leaves $18$ symbols with budget nine.
-Prefer a gain-three closure if one exists; otherwise choose a gain-two
-endpoint if one exists.
-\item If no favorable prefix exists, retain the root. Apply the support-clearing
-test below only when the root is oriented; every remaining root is a direct
-budget-eleven obligation.
+\item Test immediate gains at least two on either endpoint. Contraction leaves
+at most 19 symbols and $1+\TD(18)\leq 11$ closes the root.
+\item Otherwise inspect every applicable first transposition, of gain zero or
+one, on either endpoint. A second move must then gain at least three or at least
+two respectively to produce three fixed symbols. Two moves producing at least
+four fixed symbols close by $2+\TD(16)\leq 11$.
+\item For every result with exactly three fixed symbols, contract them and test
+every third move of gain at least two, on either endpoint. Gain three leaves at
+most 15 symbols, closing by $3+\TD(14)\leq 11$. Gain two
+reaches an 16-symbol obligation with 8 moves remaining.
+\item Retain every root without any such route. Only the explicitly cited,
+budget-valid support patterns below may clear oriented retained roots. Every
+other retained root requires a result with budget 11.
 \end{enumerate}
-A \emph{favorable prefix} means an immediate move of gain at least two,
-or a qualifying gain-one move followed by a move of gain at least two.
-An \emph{oriented joint residual} is an oriented root without such a
-prefix. This includes roots without any qualifying first move. The rule
-examines actual applicable transpositions, including supports in even-length
-cycles and supports meeting several cycles. Totally unoriented roots with
-even-length cycles are tested. Totally unoriented successors have no second
-move creating at least two fixed points and are stopped. Known-diameter
-closure is still permitted.
 
-\begin{lemma}[Complete short-move test]
-\label{lem:fast}
-For fixed-point-free $(\omega,\beta)$, every transposition creating at
-least two fixed points has, up to cyclic writing, support
-$(x,\omega(x),\omega^2(x))$, with distinct symbols in this order in
-$\beta$. Every applicable triple of this form creates at least two fixed
-points and increases the odd-length-cycle count by two.
-\end{lemma}
-\begin{proof}
-For $\tau=(a\ b\ c)$, let $q=\omega\tau^{-1}$. Then
-$q(a)=\omega(c)$, $q(b)=\omega(a)$, and $q(c)=\omega(b)$; other images
-are unchanged. Two new fixed points require two consecutive edges of
-$\tau$ to agree with $\omega$, yielding the directed path. Conversely,
-that path fixes $\omega(x)$ and $\omega^2(x)$. If its algebraic cycle
-has length three, all three symbols become fixed. Otherwise, a cycle of
-length $k$ splits into two fixed points and a cycle of length $k-2$.
-In either case the odd-length-cycle count rises by two, for both
-odd-length and even-length input cycles.
-\end{proof}
-At most $N$ consecutive triples therefore suffice. An unoriented cycle
-has no such applicable triple, so the totally unoriented successor stop
-cannot hide a favorable second move. A gain-one first move can be found
-by inspecting every applicable triple and checking its gain and
-odd-length-cycle increase. Equivalently, inspect supports
-$(a,\omega(a),c)$: every created fixed point supplies such an edge.
+Every transposition creating at least two fixed points is supported, up to
+cyclic writing, on $(x,\omega(x),\omega^2(x))$, in current cyclic order. Indeed,
+its three changed images can fix two symbols only if two consecutive edges
+agree with $\omega$; the converse follows by multiplying the permutations.
+This characterization covers even-length cycles and across-cycle first supports.
+Destroying one old fixed point permits at most two newly fixed symbols and net
+gain at most one. Thus the required second and third moves preserve previously
+fixed symbols; contracting them loses no eligible support. Totally unoriented
+roots, including all-odd roots, still enter gain-zero first-move tests.
+
+\section{Endpoint cover and direct root inventory}
+The endpoint cover consists of every even partition of 16 into parts at
+least two and every orientation annotation, with algebraic $2$-cycles always
+unoriented. A length-$k$ multiplicity $m_k$ contributes $m_k+1$ choices for
+$k\geq3$. The complete annotation count is 143. The precondition is fixed-point
+freedom, after contracting all five created fixed symbols. Every class must
+have an 8-move witness or valid diameter closure, or enter final inverse
+coverage. No predicted sorting-failure count is an input.
+
+An endpoint with an oriented $3$-cycle clears that cycle in one move by
+\cite{framework}, \nolinkurl{cor:oriented-three-cycles}, and closes whenever
+$1+\TD(12)\leq 8$. A whole endpoint domain already satisfying
+$\TD(15)\leq 8$ is elementary in its entirety.
+
+The complete emitter and checker Burnside censuses agree on all 143
+annotations: 14,098,353,328 classes in total, of which 11,523,939,269 lie outside
+these elementary closures. These are obligation counts, not sorting failures.
+
+% BEGIN ERIKSSON_ENDPOINT_TABLE_V1
+% Route: td20-eriksson-three-v1; checked emitter and checker endpoint-inventory-v1 reports.
+\subsection{Complete endpoint inventory}
+In Table~\ref{tab:endpoints}, $k_{\mathrm U}$ and $k_{\mathrm O}$ denote
+unoriented and oriented algebraic cycles of length $k$. Let $m$ be the
+contracted endpoint domain, $F=5$ the fixed symbols removed, $t=3$ the
+transpositions spent, and $b$ the remaining move budget. The column $\kappa$
+is the $3$-norm defined above. Equal-length cycles are annotated up to
+permutation, and algebraic $2$-cycles are always unoriented. Every annotated
+type is included, even when its realizable class count is zero.
+
+``To discharge'' counts classes outside the elementary diameter closures
+specified above, before individual certificate lookup. Each needs a result
+within $b$ moves or complete inverse coverage. The totals are class obligations,
+not observed sorting failures, and exclude additional inverse reconstruction.
+All rows agree between the emitter and independent checker census reports.
+
+\begingroup\small\setlength{\tabcolsep}{3pt}
+\providecommand{\censusendpointrow}[9]{#1 & $(#2)$ & #3 & #4 & #5 & #6 & #7 & \ensuremath{#8} & \ensuremath{#9}\\}
+\begin{longtable}{@{}rlrrrrrrr@{}}
+\caption{Complete endpoint class census and non-elementary sorting obligations.}\label{tab:endpoints}\\
+\toprule No. & Annotated type & $m$ & $F$ & $t$ & $b$ & $\kappa$ & Classes & To discharge\\\midrule\endfirsthead
+\multicolumn{9}{c}{\tablename\ \thetable{} (continued)}\\
+\toprule No. & Annotated type & $m$ & $F$ & $t$ & $b$ & $\kappa$ & Classes & To discharge\\\midrule\endhead
+\midrule\multicolumn{9}{r}{Continued on next page}\\\endfoot
+\midrule\multicolumn{7}{r}{\textbf{Total}} & $\mathbf{14\,098\,353\,328}$ & $\mathbf{11\,523\,939\,269}$\\
+\bottomrule\endlastfoot
+\censusendpointrow{1}{14_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{2}{14_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{8}{2\,724\,377\,344}{2\,724\,377\,344}
+\censusendpointrow{3}{13_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{4}{13_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{5}{13_{\mathrm O},3_{\mathrm U}}{16}{5}{3}{8}{7}{778\,423\,808}{778\,423\,808}
+\censusendpointrow{6}{13_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{1\,197\,556\,864}{0}
+\censusendpointrow{7}{12_{\mathrm U},4_{\mathrm U}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{8}{12_{\mathrm U},4_{\mathrm O}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{9}{12_{\mathrm O},4_{\mathrm U}}{16}{5}{3}{8}{8}{137\,230\,514}{137\,230\,514}
+\censusendpointrow{10}{12_{\mathrm O},4_{\mathrm O}}{16}{5}{3}{8}{8}{1\,464\,481\,898}{1\,464\,481\,898}
+\censusendpointrow{11}{11_{\mathrm U},5_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{12}{11_{\mathrm U},5_{\mathrm O}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{13}{11_{\mathrm O},5_{\mathrm U}}{16}{5}{3}{8}{7}{14\,976\,176}{14\,976\,176}
+\censusendpointrow{14}{11_{\mathrm O},5_{\mathrm O}}{16}{5}{3}{8}{7}{1\,384\,025\,296}{1\,384\,025\,296}
+\censusendpointrow{15}{10_{\mathrm U},6_{\mathrm U}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{16}{10_{\mathrm U},6_{\mathrm O}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{17}{10_{\mathrm O},6_{\mathrm U}}{16}{5}{3}{8}{8}{954\,400}{954\,400}
+\censusendpointrow{18}{10_{\mathrm O},6_{\mathrm O}}{16}{5}{3}{8}{8}{1\,280\,970\,096}{1\,280\,970\,096}
+\censusendpointrow{19}{10_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{20}{10_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{156\,505\,314}{156\,505\,314}
+\censusendpointrow{21}{9_{\mathrm U},7_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{22}{9_{\mathrm U},7_{\mathrm O}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{23}{9_{\mathrm O},7_{\mathrm U}}{16}{5}{3}{8}{7}{30\,624}{30\,624}
+\censusendpointrow{24}{9_{\mathrm O},7_{\mathrm O}}{16}{5}{3}{8}{7}{1\,221\,159\,648}{1\,221\,159\,648}
+\censusendpointrow{25}{9_{\mathrm U},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{26}{9_{\mathrm U},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{27}{9_{\mathrm O},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{139\,921\,988}{139\,921\,988}
+\censusendpointrow{28}{9_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{210\,987\,490}{0}
+\censusendpointrow{29}{8_{\mathrm U},8_{\mathrm U}}{16}{5}{3}{8}{8}{1}{1}
+\censusendpointrow{30}{8_{\mathrm U},8_{\mathrm O}}{16}{5}{3}{8}{8}{379}{379}
+\censusendpointrow{31}{8_{\mathrm O},8_{\mathrm O}}{16}{5}{3}{8}{8}{600\,981\,103}{600\,981\,103}
+\censusendpointrow{32}{8_{\mathrm U},4_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{33}{8_{\mathrm U},4_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{0}{0}
+\censusendpointrow{34}{8_{\mathrm O},4_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{26\,123\,868}{26\,123\,868}
+\censusendpointrow{35}{8_{\mathrm O},4_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{269\,409\,124}{269\,409\,124}
+\censusendpointrow{36}{8_{\mathrm U},3_{\mathrm U},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{37}{8_{\mathrm U},3_{\mathrm U},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{38}{8_{\mathrm U},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{0}{0}
+\censusendpointrow{39}{8_{\mathrm O},3_{\mathrm U},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{43\,296\,998}{43\,296\,998}
+\censusendpointrow{40}{8_{\mathrm O},3_{\mathrm U},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{123\,782\,400}{0}
+\censusendpointrow{41}{8_{\mathrm O},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{98\,638\,194}{0}
+\censusendpointrow{42}{7_{\mathrm U},5_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{240}{240}
+\censusendpointrow{43}{7_{\mathrm U},5_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{5\,280}{5\,280}
+\censusendpointrow{44}{7_{\mathrm O},5_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{3\,052\,152}{3\,052\,152}
+\censusendpointrow{45}{7_{\mathrm O},5_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{267\,299\,646}{267\,299\,646}
+\censusendpointrow{46}{7_{\mathrm U},4_{\mathrm U},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{900}{900}
+\censusendpointrow{47}{7_{\mathrm U},4_{\mathrm U},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{900}{0}
+\censusendpointrow{48}{7_{\mathrm U},4_{\mathrm O},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{4\,500}{4\,500}
+\censusendpointrow{49}{7_{\mathrm U},4_{\mathrm O},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{4\,500}{0}
+\censusendpointrow{50}{7_{\mathrm O},4_{\mathrm U},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{16\,910\,100}{16\,910\,100}
+\censusendpointrow{51}{7_{\mathrm O},4_{\mathrm U},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{22\,504\,500}{0}
+\censusendpointrow{52}{7_{\mathrm O},4_{\mathrm O},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{163\,455\,300}{163\,455\,300}
+\censusendpointrow{53}{7_{\mathrm O},4_{\mathrm O},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{251\,691\,300}{0}
+\censusendpointrow{54}{7_{\mathrm U},3_{\mathrm U},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{6}{243}{243}
+\censusendpointrow{55}{7_{\mathrm U},3_{\mathrm U},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{6}{693}{0}
+\censusendpointrow{56}{7_{\mathrm U},3_{\mathrm U},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{693}{0}
+\censusendpointrow{57}{7_{\mathrm U},3_{\mathrm O},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{243}{0}
+\censusendpointrow{58}{7_{\mathrm O},3_{\mathrm U},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{6}{4\,657\,685}{4\,657\,685}
+\censusendpointrow{59}{7_{\mathrm O},3_{\mathrm U},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{6}{19\,035\,905}{0}
+\censusendpointrow{60}{7_{\mathrm O},3_{\mathrm U},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{28\,166\,747}{0}
+\censusendpointrow{61}{7_{\mathrm O},3_{\mathrm O},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{16\,381\,551}{0}
+\censusendpointrow{62}{6_{\mathrm U},6_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{277}{277}
+\censusendpointrow{63}{6_{\mathrm U},6_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{202\,571}{202\,571}
+\censusendpointrow{64}{6_{\mathrm O},6_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{131\,203\,940}{131\,203\,940}
+\censusendpointrow{65}{6_{\mathrm U},5_{\mathrm U},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{3\,700}{3\,700}
+\censusendpointrow{66}{6_{\mathrm U},5_{\mathrm U},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{3\,625}{0}
+\censusendpointrow{67}{6_{\mathrm U},5_{\mathrm O},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{151\,700}{151\,700}
+\censusendpointrow{68}{6_{\mathrm U},5_{\mathrm O},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{164\,375}{0}
+\censusendpointrow{69}{6_{\mathrm O},5_{\mathrm U},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{2\,094\,620}{2\,094\,620}
+\censusendpointrow{70}{6_{\mathrm O},5_{\mathrm U},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{2\,535\,695}{0}
+\censusendpointrow{71}{6_{\mathrm O},5_{\mathrm O},3_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{166\,055\,740}{166\,055\,740}
+\censusendpointrow{72}{6_{\mathrm O},5_{\mathrm O},3_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{253\,479\,505}{0}
+\censusendpointrow{73}{6_{\mathrm U},4_{\mathrm U},4_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{2\,844}{2\,844}
+\censusendpointrow{74}{6_{\mathrm U},4_{\mathrm U},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{8}{34\,132}{34\,132}
+\censusendpointrow{75}{6_{\mathrm U},4_{\mathrm O},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{8}{111\,256}{111\,256}
+\censusendpointrow{76}{6_{\mathrm O},4_{\mathrm U},4_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{1\,740\,007}{1\,740\,007}
+\censusendpointrow{77}{6_{\mathrm O},4_{\mathrm U},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{8}{31\,112\,536}{31\,112\,536}
+\censusendpointrow{78}{6_{\mathrm O},4_{\mathrm O},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{8}{165\,474\,915}{165\,474\,915}
+\censusendpointrow{79}{6_{\mathrm U},4_{\mathrm U},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{4\,260}{4\,260}
+\censusendpointrow{80}{6_{\mathrm U},4_{\mathrm U},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{8\,700}{0}
+\censusendpointrow{81}{6_{\mathrm U},4_{\mathrm U},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{4\,710}{0}
+\censusendpointrow{82}{6_{\mathrm U},4_{\mathrm O},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{26\,626}{26\,626}
+\censusendpointrow{83}{6_{\mathrm U},4_{\mathrm O},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{57\,900}{0}
+\censusendpointrow{84}{6_{\mathrm U},4_{\mathrm O},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{32\,476}{0}
+\censusendpointrow{85}{6_{\mathrm O},4_{\mathrm U},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{2\,868\,805}{2\,868\,805}
+\censusendpointrow{86}{6_{\mathrm O},4_{\mathrm U},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{7\,305\,180}{0}
+\censusendpointrow{87}{6_{\mathrm O},4_{\mathrm U},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{4\,956\,119}{0}
+\censusendpointrow{88}{6_{\mathrm O},4_{\mathrm O},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{25\,982\,773}{25\,982\,773}
+\censusendpointrow{89}{6_{\mathrm O},4_{\mathrm O},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{75\,460\,620}{0}
+\censusendpointrow{90}{6_{\mathrm O},4_{\mathrm O},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{61\,867\,251}{0}
+\censusendpointrow{91}{6_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{2\,800}{2\,800}
+\censusendpointrow{92}{6_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{3\,213\,616}{3\,213\,616}
+\censusendpointrow{93}{5_{\mathrm U},5_{\mathrm U},4_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{4\,890}{4\,890}
+\censusendpointrow{94}{5_{\mathrm U},5_{\mathrm U},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{30\,811}{30\,811}
+\censusendpointrow{95}{5_{\mathrm U},5_{\mathrm O},4_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{459\,990}{459\,990}
+\censusendpointrow{96}{5_{\mathrm U},5_{\mathrm O},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{3\,663\,006}{3\,663\,006}
+\censusendpointrow{97}{5_{\mathrm O},5_{\mathrm O},4_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{16\,123\,356}{16\,123\,356}
+\censusendpointrow{98}{5_{\mathrm O},5_{\mathrm O},4_{\mathrm O},2_{\mathrm U}}{16}{5}{3}{8}{7}{170\,398\,479}{170\,398\,479}
+\censusendpointrow{99}{5_{\mathrm U},5_{\mathrm U},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{6}{3\,959}{3\,959}
+\censusendpointrow{100}{5_{\mathrm U},5_{\mathrm U},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{6}{8\,031}{0}
+\censusendpointrow{101}{5_{\mathrm U},5_{\mathrm U},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{4\,332}{0}
+\censusendpointrow{102}{5_{\mathrm U},5_{\mathrm O},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{6}{372\,456}{372\,456}
+\censusendpointrow{103}{5_{\mathrm U},5_{\mathrm O},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{6}{877\,591}{0}
+\censusendpointrow{104}{5_{\mathrm U},5_{\mathrm O},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{543\,237}{0}
+\censusendpointrow{105}{5_{\mathrm O},5_{\mathrm O},3_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{6}{13\,496\,745}{13\,496\,745}
+\censusendpointrow{106}{5_{\mathrm O},5_{\mathrm O},3_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{6}{38\,757\,604}{0}
+\censusendpointrow{107}{5_{\mathrm O},5_{\mathrm O},3_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{6}{31\,801\,005}{0}
+\censusendpointrow{108}{5_{\mathrm U},4_{\mathrm U},4_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{11\,908}{11\,908}
+\censusendpointrow{109}{5_{\mathrm U},4_{\mathrm U},4_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{12\,801}{0}
+\censusendpointrow{110}{5_{\mathrm U},4_{\mathrm U},4_{\mathrm O},3_{\mathrm U}}{16}{5}{3}{8}{7}{159\,996}{159\,996}
+\censusendpointrow{111}{5_{\mathrm U},4_{\mathrm U},4_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{179\,710}{0}
+\censusendpointrow{112}{5_{\mathrm U},4_{\mathrm O},4_{\mathrm O},3_{\mathrm U}}{16}{5}{3}{8}{7}{604\,712}{604\,712}
+\censusendpointrow{113}{5_{\mathrm U},4_{\mathrm O},4_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{739\,145}{0}
+\censusendpointrow{114}{5_{\mathrm O},4_{\mathrm U},4_{\mathrm U},3_{\mathrm U}}{16}{5}{3}{8}{7}{619\,800}{619\,800}
+\censusendpointrow{115}{5_{\mathrm O},4_{\mathrm U},4_{\mathrm U},3_{\mathrm O}}{16}{5}{3}{8}{7}{744\,199}{0}
+\censusendpointrow{116}{5_{\mathrm O},4_{\mathrm U},4_{\mathrm O},3_{\mathrm U}}{16}{5}{3}{8}{7}{10\,352\,352}{10\,352\,352}
+\censusendpointrow{117}{5_{\mathrm O},4_{\mathrm U},4_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{13\,907\,426}{0}
+\censusendpointrow{118}{5_{\mathrm O},4_{\mathrm O},4_{\mathrm O},3_{\mathrm U}}{16}{5}{3}{8}{7}{51\,541\,792}{51\,541\,792}
+\censusendpointrow{119}{5_{\mathrm O},4_{\mathrm O},4_{\mathrm O},3_{\mathrm O}}{16}{5}{3}{8}{7}{81\,523\,953}{0}
+\censusendpointrow{120}{5_{\mathrm U},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{68\,352}{68\,352}
+\censusendpointrow{121}{5_{\mathrm U},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{84\,760}{0}
+\censusendpointrow{122}{5_{\mathrm O},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{5\,150\,104}{5\,150\,104}
+\censusendpointrow{123}{5_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{7\,664\,618}{0}
+\censusendpointrow{124}{4_{\mathrm U},4_{\mathrm U},4_{\mathrm U},4_{\mathrm U}}{16}{5}{3}{8}{8}{1\,692}{1\,692}
+\censusendpointrow{125}{4_{\mathrm U},4_{\mathrm U},4_{\mathrm U},4_{\mathrm O}}{16}{5}{3}{8}{8}{43\,836}{43\,836}
+\censusendpointrow{126}{4_{\mathrm U},4_{\mathrm U},4_{\mathrm O},4_{\mathrm O}}{16}{5}{3}{8}{8}{509\,850}{509\,850}
+\censusendpointrow{127}{4_{\mathrm U},4_{\mathrm O},4_{\mathrm O},4_{\mathrm O}}{16}{5}{3}{8}{8}{3\,151\,589}{3\,151\,589}
+\censusendpointrow{128}{4_{\mathrm O},4_{\mathrm O},4_{\mathrm O},4_{\mathrm O}}{16}{5}{3}{8}{8}{8\,798\,122}{8\,798\,122}
+\censusendpointrow{129}{4_{\mathrm U},4_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{56\,027}{56\,027}
+\censusendpointrow{130}{4_{\mathrm U},4_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{989\,847}{989\,847}
+\censusendpointrow{131}{4_{\mathrm O},4_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{5\,024\,966}{5\,024\,966}
+\censusendpointrow{132}{4_{\mathrm U},3_{\mathrm U},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{362\,768}{362\,768}
+\censusendpointrow{133}{4_{\mathrm U},3_{\mathrm U},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{933\,660}{0}
+\censusendpointrow{134}{4_{\mathrm U},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{642\,761}{0}
+\censusendpointrow{135}{4_{\mathrm O},3_{\mathrm U},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{3\,241\,841}{3\,241\,841}
+\censusendpointrow{136}{4_{\mathrm O},3_{\mathrm U},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{9\,303\,840}{0}
+\censusendpointrow{137}{4_{\mathrm O},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{7}{7\,303\,106}{0}
+\censusendpointrow{138}{3_{\mathrm U},3_{\mathrm U},3_{\mathrm U},3_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{6}{147\,022}{147\,022}
+\censusendpointrow{139}{3_{\mathrm U},3_{\mathrm U},3_{\mathrm U},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{6}{771\,205}{0}
+\censusendpointrow{140}{3_{\mathrm U},3_{\mathrm U},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{6}{1\,616\,766}{0}
+\censusendpointrow{141}{3_{\mathrm U},3_{\mathrm O},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{6}{1\,645\,027}{0}
+\censusendpointrow{142}{3_{\mathrm O},3_{\mathrm O},3_{\mathrm O},3_{\mathrm O},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{6}{721\,146}{0}
+\censusendpointrow{143}{2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U},2_{\mathrm U}}{16}{5}{3}{8}{8}{7\,258}{7\,258}
+\end{longtable}\endgroup
+Thus $2\,574\,414\,059$ endpoint classes close by
+these elementary bounds, leaving $11\,523\,939\,269$ non-elementary
+endpoint obligations. Individual witness reuse and final inverse coverage are
+separate from this census.
+
+\subsection{Direct root inventory}
+% END ERIKSSON_ENDPOINT_TABLE_V1
+
+Let $U_3,O_3,C_3$ count retained totally unoriented roots, retained oriented roots,
+and the support-cleared subset respectively. Direct obligations total
+$U_3+O_3-C_3$. Every partition appears once; pending entries cannot be used by
+emission or proof verification.
+
+The complete emitter census retains 0 totally unoriented and 8 oriented classes; 2 are support-cleared, leaving 6 direct obligations. Independent full-domain regeneration agrees in all 83 partitions. Sorting verification remains a separate proof requirement. A partial census cannot establish the upper bound.
+\begin{longtable}{@{}rlrrrr@{}}
+\caption{Active Eriksson-plus-third-move root inventory.}\\
+\toprule No. & Partition & $U_3$ & $O_3$ & $C_3$ & Direct\\\midrule\endfirsthead
+\toprule No. & Partition & $U_3$ & $O_3$ & $C_3$ & Direct\\\midrule\endhead
+\bottomrule\endfoot
+% BEGIN ERIKSSON_ROOT_TOTALS_V1
+\midrule\multicolumn{2}{r}{\textbf{Total}} & 0 & 8 & 2 & 6\\
+\bottomrule\endlastfoot
+% END ERIKSSON_ROOT_TOTALS_V1
+\erikssonrow{1}{21}{0}{0}{0}
+\erikssonrow{2}{17,2,2}{0}{0}{0}
+\erikssonrow{3}{16,3,2}{0}{0}{0}
+\erikssonrow{4}{15,4,2}{0}{0}{0}
+\erikssonrow{5}{15,3,3}{0}{0}{0}
+\erikssonrow{6}{14,5,2}{0}{0}{0}
+\erikssonrow{7}{14,4,3}{0}{0}{0}
+\erikssonrow{8}{13,6,2}{0}{0}{0}
+\erikssonrow{9}{13,5,3}{0}{0}{0}
+\erikssonrow{10}{13,4,4}{0}{1}{1}
+\erikssonrow{11}{13,2,2,2,2}{0}{0}{0}
+\erikssonrow{12}{12,7,2}{0}{0}{0}
+\erikssonrow{13}{12,6,3}{0}{0}{0}
+\erikssonrow{14}{12,5,4}{0}{0}{0}
+\erikssonrow{15}{12,3,2,2,2}{0}{0}{0}
+\erikssonrow{16}{11,8,2}{0}{0}{0}
+\erikssonrow{17}{11,7,3}{0}{0}{0}
+\erikssonrow{18}{11,6,4}{0}{0}{0}
+\erikssonrow{19}{11,5,5}{0}{1}{0}
+\erikssonrow{20}{11,4,2,2,2}{0}{0}{0}
+\erikssonrow{21}{11,3,3,2,2}{0}{0}{0}
+\erikssonrow{22}{10,9,2}{0}{0}{0}
+\erikssonrow{23}{10,8,3}{0}{0}{0}
+\erikssonrow{24}{10,7,4}{0}{0}{0}
+\erikssonrow{25}{10,6,5}{0}{0}{0}
+\erikssonrow{26}{10,5,2,2,2}{0}{0}{0}
+\erikssonrow{27}{10,4,3,2,2}{0}{0}{0}
+\erikssonrow{28}{10,3,3,3,2}{0}{0}{0}
+\erikssonrow{29}{9,9,3}{0}{0}{0}
+\erikssonrow{30}{9,8,4}{0}{0}{0}
+\erikssonrow{31}{9,7,5}{0}{0}{0}
+\erikssonrow{32}{9,6,6}{0}{1}{1}
+\erikssonrow{33}{9,6,2,2,2}{0}{0}{0}
+\erikssonrow{34}{9,5,3,2,2}{0}{0}{0}
+\erikssonrow{35}{9,4,4,2,2}{0}{0}{0}
+\erikssonrow{36}{9,4,3,3,2}{0}{0}{0}
+\erikssonrow{37}{9,3,3,3,3}{0}{0}{0}
+\erikssonrow{38}{9,2,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{39}{8,8,5}{0}{0}{0}
+\erikssonrow{40}{8,7,6}{0}{0}{0}
+\erikssonrow{41}{8,7,2,2,2}{0}{0}{0}
+\erikssonrow{42}{8,6,3,2,2}{0}{0}{0}
+\erikssonrow{43}{8,5,4,2,2}{0}{0}{0}
+\erikssonrow{44}{8,5,3,3,2}{0}{0}{0}
+\erikssonrow{45}{8,4,4,3,2}{0}{0}{0}
+\erikssonrow{46}{8,4,3,3,3}{0}{0}{0}
+\erikssonrow{47}{8,3,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{48}{7,7,7}{0}{5}{0}
+\erikssonrow{49}{7,7,3,2,2}{0}{0}{0}
+\erikssonrow{50}{7,6,4,2,2}{0}{0}{0}
+\erikssonrow{51}{7,6,3,3,2}{0}{0}{0}
+\erikssonrow{52}{7,5,5,2,2}{0}{0}{0}
+\erikssonrow{53}{7,5,4,3,2}{0}{0}{0}
+\erikssonrow{54}{7,5,3,3,3}{0}{0}{0}
+\erikssonrow{55}{7,4,4,4,2}{0}{0}{0}
+\erikssonrow{56}{7,4,4,3,3}{0}{0}{0}
+\erikssonrow{57}{7,4,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{58}{7,3,3,2,2,2,2}{0}{0}{0}
+\erikssonrow{59}{6,6,5,2,2}{0}{0}{0}
+\erikssonrow{60}{6,6,4,3,2}{0}{0}{0}
+\erikssonrow{61}{6,6,3,3,3}{0}{0}{0}
+\erikssonrow{62}{6,5,5,3,2}{0}{0}{0}
+\erikssonrow{63}{6,5,4,4,2}{0}{0}{0}
+\erikssonrow{64}{6,5,4,3,3}{0}{0}{0}
+\erikssonrow{65}{6,5,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{66}{6,4,4,4,3}{0}{0}{0}
+\erikssonrow{67}{6,4,3,2,2,2,2}{0}{0}{0}
+\erikssonrow{68}{6,3,3,3,2,2,2}{0}{0}{0}
+\erikssonrow{69}{5,5,5,4,2}{0}{0}{0}
+\erikssonrow{70}{5,5,5,3,3}{0}{0}{0}
+\erikssonrow{71}{5,5,4,4,3}{0}{0}{0}
+\erikssonrow{72}{5,5,3,2,2,2,2}{0}{0}{0}
+\erikssonrow{73}{5,4,4,4,4}{0}{0}{0}
+\erikssonrow{74}{5,4,4,2,2,2,2}{0}{0}{0}
+\erikssonrow{75}{5,4,3,3,2,2,2}{0}{0}{0}
+\erikssonrow{76}{5,3,3,3,3,2,2}{0}{0}{0}
+\erikssonrow{77}{5,2,2,2,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{78}{4,4,4,3,2,2,2}{0}{0}{0}
+\erikssonrow{79}{4,4,3,3,3,2,2}{0}{0}{0}
+\erikssonrow{80}{4,3,3,3,3,3,2}{0}{0}{0}
+\erikssonrow{81}{4,3,2,2,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{82}{3,3,3,3,3,3,3}{0}{0}{0}
+\erikssonrow{83}{3,3,3,2,2,2,2,2,2}{0}{0}{0}
+\end{longtable}
+
+\section{Explicit budget-valid support clearing}
+Restricting the current cycle to a support commutes with moves confined to that
+support, and companion algebraic cycles are unchanged. The shared framework's
+explicit local power classification and
+\nolinkurl{prop:td16-odd-cycle-reduction}~\cite{framework} therefore lift these
+clearings to every valid companion interleaving. The power test is invariant
+under rotations and twisted reflection: reflection reverses support order and
+inverts its oriented ranks. No other power or length-fifteen result is assumed.
+\begin{center}\begin{tabular}{@{}rll@{}}\toprule
+Length & Power relative to the restricted current cycle & Global bound\\\midrule
+9 & $\beta_S^7$ & $5+\TD(11)=11$\\
+11 & $\beta_S^6$ & $6+\TD(9)=11$\\
+13 & $\beta_S^7,\beta_S^{10},\beta_S^{11}$ & $7+\TD(7)=11$\\
+17 & $\beta_S^9,\beta_S^{13},\beta_S^{15}$ & $9+\TD(3)=11$\\
+\bottomrule\end{tabular}\end{center}
+
+\section{Encoding, symmetry, counting, and generation}
+For a fixed-point-free annotated type, a fixed-content word assigns a color to
+each algebraic cycle. An unoriented color supplies repeated unranked beads;
+an oriented color supplies each cyclic rank once, excluding the unoriented
+rank order. Positions follow $\beta$. Auxiliary symmetries rename equal
+annotated colors and shift oriented rank origins. Auxiliary standardization
+chooses colors by first occurrence and sets the first oriented rank to zero.
+
+Position rotation and reflection coupled with oriented-rank inversion form the
+twisted dihedral action. A twisted bracelet is an orbit, not a canonical word,
+and its reflection is not ordinary word reversal. Decoder equivariance and full
+target realizability identify realizable orbits with extended-toric classes of
+valid pairs~\cite{framework}. Use \nolinkurl{TwistedBraceletKey} for candidate
+orbits and \nolinkurl{ExtendedToricClassKey} only after pair validation.
+
+The Burnside counter counts the endpoint classes; direct generation emits one
+representative per class and is checked against those counts. Roots use rank
+placement with normalized cycle origins and equal-cycle labels. Forced proper
+target cycles and strict smaller twisted images reject prefixes. All
+source-side move sequences are derived before enumeration. A known target path
+from $a$ to $b$ avoiding $c$ forces cyclic order $(a,b,c)$ in every completion,
+permitting additional target-side immediate-closure rejection. Complete remaining
+leaves pass an exact two-sided selection test. The independent checker derives
+its predicates from arbitrary supports, changes the full cycles directly, and
+has no emitter-artifact dependency. Small-domain class-set checks precede large
+counts. Counting is separate from sorting.
 
 
-\begin{lemma}[Totally unoriented first moves]
-\label{lem:unoriented-first}
-A fixed-point-free totally unoriented valid pair has a qualifying first
-move if and only if it contains even-length cycles. Such cycles occur in
-pairs. Having only odd-length cycles is therefore a root stop condition;
-it is not a stop condition for oriented roots.
-\end{lemma}
-\begin{proof}
-A gain-one move has, up to cyclic writing, support
-$(a,\omega(a),c)$. In an unoriented cycle the two consecutive algebraic
-symbols occur in reverse support order in $\beta$. A third symbol from
-that same cycle cannot make this triple applicable. Thus $c$ lies in a
-different cycle. Let their lengths be $k$ and $l$. The move replaces them
-by one fixed point and a cycle of length $k+l-1$. The odd-length-cycle
-count increases by two exactly when both $k$ and $l$ are even.
-Conversely, the shared framework~\cite{framework},
-\nolinkurl{prop:even-pair-reduction} supplies an applicable qualifying
-move for any two even-length cycles. Evenness of $\omega$ ensures an even
-number of such cycles.
-\end{proof}
-
-For example, let two algebraic $2$-cycles be $(a\ c)(b\ d)$ and let
-$a,b,c,d$ occur in this order around $\beta$. The transposition
-$(a\ b\ c)$ replaces these cycles by $(a)(b\ c\ d)$; the latter
-$3$-cycle agrees with the successor current-cycle order. A second
-transposition fixes its three symbols. This is a gain-$(1,3)$ prefix.
-Two moves creating only two fixed points in total are not selected: the
-contracted remainder does not fit the remaining known-diameter budget.
-
-\subsection{The endpoint inventory}
-\label{sec:endpoints}
-The root $3$-norm is at most ten. Both moves leading to an $18$-symbol
-endpoint decrease it by one, by definition for the first and
-Lemma~\ref{lem:fast} for the second. Contraction preserves it, so every
-endpoint has $\kappa\leq8$.
-The endpoint inventory contains every fixed-point-free even annotated type
-on $18$ symbols with $\kappa\leq8$. Enumerate partitions into parts at
-least two, with an even number of even parts and
-$\sum_i\lfloor\lambda_i/2\rfloor\leq8$. If $m_k$ is the multiplicity
-of length $k$, there are $\prod_{k\geq3}(m_k+1)$ annotations, since any
-number of equal-length cycles may be oriented and $2$-cycles are always
-unoriented. Independent enumeration gives $30$ partitions and $214$ annotated types. It is a complete
-cover of endpoints; every type need not be attained.
-
-Exactly $104$ contain an oriented $3$-cycle. Clearing that cycle in one
-move, by \cite{framework}, \nolinkurl{cor:oriented-three-cycles}, and
-contracting leaves $15$ symbols, so $1+\TD(14)=9$ closes the endpoint.
-The other $110$ types are generated in full. Each class needs a complete
-witness of at most nine transpositions, a regenerated valid known-diameter
-closure, or final reconstruction as in Section~\ref{sec:inverse}.
-A $\TD(18)$ certificate database may supply witnesses; each imported
-witness is replayed for its class and budget. No count of endpoint failures
-is assumed in advance.
-
-\subsection{Budget-valid support clearing}
-\label{sec:clearing}
-A \emph{support-clearing sequence} for $\gamma$ consists of applicable
-transpositions supported on its support $S$ and fixes every symbol of $S$.
-Restricting the current cycle to $S$ commutes with each move, while the
-algebraic action leaves companion cycles unchanged. Thus a local
-support-clearing sequence lifts to every valid companion interleaving.
-Table~\ref{tab:clearing} lists the explicit configurations with a sequence
-of length at most $(k+1)/2$, as certified in \cite{framework},
-\nolinkurl{prop:td16-odd-cycle-reduction} and its local power classification.
-The local candidate is not assumed to have a full target.
-The power test is invariant under the class symmetries. Indeed, a support
-reflection $f$ sends $\gamma=\beta_S^e$ to
-$f\gamma^{-1}f=(f\beta_Sf)^{-e}=\beta_{f(S)}^e$; rotations and relabeling
-also preserve the exponent.
-\begin{table}[ht]
-\centering
-\caption{Root support clearings. Powers are relative to the induced current
-cycle; a class is counted once, at its least closing length.}
-\label{tab:clearing}
-\begin{tabular}{@{}rllr@{}}
-\toprule
-$k$ & $\gamma$ & Global bound & Cleared classes\\
-\midrule
-9  & $\beta_S^7$ & $5+\TD(11)=11$ & 27\,559\,987\\
-11 & $\beta_S^6$ & $6+\TD(9)=11$ & 1\,119\,597\\
-13 & $\beta_S^7,\beta_S^{10},\beta_S^{11}$ & $7+\TD(7)=11$ & 321\,358\\
-17 & $\beta_S^9,\beta_S^{13},\beta_S^{15}$ & $9+\TD(3)=11$ & 22\\
-\bottomrule
-\end{tabular}
-\end{table}
-A class matching more than one row is charged once at its least clearing
-length.  Length-seven clearing gives $4+\TD(13)=12$, exceeding the budget;
-length-five clearing gives $3+\TD(15)=12$. The length-nine power
-$\beta_S^5$ is excluded, and no length-fifteen clearing is assumed.
-No unlisted local power is used. The test removes $29\,000\,964$ oriented
-joint residuals; every remaining class is covered by direct generation or
-endpoint reconstruction.
-
-\section{Encoding, symmetry, counting, and direct generation}
-\label{sec:generation}
-The shared framework in \cite{framework}, Section
-\nolinkurl{sec:twisted-bracelets}, supplies fixed-content encoding and orbit
-correspondence. For a fixed-point-free annotated type, let a color represent
-an algebraic cycle. An unoriented color contributes repeated unranked beads;
-an oriented color contributes each cyclic rank once. Positions follow
-$\beta$. A ranked order decoding to the unoriented order is excluded.
-Colors determine supports and ranks determine oriented cyclic order.
-
-Auxiliary symmetries rename equal annotated colors and shift oriented rank
-origins. Auxiliary standardization chooses colors by first occurrence and
-sets each first oriented rank to zero. Rotation and reflection of positions
-coupled with inversion of oriented ranks give the \emph{twisted dihedral
-action}. A twisted bracelet is an orbit, not a canonical output word.
-Reflection is not ordinary word reversal. Decoder equivariance and target
-realizability invariance identify realizable bracelets with extended-toric
-classes of pairs (\cite{framework},
-\nolinkurl{thm:bracelet-class-correspondence}); distance is invariant on these
-classes. Fixed points are explicit in the model, but the generation theorem
-used here requires fixed-point freedom, ensured by contraction.
-
-In code, \nolinkurl{TwistedBraceletKey} identifies candidate orbits and
-\nolinkurl{ExtendedToricClassKey} identifies valid pair classes.
-\nolinkurl{CyclicTargetCandidate} remains unchecked until conversion with
-\nolinkurl{asCyclicTargetPair()} or \nolinkurl{requireCyclicTargetPair()}.
-The fixed-content generator compares standardized prefixes under rotations
-and twisted reflections, rejects forced proper target cycles, and emits
-one representative per realizable orbit; see \cite{framework},
-\nolinkurl{thm:twisted-generation-correctness}. Totally unoriented residual roots use the constrained joint generator with
-unoriented support order enforced on every completed cycle. Endpoints use
-each prescribed fixed-content annotation.
-
-For an independent count, fix $\beta=(0\ 1\ \cdots\ N-1)$. Let $I$
-count realizable permutations of the annotated type, $R_\nu$ those
-commuting with $\beta^\nu$, and $S_\nu$ those satisfying
-$f_\nu\omega^{-1}f_\nu=\omega$, where $f_\nu(x)=\nu-x\pmod N$.
-Burnside's identity gives
+For clarity, let $\mathcal V$ be the realizable permutation arrays of one
+fixed annotated type with the current cycle relabeled to
+$(0,1,\ldots,N-1)$. Auxiliary standardization removes only color names and
+oriented-rank origins: it does not identify distinct arrays in $\mathcal V$.
+The twisted dihedral group $D_N$ acts on these arrays. On words its reflection
+maps a ranked bead $(c,r)$ to $(c,-r\bmod\ell_c)$, where $\ell_c$ is
+the length of color $c$, while reversing positions;
+unranked beads keep their color. Decoder equivariance gives
 \[
- B=\frac{I+\sum_{\nu=1}^{N-1}R_\nu+\sum_{\nu=0}^{N-1}S_\nu}{2N}.
+ \#\text{classes}=\frac{1}{2N}\sum_{g\in D_N}
+       |\{v\in\mathcal V:g\cdot v=v\}|.
 \]
-The exact identity term uses orientation refinement and full-cycle character
-sums; rotations use centralizer enumeration, and reflections use alternating
-paths of involutions. See \nolinkurl{docs/td20-burnside-counting.md} for
-the derivation and independent small-domain checks. All terms enforce full
-target realizability. Counting does not supply sorting witnesses.
+The shared framework proves the orbit correspondence and fixed-set counting
+construction~\cite{framework}; the companion Burnside note details the
+implemented rotation and reflection terms. Counting candidates before target
+realizability would not give this class count.
 
-\subsection{Direct oriented residual generation}
-Fix a cycle-length partition, label its algebraic cycles consecutively, and
-let $v(x)$ be the position of label $x$ in the current cycle. A recursion
-assigns these positions injectively. For each possible qualifying gain-one
-support, precompute its algebraic successor and every consecutive nonfixed
-successor triple. Forbid the conjunction that the first move is applicable
-in $\beta$ and the second in the updated current cycle. Each conjunction
-depends on at most six positions, so it rejects a partial assignment as
-soon as those positions are known. Immediate gain-at-least-two moves give
-three-position constraints. Lemma~\ref{lem:fast} and exhaustive first-support
-construction make the constraints exactly the absence of favorable prefixes.
+Here is why the constrained root enumeration covers every residual class.
+Write the algebraic cycles on consecutive abstract ranks with the prescribed
+lengths, and assign their ranks injectively to positions around the current
+cycle. Choose each cycle origin at its least position and order equal-length
+cycles by their origins. A position rotation places an origin of a longest
+cycle at zero. These choices remove auxiliary multiplicities while preserving
+a representative of every class. Compare all allowed anchored rotations and
+twisted reflections; retaining a least image leaves one class representative.
+A strict partial lexicographic rejection is safe only after the first differing
+images are both assigned. A proper target cycle, once forced by assigned edges,
+cannot be extended to the required full target cycle and is also safely rejected.
 
-Choose the least position as each algebraic cycle's origin, order equal
-cycles by their origins, and assign position zero to a largest cycle.
-Every orbit has such a writing. Compare rotations placing zero in a largest
-cycle and the corresponding twisted reflections. A position reflection $f$
-acts on algebraic images as $\omega\mapsto f\omega^{-1}f$.
-The least surviving writing is unique per candidate orbit. Reject forced
-proper target cycles early; at every leaf require a full target and reject
-totally unoriented pairs. The output is exactly the oriented joint residual
-class stream. Support clearing gives the final oriented direct-root stream.
-These constraints act during prefix construction. The totally unoriented
-stream uses the same forbidden predicates and symmetry tests, and enforces
-reverse current-cycle order whenever an algebraic support is completely
-assigned. Its output is exactly the totally unoriented residual stream.
+The remaining prefix rejections certify an actual selected route. For an
+all-current sequence, applicability depends on the cyclic orders of its three
+support symbols after each preceding segment interchange. Once all these ranks
+are assigned, the test is independent of later placements. A successful test
+therefore excludes only completions already covered by the selection argument.
+The target-path rejection above has the same property. Every surviving complete
+array is validated for full target realizability and tested against all
+remaining two-sided routes. Thus no residual class is omitted. Independent
+forward and inverse small-domain oracles check complete class sets rather than
+merely their cardinalities; full-domain counts are then independently regenerated.
 
-For this stream, the independent checker keeps the largest-cycle anchor and
-places the remaining even-length cycles before the other odd-length cycles.
-Increasing anchor positions are enforced for every repeated length, including
-cycles separated by this order. Permuting disjoint algebraic cycle labels
-induces a bijection of rank placements with identical actual algebraic images.
-The same largest-cycle anchors and twisted comparisons select the orbit
-representatives, and every forbidden support is tested once fully determined.
-Thus the placement order changes when a prefix can be rejected, not the class set.
+\section{Complete inverse coverage of actual endpoint failures}
+For each 16-symbol class without an 8-move result, reverse the
+third gain-two move by restoring two fixed points in every cyclic-gap
+distribution and reversing every support containing both restored symbols and
+one original symbol. Do this on the current and the target endpoint. The
+result has 18 symbols and budget 9.
 
-The TD(20) implementation also rejects an oriented-stream prefix once all
-cycles of length at least four have been placed and are unoriented: every
-oriented $3$-cycle has an immediate gain-three move, and every $2$-cycle is
-unoriented. The separately generated totally unoriented residual stream is
-retained. Disjoint prefix subtrees use bounded worker pools and exact joined
-counts. Java partition reports are atomically published after all workers
-complete; superseded-route formats and incomplete shard unions are rejected.
-These implementation checks supplement the shared generation argument.
-
-\section{Complete root counts}
-\label{sec:counts}
-Evenness of $\omega$ is equivalent to an even number of even-length cycles.
-There are exactly $83$ nonincreasing partitions of $21$ into parts at least
-two satisfying this parity condition.  Let $U$ count all totally unoriented root classes and $R$ their residual
-classes after joint-2 selection. Let $J$ count oriented joint-2 residuals before support clearing, $C$ the
-cleared subset, and $O=J-C$.  A row contributes $R+O$ direct obligations.
-
-The complete counts are
-\[
- U=12\,704\,114\,061,\quad J=2\,051\,578\,111,\quad
- C=29\,000\,964,\quad O=2\,022\,577\,147,
-\]
-\[
- R=124\,395\,153,\qquad R+O=2\,146\,972\,300.
-\]
-Of the $J$ classes, $847\,739\,882$ have no qualifying first move and
-$1\,203\,838\,229$ have qualifying moves but no favorable pair. The singleton
-partition $(21)$ contributes $2\,106$: two without a qualifying first move
-and $2\,104$ with such moves but no favorable pair. These are structural
-availability counts, not sorting-failure counts. All-odd rows have $R=U$
-by Lemma~\ref{lem:unoriented-first}, and zero-census rows have $R=0$.
-The reduction removes $12\,579\,718\,908$ former direct unoriented
-obligations, or $99.02\%$ of $U$. Row $83$, of type
-$(3,3,3,2,2,2,2,2,2)$, has $U=1\,165\,021\,974$ and $R=0$.
-The direct total excludes final inverse reconstruction obligations.
-
-Exact counts require completion and reconciliation of these artifacts:
+Every unclosed result branches into both possible first-two-move patterns:
 \begin{enumerate}
-\item the $83$-row Burnside report for $U$;
-\item the versioned Java joint-generator $83$-row report for $J$, $C$, and $O$,
-with explicit implementation provenance;
-\item the Java small-domain class-set oracle and production regeneration;
-\item the $214$-row endpoint Burnside report; and
-\item the versioned $R$ partition reports and independent regeneration artifacts.
+\item Reverse a gain-two second move by restoring two fixed points, producing
+20 symbols with budget 10. Reverse the first gain-one move by
+restoring one fixed point and every support containing it and two old symbols.
+\item Reverse a gain-three second move by restoring three fixed points and its
+three-symbol support, producing 21 symbols with budget 10. Reverse
+the first gain-zero move using every support of three original symbols, without
+restoring a fixed point.
 \end{enumerate}
-The completed $U=12\,704\,114\,061$ count is independent of selection.
-The $J,C,O$ counts use the joint-2 predicates specified above.
-The structural reader accepts explicit pending rows; root emission and proof
-verification reject them. Individual progress terms are not class counts.  The table publishes $U$ after
-the complete Burnside report is validated, and $J,C,O$ after a complete
-partition report or complete shard union is validated.  Missing components
-remain explicitly pending.  Every completed row uses one machine-readable
-\texttt{jointrow} with its four exact nonnegative counts.  Aggregate $J,C,O$
-values appear only after all $83$ partition results are complete.
+Every reverse operation is performed on both endpoints, preserving their
+identity by swapping back after a target-side inverse. Actual forward replay
+must recover the restored child and exact fixed-point gain. No qualifying
+odd-length-cycle condition is imposed on gain-zero or gain-one first moves.
+Every remaining root needs a budget-11 result.
 
-The census $U$ and the oriented $J,C,O$ counts retain their previous
-scopes. The new route requires $R$ independently in every partition; the
-old direct total $U+O$ is superseded. Each machine-readable
-\texttt{unorientedresidualrow} records an exact $R$ or explicit
-\texttt{pending}. For an all-odd partition, Lemma~\ref{lem:unoriented-first}
-gives $R=U$; a zero census gives $R=0$. All $83$ values have now been
-counted by exhaustive Java generation. Root emission and proof verification
-reject a pending $R$.
-All $83$ totally unoriented counts and all $214$ endpoint counts are complete.
-The new direct-root count is
-\[
- R=124\,395\,153,\qquad R+O=2\,146\,972\,300.
-\]
-Joint-2 removes $12\,579\,718\,908$ former direct unoriented obligations,
-or $99.02\%$ of $U$. This direct total excludes roots reconstructed from
-endpoint failures, whose final-phase count remains to be established.
+Completeness follows by restoring the actual removed fixed symbols in their
+actual gaps. A transposition changes only three images, so its created fixed
+symbols belong to its support; enumeration includes the actual old symbols.
+Permuting only restored labels transports supports and does not change the
+represented class. Repeating this argument in the relevant branch reaches
+every compatible root. Moves on either endpoint give the same distance upper
+bound by the triangle inequality, and quotient representatives transport all
+supports and gaps bijectively. Intermediate checked results close their paths
+within the stated budgets. Missing obstruction markers cannot omit a branch.
 
+\section{Certificates, persistence, and conditional conclusion}
+Every persisted set has a version, deterministic keys, explicit budgets,
+domains and counts, and rejects missing data. Large inverse sets are disk-backed;
+asynchronous certificate persistence uses bounded queues. A witness proves an
+upper bound only for its represented class. The CPU checker regenerates every
+root obligation, every endpoint class and every inverse wave, and replays
+witnesses from the certificate database. Emitter checkpoints are performance
+state, not proof inputs. Checkpoint versions identify the exact route and state layout; checksums and sidecar manifests are not proof inputs.
 
-Independent arbitrary-support regeneration agrees with the Java counter in
-all $83$ partitions. Sorting certificates and full proof verification remain
-separate obligations.
-
-\unorientedresidualrow{1}{0}
-\unorientedresidualrow{2}{0}
-\unorientedresidualrow{3}{0}
-\unorientedresidualrow{4}{0}
-\unorientedresidualrow{5}{0}
-\unorientedresidualrow{6}{0}
-\unorientedresidualrow{7}{0}
-\unorientedresidualrow{8}{0}
-\unorientedresidualrow{9}{0}
-\unorientedresidualrow{10}{0}
-\unorientedresidualrow{11}{0}
-\unorientedresidualrow{12}{0}
-\unorientedresidualrow{13}{0}
-\unorientedresidualrow{14}{0}
-\unorientedresidualrow{15}{0}
-\unorientedresidualrow{16}{0}
-\unorientedresidualrow{17}{0}
-\unorientedresidualrow{18}{0}
-\unorientedresidualrow{19}{0}
-\unorientedresidualrow{20}{0}
-\unorientedresidualrow{21}{0}
-\unorientedresidualrow{22}{0}
-\unorientedresidualrow{23}{22}
-\unorientedresidualrow{24}{1}
-\unorientedresidualrow{25}{6}
-\unorientedresidualrow{26}{0}
-\unorientedresidualrow{27}{0}
-\unorientedresidualrow{28}{0}
-\unorientedresidualrow{29}{63}
-\unorientedresidualrow{30}{0}
-\unorientedresidualrow{31}{1064}
-\unorientedresidualrow{32}{0}
-\unorientedresidualrow{33}{0}
-\unorientedresidualrow{34}{1582}
-\unorientedresidualrow{35}{0}
-\unorientedresidualrow{36}{932}
-\unorientedresidualrow{37}{40146}
-\unorientedresidualrow{38}{0}
-\unorientedresidualrow{39}{211}
-\unorientedresidualrow{40}{0}
-\unorientedresidualrow{41}{0}
-\unorientedresidualrow{42}{0}
-\unorientedresidualrow{43}{0}
-\unorientedresidualrow{44}{0}
-\unorientedresidualrow{45}{0}
-\unorientedresidualrow{46}{142812}
-\unorientedresidualrow{47}{0}
-\unorientedresidualrow{48}{1036}
-\unorientedresidualrow{49}{16300}
-\unorientedresidualrow{50}{0}
-\unorientedresidualrow{51}{14872}
-\unorientedresidualrow{52}{36726}
-\unorientedresidualrow{53}{56318}
-\unorientedresidualrow{54}{6488500}
-\unorientedresidualrow{55}{0}
-\unorientedresidualrow{56}{69693}
-\unorientedresidualrow{57}{0}
-\unorientedresidualrow{58}{0}
-\unorientedresidualrow{59}{0}
-\unorientedresidualrow{60}{0}
-\unorientedresidualrow{61}{819658}
-\unorientedresidualrow{62}{29860}
-\unorientedresidualrow{63}{0}
-\unorientedresidualrow{64}{860954}
-\unorientedresidualrow{65}{0}
-\unorientedresidualrow{66}{41}
-\unorientedresidualrow{67}{0}
-\unorientedresidualrow{68}{0}
-\unorientedresidualrow{69}{20208}
-\unorientedresidualrow{70}{14843641}
-\unorientedresidualrow{71}{558986}
-\unorientedresidualrow{72}{0}
-\unorientedresidualrow{73}{0}
-\unorientedresidualrow{74}{0}
-\unorientedresidualrow{75}{0}
-\unorientedresidualrow{76}{51116728}
-\unorientedresidualrow{77}{0}
-\unorientedresidualrow{78}{0}
-\unorientedresidualrow{79}{40252}
-\unorientedresidualrow{80}{17462110}
-\unorientedresidualrow{81}{0}
-\unorientedresidualrow{82}{31772431}
-\unorientedresidualrow{83}{0}
-
-{\small
-\begin{longtable}{@{}rlrrrrr@{}}
-\caption{Complete root-partition inventory and counts.}
-\label{tab:roots}\\
-\toprule
-No. & Partition & $U$ & $R$ & $J$ & $C$ & $O$\\
-\midrule
-\endfirsthead
-\toprule
-No. & Partition & $U$ & $R$ & $J$ & $C$ & $O$\\
-\midrule
-\endhead
-\midrule
-\multicolumn{7}{r}{Continued on next page}\\
-\endfoot
-\bottomrule
-\endlastfoot
-\jointrow{1}{21}{0}{2106}{0}{2106}
-\jointrow{2}{17,2,2}{0}{38001}{22}{37979}
-\jointrow{3}{16,3,2}{0}{0}{0}{0}
-\jointrow{4}{15,4,2}{0}{2105}{0}{2105}
-\jointrow{5}{15,3,3}{0}{2133583}{0}{2133583}
-\jointrow{6}{14,5,2}{0}{0}{0}{0}
-\jointrow{7}{14,4,3}{0}{0}{0}{0}
-\jointrow{8}{13,6,2}{0}{33756}{284}{33472}
-\jointrow{9}{13,5,3}{0}{11240816}{319896}{10920920}
-\jointrow{10}{13,4,4}{0}{58887}{1178}{57709}
-\jointrow{11}{13,2,2,2,2}{0}{139}{0}{139}
-\jointrow{12}{12,7,2}{0}{851}{0}{851}
-\jointrow{13}{12,6,3}{0}{0}{0}{0}
-\jointrow{14}{12,5,4}{0}{8}{0}{8}
-\jointrow{15}{12,3,2,2,2}{0}{0}{0}{0}
-\jointrow{16}{11,8,2}{0}{9263}{0}{9263}
-\jointrow{17}{11,7,3}{0}{12424704}{453711}{11970993}
-\jointrow{18}{11,6,4}{0}{11660}{296}{11364}
-\jointrow{19}{11,5,5}{0}{7929326}{511298}{7418028}
-\jointrow{20}{11,4,2,2,2}{0}{0}{0}{0}
-\jointrow{21}{11,3,3,2,2}{0}{17979364}{154292}{17825072}
-\jointrow{22}{10,9,2}{9}{4858}{235}{4623}
-\jointrow{23}{10,8,3}{36}{0}{0}{0}
-\jointrow{24}{10,7,4}{84}{37}{0}{37}
-\jointrow{25}{10,6,5}{126}{6}{0}{6}
-\jointrow{26}{10,5,2,2,2}{0}{0}{0}{0}
-\jointrow{27}{10,4,3,2,2}{0}{0}{0}{0}
-\jointrow{28}{10,3,3,3,2}{0}{249134}{0}{249134}
-\jointrow{29}{9,9,3}{63}{16087668}{3733649}{12354019}
-\jointrow{30}{9,8,4}{476}{1074}{224}{850}
-\jointrow{31}{9,7,5}{1064}{45114369}{5841941}{39272428}
-\jointrow{32}{9,6,6}{729}{28053}{5489}{22564}
-\jointrow{33}{9,6,2,2,2}{21284}{0}{0}{0}
-\jointrow{34}{9,5,3,2,2}{159600}{73172985}{5619635}{67553350}
-\jointrow{35}{9,4,4,2,2}{106720}{4097}{97}{4000}
-\jointrow{36}{9,4,3,3,2}{319200}{7406500}{650190}{6756310}
-\jointrow{37}{9,3,3,3,3}{40146}{136656991}{11708527}{124948464}
-\jointrow{38}{9,2,2,2,2,2,2}{0}{0}{0}{0}
-\jointrow{39}{8,8,5}{1036}{579}{0}{579}
-\jointrow{40}{8,7,6}{3836}{5363}{0}{5363}
-\jointrow{41}{8,7,2,2,2}{75145}{0}{0}{0}
-\jointrow{42}{8,6,3,2,2}{905065}{0}{0}{0}
-\jointrow{43}{8,5,4,2,2}{1752275}{0}{0}{0}
-\jointrow{44}{8,5,3,3,2}{2546950}{2181146}{0}{2181146}
-\jointrow{45}{8,4,4,3,2}{3557750}{0}{0}{0}
-\jointrow{46}{8,4,3,3,3}{1742300}{13324}{0}{13324}
-\jointrow{47}{8,3,2,2,2,2,2}{2441880}{0}{0}{0}
-\jointrow{48}{7,7,7}{1036}{8846317}{0}{8846317}
-\jointrow{49}{7,7,3,2,2}{760671}{59075659}{0}{59075659}
-\jointrow{50}{7,6,4,2,2}{4421205}{0}{0}{0}
-\jointrow{51}{7,6,3,3,2}{6592050}{10755049}{0}{10755049}
-\jointrow{52}{7,5,5,2,2}{3127054}{39811433}{0}{39811433}
-\jointrow{53}{7,5,4,3,2}{26372380}{15243294}{0}{15243294}
-\jointrow{54}{7,5,3,3,3}{6488500}{770299774}{0}{770299774}
-\jointrow{55}{7,4,4,4,2}{6243210}{96}{0}{96}
-\jointrow{56}{7,4,4,3,3}{13787166}{15914299}{0}{15914299}
-\jointrow{57}{7,4,2,2,2,2,2}{15697800}{0}{0}{0}
-\jointrow{58}{7,3,3,2,2,2,2}{59890248}{141466}{0}{141466}
-\jointrow{59}{6,6,5,2,2}{4680565}{0}{0}{0}
-\jointrow{60}{6,6,4,3,2}{20056590}{0}{0}{0}
-\jointrow{61}{6,6,3,3,3}{5000924}{66885}{0}{66885}
-\jointrow{62}{6,5,5,3,2}{28737690}{5785798}{0}{5785798}
-\jointrow{63}{6,5,4,4,2}{41355210}{0}{0}{0}
-\jointrow{64}{6,5,4,3,3}{61411800}{5847144}{0}{5847144}
-\jointrow{65}{6,5,2,2,2,2,2}{36017730}{0}{0}{0}
-\jointrow{66}{6,4,4,4,3}{29337926}{0}{0}{0}
-\jointrow{67}{6,4,3,2,2,2,2}{403200900}{0}{0}{0}
-\jointrow{68}{6,3,3,3,2,2,2}{408724200}{0}{0}{0}
-\jointrow{69}{5,5,5,4,2}{19982642}{2083140}{0}{2083140}
-\jointrow{70}{5,5,5,3,3}{14843641}{584964496}{0}{584964496}
-\jointrow{71}{5,5,4,4,3}{64315328}{14873115}{0}{14873115}
-\jointrow{72}{5,5,3,2,2,2,2}{297050588}{0}{0}{0}
-\jointrow{73}{5,4,4,4,4}{15507348}{263}{0}{263}
-\jointrow{74}{5,4,4,2,2,2,2}{435282150}{0}{0}{0}
-\jointrow{75}{5,4,3,3,2,2,2}{2648587080}{0}{0}{0}
-\jointrow{76}{5,3,3,3,3,2,2}{1003251060}{185079130}{0}{185079130}
-\jointrow{77}{5,2,2,2,2,2,2,2,2}{36634104}{0}{0}{0}
-\jointrow{78}{4,4,4,3,2,2,2}{1294438650}{0}{0}{0}
-\jointrow{79}{4,4,3,3,3,2,2}{2938891586}{0}{0}{0}
-\jointrow{80}{4,3,3,3,3,3,2}{886699600}{0}{0}{0}
-\jointrow{81}{4,3,2,2,2,2,2,2,2}{656255250}{0}{0}{0}
-\jointrow{82}{3,3,3,3,3,3,3}{31772431}{0}{0}{0}
-\jointrow{83}{3,3,3,2,2,2,2,2,2}{1165021974}{0}{0}{0}
-\midrule
-\multicolumn{2}{l}{Total} & 12704114061 & 124395153 & 2051578111 & 29000964 & 2022577147\\
-\end{longtable}}
-
-The full endpoint cover contains $1\,806\,057\,392\,878$ classes.
-Elementary closures discharge $614\,986\,821\,324$ classes, leaving
-$1\,191\,070\,571\,554$ classes requiring a nine-move discharge or inverse coverage.
-
-The endpoint totals count the full $214$-annotation cover before witness
-search. The cover can include classes that are never reached by joint-2
-selection. Removing elementary closures leaves the full-cover obligations
-requiring a nine-move discharge or inverse coverage. Existing witnesses and
-checked diameter closures can reduce explicit search. The unsolved endpoint
-residue for inverse reconstruction is determined only by subsequent witness
-checking; its size is not a premise or a completed count here.
-
-The previous combined artifact format
-\nolinkurl{td20-joint2-selection-summary-v1} records the retained $U,J,C,O$
-counts, the support-clearing split, and the endpoint totals. Its $U+O$ direct
-total belongs to the superseded route. The active route additionally requires
-every explicit $R$ row and its versioned count and regeneration reports.
-Its direct total is $R+O$. The previous summary's explicit
-\nolinkurl{sorting_certificates_checked=false} and
-\nolinkurl{td20_proved=false} fields prevent a count from masquerading as a
-proof result.
-
-The active helper \nolinkurl{tools/audit/summarize_joint_counts.py} reconciles
-the retained $U,J,C,O$ report with every explicit paper $R$ row, rejecting
-missing, duplicate, pending, or inconsistent rows. Its format is
-\nolinkurl{td20-joint-selection-summary-v3}; the active direct total is $R+O$.
-It checks count coverage, not witnesses or final inverse obligations.
-
-The Java command \nolinkurl{CountTD20UnorientedResiduals} counts $R$ using the
-constrained generator. It writes one deterministic partition report with
-format {\small \nolinkurl{td20-unoriented-joint-residual-count-v1}}, the domain,
-partition number and key, exact count, implementation, and completeness flag.
-Malformed, incomplete, mismatched, or superseded reports are rejected.
-The optional publication step updates only the corresponding explicit $R$ row.
-These reports contain counts, not sorting witnesses.
-
-The independent checker audit
-\nolinkurl{tools/audit/CheckUnorientedResidualCounts.jsh} regenerates all
-$83$ residual counts using arbitrary first and second supports. Its
-versioned reports in \nolinkurl{data/unoriented-joint-residuals-checker-v1/}
-record the domain, partition number and key, count, implementation, and
-completeness flag. Count-only regeneration visits the same accepted leaves
-as class emission, without decoding or retaining representatives.
-
-\section{Final reconstruction from endpoint failures}
-\label{sec:inverse}\label{sec:avoidance}
-An \emph{endpoint residual} is a generated $18$-symbol class without a
-checked discharge within nine moves. A bounded-search miss is not a lower
-bound. Process residuals after endpoint generation and witness checking.
-The verifier regenerates the entire endpoint inventory and treats every
-missing nine-move discharge as a residual, even if the stored obstruction
-marker is absent.
-Only a gain-one then gain-two prefix leads to this domain. Its complete
-inverse construction is as follows.
-\begin{enumerate}
-\item Restore two fixed points in every cyclic gap distribution of the
-$18$-symbol endpoint, producing $20$ symbols. Label restored symbols in
-current-cycle traversal order. Reverse every transposition supported on
-both restored symbols and one original symbol. Retain valid, fixed-point-free,
-non-totally-unoriented predecessors whose exact forward replay creates those
-two fixed points and increases the odd-length-cycle count by two.
-\item Deduplicate predecessors by extended-toric class. A checked GPU sorting
-result within ten moves, including a persisted known-diameter closure,
-also closes every root path reaching that predecessor after one move.
-Propagate every other class.
-\item Restore one fixed point in every cyclic gap of each propagated
-$20$-symbol predecessor. Reverse every support containing that symbol and
-any two original symbols. Retain valid fixed-point-free roots of either orientation and whose exact forward replay is qualifying with gain one.
-\item Deduplicate roots by extended-toric class. Each needs a persisted
-known-diameter closure or a complete sorting witness within eleven transpositions. Such a
-root witness starts at the root and uses the full root budget.
-\end{enumerate}
-Deduplication uses a disk set with deterministic class keys. Multiple
-constructions impose one obligation per class and budget. Intermediate
-budget-ten discharges are persisted and independently replayed.
-
-\begin{proposition}[Inverse coverage]
-Every root selected for an $18$-symbol endpoint is discharged by a checked
-nine-move endpoint result or appears in the inverse construction, unless
-a checked intermediate ten-move closure already covers its path.
-\end{proposition}
-\begin{proof}
-Restore the two fixed points created by the actual second move in their
-actual cyclic gaps. Both lie in that move's support, since all other
-algebraic images are unchanged; its third symbol is an original endpoint
-symbol. Thus the first inverse wave contains the actual predecessor.
-Permuting only restored labels bijects supports and preserves pair classes,
-so the chosen restored-label order loses no class. Forward replay admits
-the actual edge. The first move likewise uses its newly fixed symbol and
-two others, so its actual gap and support occur in the second wave.
-Only the gain-two intermediate must be non-totally-unoriented, since it
-admits the second move; the gain-one root may be totally unoriented. Taking a class representative transports moves and gap choices
-bijectively. A complete endpoint result costs at most $2+9=11$ from the
-root, and an intermediate result costs at most $1+10=11$. Otherwise the
-independently verified root result uses at most eleven moves.
-\end{proof}
-The construction may include extra roots; each is checked within the same
-budget. Its completeness does not depend on a predicted obstruction set.
-
-\section{Certificates and completion criteria}
-The workflow separates exhaustive generation, sorting, and independent
-verification. The Java emitter generates classes on CPU and may first try a
-bounded CPU sorting prefix for direct roots and endpoints. It replays and
-persists every successful prefix as a complete witness or a known-diameter
-closure; a prefix miss leaves the
-original obligation and its full budget for CUDA search. Prefix move ordering
-introduces no structural reduction, including at totally unoriented states.
-Reconstructed classes are deduplicated, checked for previously established
-sorting witnesses, and given the same sound CPU prefix heuristic under a
-wall-clock deadline. A prefix miss or timeout retains no partial path and
-sends the unchanged class with its full budget to GPU search.
-The checker has no emitter dependency and independently regenerates roots,
-endpoints, and inverse waves. The certificate format is their interface.
-Every direct root requires a checked budget-eleven result, either a complete
-sorting witness or a known-diameter closure. The same alternatives apply to
-endpoints with budget nine and reconstructed intermediates with budget ten.
-
-The GPU sorter permits only transpositions whose change in
-$c_{\mathrm{odd}}$ is zero or two. At every search depth, including depth
-zero and states with existing fixed points, it accepts identity or exits when
-the established diameter of the contracted remainder fits the unused budget.
-Its search depth is bounded by the full obligation budget.
-A search miss under these restrictions is not a lower bound.
-
-The database has two column families. In the default family, the reserved
-UTF-8 key \nolinkurl{td20-schema} has value \nolinkurl{joint2-selection-v2};
-other entries map raw canonical instance keys to sorting-result records.
-The \nolinkurl{obstructions} family maps raw keys to empty values. Instance
-symbols use five bits, and the standard current cycle is implicit in the raw
-key, so canonicalization precedes persistence. A sorting-result value starts
-with one kind byte (zero for complete, one for diameter closure) and one
-move-count byte, followed by exactly that many fifteen-bit symbol triples,
-with zero padding to a byte boundary. A zero-move record is permitted when
-identity or the initial known diameter already closes the budget. Records
-contain at most eleven transpositions. Unknown kinds, inconsistent lengths,
-nonzero padding, and missing required records are rejected.
-
-Every result is replayed for applicability and target preservation. Complete
-witnesses must reach identity. For a diameter closure, the checker counts the
-actual remaining nonfixed symbols, uses the independent diameter table, and
-checks the replayed move count plus that diameter against the requested budget.
-The GPU's stopping flag is not a proof input. A valid result with a larger
-required budget is a miss for a smaller budget; malformed or incorrect data
-is rejected. Optional external complete witnesses are opened read-only and
-replayed. A partial imported database never establishes completeness.
-
-An obstruction marker is not proof of a lower bound. Missing markers cannot
-reduce the regenerated obligation set. Checksums and sidecar manifests are
-not proof inputs. A diameter-closure record is a checked upper-bound argument,
-not a complete sorting witness. The checker replays its stored transpositions
-and verifies contraction and the remaining diameter directly from the
-database. Every missing endpoint discharge retains its inverse-coverage
-obligation; every missing direct-root or required reconstructed-root discharge
-prevents completion.
-
-The documented TD(20) scheduling exception applies a ten-millisecond CPU
-prefix deadline to direct roots, endpoints, and both reconstructed waves,
-through \nolinkurl{td20.cpuPrefixMillis}. Depth and support limits can stop it
-earlier. Every miss or timeout preserves the full original GPU obligation.
-Superseded route schemas and checkpoints are rejected.
-
-\begin{theorem}[Conditional upper bound]
-Assume $\TD(18)=10$, the lower-order diameter and shared-framework premises,
-and the stated local support-clearing sequences.  If every direct root has a
-checked budget-eleven discharge, every endpoint has a checked budget-nine
-discharge or complete two-wave inverse coverage, and every remaining inverse
-obligation has a checked result at its wave budget, then
-$\TD(20)\leq11$.
-\end{theorem}
-\begin{proof}
-Contract roots with fixed points and use $\TD(19)\leq11$.  Every other root is
-a totally unoriented residual generated directly, closed by an immediate or
-joint-2 diameter route, sent to an endpoint, or retained by direct residual
-generation.  The explicit support clearings discharge their certified subset.
-The proposition covers every unresolved endpoint path.  All remaining classes
-have checked results within eleven moves, so every order-$20$ instance does.
-\end{proof}
-\begin{corollary}[Certificate-conditional equality]
-Under the hypotheses of the conditional upper-bound theorem,
-$\TD(20)=11$.
-\end{corollary}
-\begin{proof}
-Combine the theorem with the established lower bound in
-Proposition~\ref{prop:td20-lower}.
-\end{proof}
-
-The theorem's computational hypotheses have not been discharged in this
-source revision, so the corollary is not yet an unconditional proof claim.
-Completion requires one end-to-end checker report covering the $83$ source
-rows, $214$ endpoint annotations, both inverse waves, every witness and
-closure, and no unresolved root.  Operational exit criteria are in
-\nolinkurl{docs/RESEARCH_PLAN.md}.  Generated count artifacts, databases,
-checkpoints, logs, and certificates remain untracked.
+If all active direct roots and final reconstructed roots have checked
+budget-11 results and every endpoint is discharged or has complete inverse
+coverage, the exhaustive case partition gives $\TD(20)\leq 11$.
+Together with the established reverse-permutation lower bound this would give
+$\TD(20)=11$. The completion criteria require an independent full-domain
+count and full end-to-end verification; partial counts and software tests are
+not the conditional conclusion.
 
 \begin{thebibliography}{9}
 \bibitem{framework}

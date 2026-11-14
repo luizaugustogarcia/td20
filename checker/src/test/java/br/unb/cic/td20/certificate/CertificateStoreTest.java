@@ -76,7 +76,7 @@ class CertificateStoreTest {
             assertThrows(IllegalStateException.class,()->store.require(PAIR,10));
         }
     }
-    @Test void rejectsSupersededJointRouteSchema(@TempDir final Path path) throws Exception {
+    @Test void rejectsIncompatibleCertificateSchema(@TempDir final Path path) throws Exception {
         database(path.resolve("old-route"),null,"unsupported-selection-v1");
         assertThrows(IllegalStateException.class,()->new CertificateStore(path.resolve("old-route")));
     }

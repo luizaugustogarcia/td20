@@ -1,6 +1,7 @@
 package br.unb.cic.td20.verification;
 
-import br.unb.cic.td20.joint.JointInverseReconstruction;
+import br.unb.cic.td20.joint.KnownDiameters;
+
 import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.runtime.CheckerParallelism;
@@ -63,7 +64,7 @@ final class CheckerStateSet implements AutoCloseable {
         }
     }
 
-    void add(final JointInverseReconstruction.SearchState state) {
+    void add(final SearchState state) {
         final var canonical = state.pair().canonicalRepresentative();
         final byte[] raw = CertificateCodec.keyFor(canonical);
         final byte[] key = new byte[3 + raw.length];
@@ -94,7 +95,7 @@ final class CheckerStateSet implements AutoCloseable {
         }
     }
 
-    boolean contains(final JointInverseReconstruction.SearchState state) {
+    boolean contains(final SearchState state) {
         if (sealed == null) {
             throw new IllegalStateException("Membership requires a sealed checker set");
         }
@@ -134,18 +135,18 @@ final class CheckerStateSet implements AutoCloseable {
         return sealed;
     }
 
-    void forEachBatch(final Consumer<List<JointInverseReconstruction.SearchState>> consumer) {
+    void forEachBatch(final Consumer<List<SearchState>> consumer) {
         final Inventory expected = seal();
         long count = 0;
         final int batchSize = CheckerParallelism.lookupBatchSize();
         try (final var reads = new ReadOptions().setFillCache(false);
              final var iterator = database.newIterator(reads)) {
-            var batch = new ArrayList<JointInverseReconstruction.SearchState>(batchSize);
+            var batch = new ArrayList<SearchState>(batchSize);
             for (iterator.seek(new byte[]{VERSION}); iterator.isValid(); iterator.next()) {
                 final byte[] key = iterator.key();
                 requireKey(key, iterator.value());
                 count++;
-                batch.add(new JointInverseReconstruction.SearchState(
+                batch.add(new SearchState(
                         Byte.toUnsignedInt(key[1]), CertificateCodec.pairForKey(
                         Arrays.copyOfRange(key, 3, key.length), Byte.toUnsignedInt(key[2]))));
                 if (batch.size() == batchSize) {
@@ -167,7 +168,7 @@ final class CheckerStateSet implements AutoCloseable {
 
     /** Streams all sealed states through bounded parallel callbacks. */
     void forEachConcurrently(final int workers,
-                             final Consumer<JointInverseReconstruction.SearchState> consumer) {
+                             final Consumer<SearchState> consumer) {
         try (final var tasks = new BoundedTasks(workers, "checker-reconstruction-")) {
             forEachBatch(batch -> {
                 tasks.check();
@@ -178,9 +179,9 @@ final class CheckerStateSet implements AutoCloseable {
 
     /** Performs one bulk lookup per large batch, then parallelizes every missing-state callback. */
     void forEachConcurrently(final int workers,
-                             final Function<List<JointInverseReconstruction.SearchState>, boolean[]> lookup,
-                             final Consumer<JointInverseReconstruction.SearchState> present,
-                             final Consumer<JointInverseReconstruction.SearchState> missing) {
+                             final Function<List<SearchState>, boolean[]> lookup,
+                             final Consumer<SearchState> present,
+                             final Consumer<SearchState> missing) {
         try (final var tasks = new BoundedTasks(workers, "checker-reconstruction-")) {
             forEachBatch(batch -> {
                 tasks.check();
@@ -197,8 +198,8 @@ final class CheckerStateSet implements AutoCloseable {
     }
 
     private static void requireKey(final byte[] key, final byte[] value) {
-        if (key.length < 4 || key[0] != VERSION || key[1] < 9 || key[1] > 11
-                || key[2] < 1 || key[2] > 21 || value.length != 0) {
+        if (key.length < 4 || key[0] != VERSION || key[1] < 1 || key[1] > KnownDiameters.MAX_BUDGET
+                || key[2] < 1 || key[2] > KnownDiameters.ROOT_SYMBOLS || value.length != 0) {
             throw new IllegalStateException("Malformed checker state");
         }
     }

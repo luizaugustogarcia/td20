@@ -105,7 +105,7 @@ class CpuPrefixSearchTest {
         var input = CyclicTargetPair.of(new MulticyclePermutation(
                 "(0 4 2)(1 5 3)(6 10 8)(7 14 9)(11 17 13)(12 15)(16 18)"),
                 Cycle.of(java.util.stream.IntStream.range(0, 19).toArray()));
-        assertTrue(br.unb.cic.td20.joint.JointReductionAnalysis.isTotallyUnoriented(
+        assertTrue(br.unb.cic.td20.joint.CyclicTargetMoves.isTotallyUnoriented(
                 java.util.stream.IntStream.range(0, 19).map(input.getOmega()::image).toArray(),
                 input.getBeta().getSymbols()));
         var result = CpuPrefixSearch.search(input, 9, 3, 8192).orElseThrow();

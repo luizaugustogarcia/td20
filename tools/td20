@@ -6,14 +6,15 @@ Usage: tools/td20 [--dry-run] COMMAND [Java arguments or Maven build options]
 
 CPU validation:
   test         Run both required CPU test suites
-  inventory    Check the 83 root partitions and 214 endpoint annotations
+  inventory    Check the 83 root partitions and 143 endpoint annotations
   structure    Alias for inventory
   count        Check root and endpoint class counts on all available CPU cores
-  count-r      Run CountTD20UnorientedResiduals via JShell
-  count-u      Independently Burnside-count all-unoriented roots
-  count-j      Count joint-2 residuals with the shared Java machinery
-  count-e      Independently Burnside-count the endpoint cover
+  count-roots  Regenerate and publish all active root U3,O3,C3 values; resumable
+  count-endpoints  Persist the complete endpoint census via emitter JShell
+  audit-endpoints  Recount and compare endpoints via checker JShell
+  endpoint-table  Write checked endpoint and root table totals into the paper
   census       Check root/endpoint counts via JShell
+  audit-roots  Independently regenerate every root count via checker JShell
 
 Computation:
   emit         Emit sorting results via JShell (build-gpu first)
@@ -26,7 +27,7 @@ Build and help:
   help         Show this help
 
 Examples:
-  tools/td20 count --phase=endpoints --workers=4
+  tools/td20 count --phase=endpoints
   tools/td20 emit --phase=roots --partitions=1-1
   tools/td20 verify --phase=all
 Set TD20_JSHELL_OPTIONS for remote JVM options, for example:
@@ -63,11 +64,12 @@ script=
 case "$command" in
     inventory|structure) module=checker; entry=br.unb.cic.td20.CertificateChecker; set -- --structural-only "$@" ;;
     verify) module=checker; entry=br.unb.cic.td20.CertificateChecker ;;
-    count-r) entry=br.unb.cic.td20.CountTD20UnorientedResiduals ;;
-    count-u) entry=br.unb.cic.td20.CountTD20Unoriented ;;
-    count-j) entry=br.unb.cic.td20.CountTD20Joint ;;
-    count-e) entry=br.unb.cic.td20.CountTD20Endpoints ;;
-    count|census) entry=br.unb.cic.td20.CountTD20Bracelets ;;
+    count-roots) script=tools/audit/CountErikssonRoots.jsh ;;
+    endpoint-table) script=tools/audit/WriteEndpointTable.jsh ;;
+    count-endpoints) entry=br.unb.cic.td20.CountEriksson; set -- --phase=endpoints "$@" ;;
+    audit-endpoints) module=checker; entry=br.unb.cic.td20.CountEriksson; set -- --phase=endpoints "$@" ;;
+    audit-roots) module=checker; script=tools/audit/CountErikssonRoots.jsh ;;
+    count|census) entry=br.unb.cic.td20.CountEriksson ;;
     emit) entry=br.unb.cic.td20.WitnessEmitter ;;
     avoidance) entry=br.unb.cic.td20.WitnessEmitter; set -- --phase=avoidance "$@" ;;
     *) printf 'Unknown command: %s\n' "$command" >&2; exit 2 ;;
@@ -80,6 +82,7 @@ classpath="$td20_root/$module/target/classes"
 if [[ -f $module/target/jshell-classpath ]]; then classpath+=":$(<"$module/target/jshell-classpath")"; fi
 jshell_options=()
 read -r -a jshell_options <<< "${TD20_JSHELL_OPTIONS:-}"
+if [[ $command == count-roots ]]; then jshell_options+=("-R-Dtd20.eriksson.publish=true"); fi
 invocation=(jshell "-R-Dtd20.countModule=$module" --feedback concise --class-path "$classpath" "-R-Djava.library.path=$td20_root/emitter/target/native" "${jshell_options[@]}")
 if "$dry_run"; then
     printf '%q ' "${invocation[@]}"
@@ -114,11 +117,11 @@ for option in sys.argv[3:]:
         arguments.append(option)
 if command == 'avoidance' and any(a.startswith('--phase=') and a != '--phase=avoidance' for a in arguments):
     raise SystemExit('The avoidance command requires --phase=avoidance.')
-print('int status=0;')
+print('int status=1;')
 for key,value in properties:
     print('System.setProperty('+json.dumps(key)+','+json.dumps(value)+');')
 args=','.join(json.dumps(arg,ensure_ascii=True) for arg in arguments)
-print('try { '+entry+'.main(new String[]{'+args+'}); } catch(Throwable error) { error.printStackTrace(); status=1; }')
+print('try { '+entry+'.main(new String[]{'+args+'}); status=0; } catch(Throwable error) { error.printStackTrace(); status=1; }')
 print('/exit status')
 PY
 "${invocation[@]}" "$driver"

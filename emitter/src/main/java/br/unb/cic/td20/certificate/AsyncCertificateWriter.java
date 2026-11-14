@@ -91,13 +91,15 @@ public final class AsyncCertificateWriter implements AutoCloseable {
     }
 
     public void enqueueObstruction(CyclicTargetPair pair, int maximumMoves) {
-        if (maximumMoves != obligationBudget(pair.getBeta().size()))
-            throw new IllegalArgumentException("Obstruction budget disagrees with its cyclic domain");
+        if (maximumMoves < 1 || maximumMoves > obligationBudget(pair.getBeta().size()))
+            throw new IllegalArgumentException("Invalid explicit obstruction budget");
         offer(new Entry(CertificateCodec.keyFor(pair), null, pair.getBeta().size(), maximumMoves));
     }
 
     private static int obligationBudget(int domain) {
-        return domain == 18 ? 9 : domain == 20 ? 10 : 11;
+        if (domain<1 || domain>br.unb.cic.td20.joint.KnownDiameters.ROOT_SYMBOLS)
+            throw new IllegalArgumentException("Invalid certificate domain");
+        return br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET;
     }
 
     public void enqueueClosure(CyclicTargetPair pair, List<Cycle> moves, int maximumMoves) {

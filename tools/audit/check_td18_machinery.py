@@ -12,13 +12,12 @@ import json
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
-# These files implement the joint route itself rather than shared machinery.
-JOINT_ADAPTERS = {
-    'avoidance/JointAvoidance.java',
-    'avoidance/JointInverseReconstruction.java',
-    'avoidance/ReconstructionCheckpoint.java',
-    'avoidance/RootReconstructionCheckpoint.java',
-    'verification/CertificateChecker.java',
+# Domain constants and admitted local support powers are checked against the
+# source specification and independent Java tests rather than copied verbatim.
+CONFIGURATION_ADAPTERS = {
+    'joint/KnownDiameters.java',
+    'joint/SupportClearing.java',
+    'joint/ErikssonRoute.java',
 }
 
 
@@ -53,60 +52,35 @@ def adapt(relative: str, text: str) -> str:
         text = text.replace('size() > 10', 'size() > 11').replace('exceeds ten moves', 'exceeds eleven moves').replace('count > 10', 'count > 11')
     elif relative.endswith('certificate/AsyncCertificateWriter.java'):
         text = text.replace('joint-selection-v3', 'joint2-selection-v2')
-        text = text.replace('    private static int obligationBudget(int domain) { return domain == 16 ? 8 : domain == 18 ? 9 : 10; }',
-                            '    private static int obligationBudget(int domain) {\n        return domain == 18 ? 9 : domain == 20 ? 10 : 11;\n    }')
         text = text.replace('maximumMoves > 10', 'maximumMoves > 11').replace('0..10', '0..11')
     elif relative.endswith('certificate/CertificateStore.java'):
-        text = text.replace('Read-only version-2 witness/obstruction schema', 'Read-only TD(20) joint-2 witness/obstruction schema')
         text = text.replace('joint-selection-v3', 'joint2-selection-v2')
-        text = text.replace('canonical.getBeta().size() == 16 ? 8 : canonical.getBeta().size() == 18 ? 9 : 10',
-                            'obligationBudget(canonical.getBeta().size())')
-        text = text.replace('return domain == 16 ? 8 : domain == 18 ? 9 : 10;',
-                            'return domain == 18 ? 9 : domain == 20 ? 10 : 11;')
     elif relative.endswith('certificate/ReadOnlyWitnessSource.java') or relative.endswith('avoidance/DiskStateSet.java'):
         text = text.replace('maximumMoves > 10', 'maximumMoves > 11').replace('1..10', '1..11')
     elif relative.endswith('verification/CheckerStateSet.java'):
         text = text.replace('key[1] > 10', 'key[1] > 11').replace('key[2] > 19', 'key[2] > 21')
-    elif relative.endswith('emission/WitnessEmitter.java'):
+    elif relative.endswith('emission/ErikssonWitnessEmitter.java'):
         text = text.replace('import br.unb.cic.td20.search.WitnessSearch;',
                             'import br.unb.cic.td20.search.WitnessSearch;\nimport br.unb.cic.td20.search.CpuPrefixSearch;')
         text = text.replace('    private static final long RECONSTRUCTION_CPU_PREFIX_MILLIS = reconstructionCpuPrefixMillis();\n', '')
         text = text.replace('        if (options.help) { usage(); return; }',
                             '        if (options.help) { usage(); return; }\n'
-                            '        log.info("General CPU prefix deadline: {} ms before GPU fallback (roots, endpoints, reconstruction)",\n'
-                            '                CpuPrefixSearch.timeoutMillis());')
+                            '        log.info("General CPU prefix deadline: {} ms for all phases",CpuPrefixSearch.timeoutMillis());')
         text = text.replace('                    log.info("Reconstruction CPU prefix deadline: {} ms before GPU fallback",\n'
                             '                            RECONSTRUCTION_CPU_PREFIX_MILLIS);\n', '')
         text = text.replace('        var result = WitnessSearch.searchWithCpuPrefixTimeout(\n'
                             '                pair, budget, RECONSTRUCTION_CPU_PREFIX_MILLIS);',
                             '        var result = WitnessSearch.search(pair, budget);')
-        text = text.replace('    private static long reconstructionCpuPrefixMillis() {\n'
-                            '        long value = Long.getLong("td20.reconstructionCpuPrefixMillis", 10L);\n'
-                            '        if (value < 0) throw new IllegalArgumentException(\n'
-                            '                "td20.reconstructionCpuPrefixMillis must not be negative");\n'
-                            '        return value;\n'
-                            '    }\n\n', '')
-        text = text.replace('settleReconstructed(pair, 9, writer)', 'settleReconstructed(pair, TEN, writer)')
-        text = text.replace('settleReconstructed(pair, 10, writer)', 'settleReconstructed(pair, 11, writer)')
-        text = text.replace('settleReconstructed(pair, TEN, writer)', 'settleReconstructed(pair, 10, writer)')
-        text = text.replace('discharge.apply(pair.canonicalRepresentative(), 10)', 'discharge.apply(pair.canonicalRepresentative(), 11)')
-        text = text.replace('discharge.apply(pair.canonicalRepresentative(), 8)', 'discharge.apply(pair.canonicalRepresentative(), 9)')
-        text = text.replace('residuals.add(pair, 8)', 'residuals.add(pair, 9)').replace('missingEightMoveDischarges', 'missingNineMoveDischarges')
-        text = text.replace('last = 53', 'last = 83').replace('substring(13),53', 'substring(13),83').replace('last != 53', 'last != 83')
-        text = text.replace('endpointLast = 104', 'endpointLast = 214').replace('substring(12),104', 'substring(12),214').replace('endpointLast != 104', 'endpointLast != 214')
-        text = text.replace('arg.startsWith("--td16-db=")', '(arg.startsWith("--td18-db=") || arg.startsWith("--td16-db="))')
-        text = text.replace('[--td16-db=PATH]', '[--td18-db=PATH]').replace('or a TD(16) import', 'or a witness import')
-    elif relative.endswith('CountTD20UnorientedResiduals.java'):
-        text = text.replace('19', '21')
-    elif relative.endswith('CountTD20Bracelets.java'):
-        text = text.replace('last = 53', 'last = 83').replace('substring(13),53', 'substring(13),83')
-        text = text.replace('endpointLast = 104', 'endpointLast = 214').replace('substring(12),104', 'substring(12),214')
+        begin = text.find('    private static long reconstructionCpuPrefixMillis() {')
+        if begin >= 0:
+            end = text.index('\n    }', begin) + len('\n    }')
+            text = text[:begin] + text[end:]
     elif relative.endswith('native/core/common.cuh'):
         text = text.replace('#define MAX_DEPTH 10', '#define MAX_DEPTH 11').replace('#define MAX_N 19', '#define MAX_N 21')
     elif relative.endswith('native/CMakeLists.txt'):
         text = text.replace('TD20_NATIVE_MAX_N 19', 'TD20_NATIVE_MAX_N 21').replace('TD20_NATIVE_MAX_DEPTH 10', 'TD20_NATIVE_MAX_DEPTH 11')
     if relative.endswith('avoidance/DiskStateSet.java') or relative.endswith('verification/CheckerStateSet.java'):
-        text = text.replace('byte VERSION = 2', 'byte VERSION = 3').replace('key[1] < 8', 'key[1] < 9')
+        text = text.replace('byte VERSION = 2', 'byte VERSION = 3')
     return text
 
 
@@ -117,7 +91,7 @@ def check(reference: Path) -> list[str]:
         java = reference / module / 'src/main/java/br/unb/cic/td18'
         for old in sorted(java.rglob('*.java')):
             suffix = old.relative_to(java).as_posix()
-            if (suffix.startswith('joint/') and suffix not in {'joint/JointReductionAnalysis.java', 'joint/JointMoves.java'}) or suffix in JOINT_ADAPTERS:
+            if suffix in CONFIGURATION_ADAPTERS:
                 continue
             paths.append(f'{module}/src/main/java/br/unb/cic/td20/{suffix.replace("TD18", "TD20")}')
     paths.extend(p.relative_to(reference).as_posix() for p in sorted((reference / 'emitter/src/native').rglob('*')) if p.is_file())
@@ -143,7 +117,7 @@ def main() -> None:
     checked = check(options.reference.resolve())
     print(json.dumps({'shared_machinery_matches_td18': True, 'source_files_checked': len(checked),
                       'general_cpu_prefix_deadline_adapter': True,
-                      'joint_adapters_require_independent_java_tests': True}, indent=2))
+                      'configuration_adapters_require_independent_java_tests': True}, indent=2))
 
 
 if __name__ == '__main__':

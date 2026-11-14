@@ -24,7 +24,7 @@ import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 
-/** Read-only TD(20) joint-2 witness/obstruction schema, with independent replay. */
+/** Read-only intrinsic witness and unresolved-marker store. */
 public final class CertificateStore implements AutoCloseable {
     public static final int FORMAT_VERSION = 2;
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
@@ -137,7 +137,9 @@ public final class CertificateStore implements AutoCloseable {
         catch (final RocksDBException failure) { throw new IllegalStateException("Cannot read certificate", failure); }
     }
     private static int obligationBudget(final int domain) {
-        return domain == 18 ? 9 : domain == 20 ? 10 : 11;
+        if (domain<1 || domain>br.unb.cic.td20.joint.KnownDiameters.ROOT_SYMBOLS)
+            throw new IllegalArgumentException("Invalid certificate domain");
+        return br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET;
     }
     private void parallelRanges(final int size, final RangeAction action) {
         final int taskCount = Math.min(workers, size);

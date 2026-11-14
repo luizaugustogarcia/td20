@@ -1,7 +1,7 @@
 package br.unb.cic.td20.verification;
 
-import br.unb.cic.td20.joint.JointInverseReconstruction;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
@@ -20,14 +20,14 @@ class CheckerStateSetTest {
     void deduplicatesByClassAndKeepsBudgetsDistinct(@TempDir final Path directory) {
         final var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)),
                 Cycle.of(0, 1, 2));
-        final var first = new JointInverseReconstruction.SearchState(9, pair);
+        final var first = new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair);
         try (final var states = new CheckerStateSet(directory.resolve("states"))) {
             states.add(first);
-            states.add(new JointInverseReconstruction.SearchState(9, pair.canonicalRepresentative()));
-            states.add(new JointInverseReconstruction.SearchState(10, pair));
+            states.add(new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair.canonicalRepresentative()));
+            states.add(new SearchState(ErikssonRoute.ROOT_BUDGET, pair));
             assertEquals(2, states.seal().count());
             assertTrue(states.contains(first));
-            final var recovered = new ArrayList<JointInverseReconstruction.SearchState>();
+            final var recovered = new ArrayList<SearchState>();
             states.forEachBatch(recovered::addAll);
             assertEquals(2, recovered.size());
             assertEquals(pair.extendedToricClassKey(),

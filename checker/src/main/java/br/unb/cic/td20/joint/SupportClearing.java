@@ -8,7 +8,7 @@ public final class SupportClearing {
     public static boolean closes(final CyclicTargetPair pair) { return closingLength(pair) != 0; }
     public static int closingLength(final CyclicTargetPair pair) {
         if (pair.getBeta().size() != KnownDiameters.ROOT_SYMBOLS) return 0;
-        if (JointMoves.fixed(JointMoves.images(pair)) != 0)
+        if (CyclicTargetMoves.fixed(CyclicTargetMoves.images(pair)) != 0)
             throw new IllegalArgumentException("Support-clearing roots require 21 nonfixed symbols");
         int smallest = Integer.MAX_VALUE;
         for (final var cycle : pair.getOmega()) {

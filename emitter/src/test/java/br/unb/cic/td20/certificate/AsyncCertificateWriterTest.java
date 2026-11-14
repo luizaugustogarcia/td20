@@ -98,7 +98,7 @@ class AsyncCertificateWriterTest {
             assertTrue(writer.find(pair(),1).orElseThrow().isEmpty());
         }
     }
-    @Test void rejectsSupersededJointRouteSchema(@TempDir Path directory) throws Exception {
+    @Test void rejectsIncompatibleCertificateSchema(@TempDir Path directory) throws Exception {
         try (var writer = new AsyncCertificateWriter(directory,60)) { writer.flush(); }
         var handles = new ArrayList<org.rocksdb.ColumnFamilyHandle>();
         try (var options = new org.rocksdb.DBOptions(); var familyOptions = new org.rocksdb.ColumnFamilyOptions();
@@ -118,7 +118,7 @@ class AsyncCertificateWriterTest {
         assertThrows(IllegalStateException.class, () -> new AsyncCertificateWriter(directory.resolve("source"),60));
         try (var writer = new AsyncCertificateWriter(directory.resolve("proof"),60)) {
             assertThrows(IllegalArgumentException.class, () -> writer.enqueue(pair(),List.of(Cycle.of(0,2,1))));
-            assertThrows(IllegalArgumentException.class, () -> writer.enqueueObstruction(pair(),8));
+            assertThrows(IllegalArgumentException.class, () -> writer.enqueueObstruction(pair(),br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET+1));
         }
     }
 }

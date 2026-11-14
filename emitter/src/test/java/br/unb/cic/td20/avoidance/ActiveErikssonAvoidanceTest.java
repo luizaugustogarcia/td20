@@ -1,0 +1,70 @@
+package br.unb.cic.td20.avoidance;
+
+import br.unb.cic.td20.joint.ErikssonRoute;
+import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.permutation.Cycle;
+import br.unb.cic.td20.permutation.MulticyclePermutation;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import static org.junit.jupiter.api.Assertions.*;
+
+class ActiveErikssonAvoidanceTest {
+    @Test void resumedAfterTwoWaveProducesBothAfterOneDomains(@TempDir Path directory) throws Exception {
+        Path source=Files.createDirectory(directory.resolve("source")),work=Files.createDirectory(directory.resolve("next"));
+        try (var set=new DiskStateSet(source.resolve("after-two"))) {
+            set.add(pair(ErikssonRoute.ROOT_SYMBOLS-3),ErikssonRoute.ROOT_BUDGET-2); assertEquals(1,set.seal());
+        }
+        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_TWO,1,1,-1,-1).write(source);
+        Set<Integer> domains=ConcurrentHashMap.newKeySet();
+        var result=ErikssonAvoidance.resume(source,work,(p,b)->{
+            if (b==ErikssonRoute.ROOT_BUDGET-2) return false;
+            assertEquals(ErikssonRoute.ROOT_BUDGET-1,b); domains.add(p.getBeta().size()); return true;
+        },null);
+        assertEquals(Set.of(ErikssonRoute.ROOT_SYMBOLS-1,ErikssonRoute.ROOT_SYMBOLS),domains);
+        assertTrue(result.afterOne()>1); assertEquals(0,result.roots()); assertEquals(0,result.unresolved());
+        var resumed=ErikssonAvoidance.resume(work,Files.createDirectory(directory.resolve("again")),(p,b)->{fail("Empty sealed root wave must not generate work");return false;},null);
+        assertEquals(result,resumed);
+    }
+    @Test void resumedMixedAfterOneWaveReversesGainOneAndGainZero(@TempDir Path directory) throws Exception {
+        Path source=Files.createDirectory(directory.resolve("source")),work=Files.createDirectory(directory.resolve("next"));
+        try (var set=new DiskStateSet(source.resolve("after-one"))) {
+            set.add(pair(ErikssonRoute.ROOT_SYMBOLS-1),ErikssonRoute.ROOT_BUDGET-1);
+            set.add(pair(ErikssonRoute.ROOT_SYMBOLS),ErikssonRoute.ROOT_BUDGET-1); assertEquals(2,set.seal());
+        }
+        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1).write(source);
+        Set<Integer> domains=ConcurrentHashMap.newKeySet();
+        var result=ErikssonAvoidance.resume(source,work,(p,b)->{
+            if (b==ErikssonRoute.ROOT_BUDGET-1) { domains.add(p.getBeta().size()); return false; }
+            assertEquals(ErikssonRoute.ROOT_BUDGET,b); assertEquals(ErikssonRoute.ROOT_SYMBOLS,p.getBeta().size()); return true;
+        },null);
+        assertEquals(Set.of(ErikssonRoute.ROOT_SYMBOLS-1,ErikssonRoute.ROOT_SYMBOLS),domains);
+        assertTrue(result.roots()>0); assertEquals(0,result.unresolved());
+    }
+    @Test void oldCheckpointsMissingSetsAndWrongBudgetsCannotResume(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("reconstruction-checkpoint.txt"),"incompatible checkpoint");
+        assertThrows(IllegalStateException.class,()->ErikssonCheckpoint.read(directory));
+        var checkpoint=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.ROOTS,1,1,1,1); checkpoint.write(directory);
+        assertEquals(checkpoint,ErikssonCheckpoint.read(directory));
+        assertThrows(IllegalStateException.class,()->ErikssonAvoidance.resume(directory,directory.resolve("work"),(p,b)->true,null));
+        assertThrows(IllegalArgumentException.class,()->new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_TWO,1,1,0,-1));
+        Path source=Files.createDirectory(directory.resolve("wrong")),work=Files.createDirectory(directory.resolve("wrong-next"));
+        try (var set=new DiskStateSet(source.resolve("after-one"))) { set.add(pair(ErikssonRoute.ROOT_SYMBOLS),ErikssonRoute.ROOT_BUDGET); set.seal(); }
+        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,1,-1).write(source);
+        assertThrows(IllegalStateException.class,()->ErikssonAvoidance.resume(source,work,(p,b)->true,null));
+    }
+    static CyclicTargetPair pair(int n) {
+        int shift=1; while (gcd(shift+1,n)!=1) shift++;
+        int[] image=new int[n],beta=new int[n]; for (int i=0;i<n;i++) { image[i]=(i+shift)%n; beta[i]=i; }
+        var omega=new MulticyclePermutation(); boolean[] seen=new boolean[n];
+        for (int x=0;x<n;x++) if (!seen[x]) {
+            List<Integer> symbols=new ArrayList<>(); int y=x;
+            do { symbols.add(y); seen[y]=true; y=image[y]; } while (y!=x);
+            omega.add(Cycle.of(symbols.stream().mapToInt(Integer::intValue).toArray()));
+        }
+        return CyclicTargetPair.ofOwned(omega,Cycle.of(beta)).canonicalRepresentative();
+    }
+    static int gcd(int a,int b) { while (b!=0) { int t=a%b;a=b;b=t; } return a; }
+}

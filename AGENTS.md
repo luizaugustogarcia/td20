@@ -45,30 +45,28 @@
 
 ## Joint selection and coverage
 
-- Use the joint-2 selection from ../td18 with the TD(20) domain and budgets.
-- Keep all 83 paper root partitions and the independently generated 214
-  endpoint annotations consistent with the implementation.
-- First test all moves creating at least two fixed points. Otherwise inspect
-  every qualifying gain-one first move and every second move creating at least
-  two fixed points. Gain three closes; gain two reaches an 18-symbol endpoint.
-  Include supports within even-length cycles and across cycles.
-- Totally unoriented roots containing only odd-length cycles have no qualifying
-  first move. Test roots with even-length cycles. Stop totally unoriented
-  successors because they have no second move creating at least two fixed
-  points. Retain every root without a favorable (1,2) or (1,3) prefix.
-- Keep the selection-independent unoriented census U separate from the new
-  unoriented residual count R. Direct root obligations total R + O; reject
-  pending R counts. The gain-one inverse wave admits roots of either orientation.
-- Use only the paper's explicit budget-valid support-clearing patterns.
-- Endpoint sorting failures are final-phase obligations; never assume a
-  predicted obstruction list or count.
-- Reconstruct every compatible root through two inverse waves. Restore the
-  gain-two second move, then the gain-one first move. Enumerate every cyclic
-  gap and support and verify actual forward gains and odd-cycle increase.
-- Direct roots use budget eleven; endpoints use nine; inverse waves use
-  budgets ten and eleven on twenty and twenty-one symbols respectively.
-- Reject superseded route counts and checkpoints. Explicit pending paper
-  rows support structural inventory checks; proof verification requires counts.
+- The active route is Eriksson reduction plus a third transposition on either
+  endpoint. Keep all 83 active root partitions and 143 full endpoint
+  annotations consistent with docs/td20-reduction-count.tex.
+- Test immediate gains at least two on either endpoint. Otherwise enumerate
+  every gain-zero/one first move and every second move producing a total of
+  three fixed symbols. Seek every third move with gain at least two. Two moves
+  producing four fixed symbols or three producing six close by known bounds.
+- Do not impose qualifying odd-cycle restrictions on first moves. Totally
+  unoriented all-odd roots still participate through gain-zero first moves.
+- Active counts are retained unoriented roots, retained oriented roots, and
+  support-cleared roots. Reject pending counts and verify every active inventory row.
+- Use only the paper's explicit budget-valid support-clearing patterns:
+  powers 9:7, 11:6, 13:7/10/11, and 17:9/13/15.
+- Endpoints have 16 symbols and budget 8; direct roots have 21
+  symbols and budget 11. All endpoint types are included, without an
+  unjustified stricter 3-norm bound. Whole-domain diameter closures are valid.
+- Reconstruct both `(1,2,2)` and `(0,3,2)` paths in three inverse waves, on both
+  endpoints. Restore two, then either two/three, then one/zero fixed symbols.
+  Enumerate all gaps/supports and replay actual forward gains. The after-two
+  and after-one budgets are 9 and 10; final roots use 11.
+- Endpoint misses are final-phase obligations. Never assume an obstruction
+  list/count, omit work through missing markers, or accept incompatible checkpoints.
 
 ## Code, documentation, and proof discipline
 
@@ -84,21 +82,36 @@
   the database. Missing obstruction markers cannot omit work. Checksums and
   sidecar manifests are not required proof inputs.
 - Validate small domains before large runs. Generated databases, checkpoints,
-  logs, and certificates remain untracked.
+  certificates, count reports, settings and all logs remain untracked.
 
 ## Engineering
 
 - Keep CPU computation in Java and runtime native sources in CUDA. Reuse the
   existing Java Burnside counter.
 - Keep generation, counting, sorting, scheduling, persistence, and checking
-  machinery identical to ../td18, except for the TD(20) domain and budgets
-  and the budget-valid support clearings. Use TD(18) worker detection,
-  bounded queues, and prefix scheduling; do not hardcode machine-specific
-  worker counts.
+  machinery identical to ../td18, except for TD20 domains, budgets, the
+  budget-valid support clearings and documented compatibility safeguards.
+- Use automatic CPU worker detection, bounded queues and prefix scheduling;
+  do not hardcode machine-specific worker counts. Maintained launchers record
+  their actual configuration and use explicit resource/architecture overrides.
+  Preserve the generic SM 120 build and configurable local native build.
+- Always load ~/.bashrc for every shell command, locally and on servers,
+  including inspection, profiling, builds and launches. Use bash -ic locally
+  and for the remote command passed to SSH so the configured toolchain is
+  available. Use plain ssh for server access.
+
+- Run Java computations through JShell and use all available CPU cores.
+  Keep CPU-bound runs saturated with useful work, bounded queues and enough
+  independent prefix tasks. Check actual utilization and adjust task granularity
+  when worker imbalance leaves cores idle.
+
 - JDK 21 is the baseline. Prefer immutable keys and deterministic iteration
   at persistence boundaries.
 - Keep the checker independent of the emitter artifact.
+- Disable WAL for every RocksDB write. Flush completed persistence boundaries
+  explicitly; missing results after interruption must be regenerated.
 - Use disk-backed deduplication for large inverse waves and bounded queues
   for asynchronous persistence.
 - Run mvn -pl emitter -am test and mvn -pl checker -am test for CPU-side work.
-  Run CUDA-dependent tests only when the environment is configured for them.
+- Run CUDA-dependent tests only when the environment is configured for them.
+- Run Java entry points through JShell; use tools/td20 for prepared classpaths.

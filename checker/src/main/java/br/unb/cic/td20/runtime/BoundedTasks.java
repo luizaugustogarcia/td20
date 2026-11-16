@@ -32,7 +32,6 @@ public final class BoundedTasks implements AutoCloseable {
         final var error = failure.get();
         if (error != null) {
             if (error instanceof Error fatal) throw fatal;
-            if (error instanceof RuntimeException runtime) throw runtime;
             throw new IllegalStateException("Checker worker failed", error);
         }
         if (Thread.currentThread().isInterrupted())

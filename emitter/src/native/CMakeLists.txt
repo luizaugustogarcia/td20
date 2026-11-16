@@ -3,33 +3,12 @@ project(td20_native LANGUAGES CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 
-set(TD20_DEFAULT_CUDA_ARCHITECTURES)
-set(TD20_FORWARD_CUDA_ARCHITECTURE)
-
-# sm_60, sm_70: dropped in CUDA 13.0
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
-    list(APPEND TD20_DEFAULT_CUDA_ARCHITECTURES 60-real 70-real)
+set(TD20_CUDA_ARCHITECTURES "120-real;120-virtual"
+    CACHE STRING "CUDA architectures (default: SM 120 native code and forward PTX)")
+if(TD20_CUDA_ARCHITECTURES MATCHES "(^|;)120(-real|-virtual)?(;|$)"
+        AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+    message(FATAL_ERROR "CUDA architecture SM 120 requires CUDA Toolkit 12.8 or newer")
 endif()
-
-# sm_75, sm_80, sm_86: supported since CUDA 10/11, still present in 13.x
-list(APPEND TD20_DEFAULT_CUDA_ARCHITECTURES 75-real 80-real 86-real)
-set(TD20_FORWARD_CUDA_ARCHITECTURE 86-virtual)
-
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8)
-    list(APPEND TD20_DEFAULT_CUDA_ARCHITECTURES 89-real)
-    set(TD20_FORWARD_CUDA_ARCHITECTURE 89-virtual)
-endif()
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.0)
-    list(APPEND TD20_DEFAULT_CUDA_ARCHITECTURES 90-real)
-    set(TD20_FORWARD_CUDA_ARCHITECTURE 90-virtual)
-endif()
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-    list(APPEND TD20_DEFAULT_CUDA_ARCHITECTURES 100-real 120-real)
-    set(TD20_FORWARD_CUDA_ARCHITECTURE 120-virtual)
-endif()
-list(APPEND TD20_DEFAULT_CUDA_ARCHITECTURES ${TD20_FORWARD_CUDA_ARCHITECTURE})
-set(TD20_CUDA_ARCHITECTURES "${TD20_DEFAULT_CUDA_ARCHITECTURES}"
-    CACHE STRING "CUDA architectures supported by the native libraries")
 set(CMAKE_CUDA_ARCHITECTURES ${TD20_CUDA_ARCHITECTURES})
 message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 
@@ -74,4 +53,24 @@ if(JNI_FOUND)
     )
 
     install(TARGETS td20_jni DESTINATION lib)
+endif()
+
+option(TD20_BUILD_NATIVE_TESTS "Build CUDA-dependent native regression tests (Linux linker)" OFF)
+if(TD20_BUILD_NATIVE_TESTS)
+    enable_testing()
+    add_executable(td20_slot_memory_test
+        tests/slot_memory_test.cpp
+        backtracking/slot_manager.cu
+        backtracking/sorting_search.cu
+    )
+    target_include_directories(td20_slot_memory_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(td20_slot_memory_test PRIVATE CUDA::cudart)
+    target_compile_definitions(td20_slot_memory_test PRIVATE MAX_N=${TD20_NATIVE_MAX_N} MAX_DEPTH=${TD20_NATIVE_MAX_DEPTH})
+    set_target_properties(td20_slot_memory_test PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
+    target_link_options(td20_slot_memory_test PRIVATE
+        "LINKER:--wrap=cudaMemGetInfo" "LINKER:--wrap=cudaMalloc")
+    add_test(NAME slot_memory_preflight COMMAND td20_slot_memory_test)
 endif()

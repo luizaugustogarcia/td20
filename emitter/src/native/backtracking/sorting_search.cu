@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <cmath>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <utility>
@@ -21,7 +23,7 @@ namespace {
         return n < 4 ? 0 : n * (n - 1) * (n - 2) * (n - 3) / 24;
     }
 
-    struct BacktrackingNode {
+    struct alignas(4) BacktrackingNode {
         uint8_t depth;
         uint8_t oddCycles;
         uint8_t fixedPoints;
@@ -29,6 +31,16 @@ namespace {
         uint8_t omega[MAX_N];
         uint8_t betaStart;  // first element of beta cycle (reconstructed via rho invariant)
     };
+
+    constexpr int MEMO_CAPACITY = 1 << 19;
+    struct MemoEntry {
+        int lock;
+        int depth;
+        unsigned long long low;
+        unsigned long long high;
+    };
+    static_assert(MAX_N <= 24, "Search state keys use two 60-bit symbol fields");
+    static_assert(sizeof(MemoEntry) == 24, "Search cache memory accounting changed");
 
     struct BacktrackingQueue {
         int head;
@@ -44,8 +56,10 @@ namespace {
         int solutionDepth;
         int solutionKind;
         int overflowed;
+        int timedOut;
         PackedMove solutionMoves[MAX_DEPTH];
         alignas(8) unsigned long long outstandingWork;
+        unsigned long long startedAtNanos;
     };
 
     struct DeviceSearchContext {
@@ -56,8 +70,10 @@ namespace {
         const short *omega0;
         const short *beta0;
         int n;
-        int maxDepth;
+        int maxDepth; // Full budget for diameter closures and admissible pruning.
+        int searchDepth; // Maximum number of moves actually explored.
         int knownDiameters[MAX_N + 1];
+        int maxAllOddClosureRank; // Optimistic maximum rank closing with zero slack.
 
         int queueCount;
         BacktrackingQueue *queues;
@@ -68,8 +84,12 @@ namespace {
         int *solutionKind;
         PackedMove *solutionMoves;
         int *overflowFlag;
+        int *timeoutFlag;
         unsigned long long *outstandingWork;
+        unsigned long long *startedAtNanos;
+        unsigned long long maximumNanos;
 
+        MemoEntry *memo;
         int reverseTripleOrder;
         int allowDiameterClosure;
         uint8_t rhoInv[MAX_N];  // precomputed rho^{-1} for beta reconstruction
@@ -90,6 +110,7 @@ namespace {
         DeviceAsyncUniquePtr<short> tripleThird{};
         DeviceAsyncUniquePtr<short> inputVectors{};
         DeviceAsyncUniquePtr<BacktrackingResult> result{};
+        DeviceAsyncUniquePtr<MemoEntry> memo{};
         HostPinnedUniquePtr<BacktrackingResult> hostResult{};
     };
 
@@ -121,6 +142,7 @@ namespace {
         buffers.inputVectors.reset();
         buffers.result.reset();
         buffers.hostResult.reset();
+        buffers.memo.reset();
         buffers.queueCount = 0;
         buffers.localCapacity = 0;
         buffers.overflowCapacity = 0;
@@ -160,6 +182,30 @@ namespace {
 
     // ─── Device helper functions ─────────────────────────────────────────────────
 
+    // Explicit PTX mapping for device-scoped relaxed atomic loads.
+    // These polls need no acquire: queue locks protect nodes and stream
+    // completion publishes the result payload to the host. Unlike atomicAdd
+    // with zero, a load does not serialize a write on every polling warp.
+    __device__ __forceinline__ int load_relaxed(const int *address) {
+        int value;
+#if __CUDA_ARCH__ >= 700
+        asm volatile("ld.relaxed.gpu.b32 %0, [%1];" : "=r"(value) : "l"(address) : "memory");
+#else
+        asm volatile("ld.volatile.b32 %0, [%1];" : "=r"(value) : "l"(address) : "memory");
+#endif
+        return value;
+    }
+
+    __device__ __forceinline__ unsigned long long load_relaxed(const unsigned long long *address) {
+        unsigned long long value;
+#if __CUDA_ARCH__ >= 700
+        asm volatile("ld.relaxed.gpu.b64 %0, [%1];" : "=l"(value) : "l"(address) : "memory");
+#else
+        asm volatile("ld.volatile.b64 %0, [%1];" : "=l"(value) : "l"(address) : "memory");
+#endif
+        return value;
+    }
+
     __device__ __forceinline__ void acquire_lock(int *lock) {
         while (atomicCAS(lock, 0, 1) != 0);
     }
@@ -171,7 +217,7 @@ namespace {
     __device__ __forceinline__ bool owner_pop(BacktrackingQueue &q, BacktrackingNode &node) {
         acquire_lock(&q.lock);
         if (q.size <= 0) { release_lock(&q.lock); return false; }
-        q.tail = (q.tail + q.capacity - 1) % q.capacity;
+        q.tail = q.tail == 0 ? q.capacity - 1 : q.tail - 1;
         node = q.nodes[q.tail];
         q.size--;
         __threadfence();
@@ -184,7 +230,7 @@ namespace {
         acquire_lock(&q.lock);
         if (q.size <= 0) { release_lock(&q.lock); return false; }
         node = q.nodes[q.head];
-        q.head = (q.head + 1) % q.capacity;
+        q.head = q.head + 1 == q.capacity ? 0 : q.head + 1;
         q.size--;
         __threadfence();
         release_lock(&q.lock);
@@ -195,7 +241,7 @@ namespace {
         if (atomicAdd(&q.size, 0) >= q.capacity) return false;
         acquire_lock(&q.lock);
         if (q.size >= q.capacity) { release_lock(&q.lock); return false; }
-        q.head = (q.head + q.capacity - 1) % q.capacity;
+        q.head = q.head == 0 ? q.capacity - 1 : q.head - 1;
         q.nodes[q.head] = node;
         q.size++;
         __threadfence();
@@ -203,11 +249,63 @@ namespace {
         return true;
     }
 
+    // Within a search rho is fixed, so omega determines beta as a cycle.
+    // A cyclic rotation of beta does not change legal supports. An occurrence
+    // at no greater depth has at least as much budget and exploration depth.
+    // The preceding inverse edge leads to its already visited parent; omitting
+    // that edge cannot add a new reachable state. Compare every key bit: hash
+    // collisions or a full bounded probe always fall back to exploration.
+    // Volatile fields and fenced lock publication keep entries coherent.
+    // Entries reset between searches.
+    __device__ bool memo_dominated(const DeviceSearchContext &ctx, const BacktrackingNode &node) {
+        unsigned long long low = 0;
+        unsigned long long high = 0;
+        for (int i = 0; i < ctx.n; ++i) {
+            if (i < 12) low |= static_cast<unsigned long long>(node.omega[i]) << (5 * i);
+            else high |= static_cast<unsigned long long>(node.omega[i]) << (5 * (i - 12));
+        }
+        unsigned long long hash = low ^ (static_cast<unsigned long long>(high) * 0x9e3779b97f4a7c15ULL);
+        hash ^= hash >> 30; hash *= 0xbf58476d1ce4e5b9ULL;
+        hash ^= hash >> 27; hash *= 0x94d049bb133111ebULL; hash ^= hash >> 31;
+        for (int probe = 0; probe < 8; ++probe) {
+            volatile MemoEntry &entry = ctx.memo[(hash + probe) & (MEMO_CAPACITY - 1)];
+            auto *lock = const_cast<int *>(&entry.lock);
+            acquire_lock(lock);
+            bool matched = false, dominated = false;
+            if (entry.depth == 0) {
+                entry.low = low; entry.high = high; entry.depth = node.depth;
+                matched = true;
+            } else if (entry.low == low && entry.high == high) {
+                dominated = entry.depth <= node.depth;
+                if (!dominated) entry.depth = node.depth;
+                matched = true;
+            }
+            __threadfence();
+            release_lock(lock);
+            if (matched) return dominated;
+        }
+        return false;
+    }
+
+    // The device-wide nanosecond timer has one time base across SMs, unlike clock64().
+    __device__ __forceinline__ unsigned long long device_time_nanos() {
+        unsigned long long value;
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(value));
+        return value;
+    }
+
     __device__ __forceinline__ bool warp_should_stop(const DeviceSearchContext &ctx) {
         int shouldStop = 0;
         if (threadIdx.x == 0) {
-            shouldStop = (atomicAdd(ctx.foundFlag, 0) != 0
-                        || atomicAdd(ctx.overflowFlag, 0) != 0) ? 1 : 0;
+            shouldStop = (load_relaxed(ctx.foundFlag) != 0
+                        || load_relaxed(ctx.overflowFlag) != 0) ? 1 : 0;
+            if (!shouldStop && ctx.maximumNanos != 0) {
+                shouldStop = load_relaxed(ctx.timeoutFlag) != 0;
+                if (!shouldStop && device_time_nanos() - *ctx.startedAtNanos >= ctx.maximumNanos) {
+                    atomicExch(ctx.timeoutFlag, 1);
+                    shouldStop = 1;
+                }
+            }
         }
         return __shfl_sync(0xFFFFFFFF, shouldStop, 0) != 0;
     }
@@ -229,6 +327,21 @@ namespace {
             if (size & 1) count++;
         }
         return count;
+    }
+
+    __device__ __forceinline__ bool has_even_length_cycle(const uint8_t *omega, const int n) {
+        uint64_t visited = 0;
+        for (int first = 0; first < n; ++first) {
+            if (visited & (1ULL << first)) continue;
+            int current = first, length = 0;
+            do {
+                visited |= 1ULL << current;
+                ++length;
+                current = omega[current];
+            } while (current != first);
+            if ((length & 1) == 0) return true;
+        }
+        return false;
     }
 
     // Incremental odd-cycle delta when applying 3-cycle (a b c) to omega.
@@ -371,7 +484,8 @@ namespace {
 
     // ─── Initialization kernel ───────────────────────────────────────────────────
 
-    __global__ void initialize_queues_kernel(const short *tripleFirst,
+    __global__ void initialize_queues_kernel(const DeviceSearchContext ctx,
+                                             const short *tripleFirst,
                                              const short *tripleSecond,
                                              const short *tripleThird,
                                              const int tripleCount,
@@ -390,6 +504,10 @@ namespace {
                                              const int initialOddCycles,
                                              const int initialFixedPoints,
                                              const int reverseTripleOrder) {
+        // The following search kernel runs in the same stream, after this write.
+        // Queue waiting on the host does not consume this per-search allowance.
+        if (blockIdx.x == 0 && threadIdx.x == 0 && ctx.maximumNanos != 0)
+            *ctx.startedAtNanos = device_time_nanos();
         const int queueIndex = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
         if (queueIndex < queueCount) {
             BacktrackingQueue queue{};
@@ -406,6 +524,7 @@ namespace {
                 }
                 const int rootLimit = min(localCapacity, queueRoots);
                 for (int rootIndex = 0; rootIndex < rootLimit; ++rootIndex) {
+                    if (load_relaxed(ctx.foundFlag) != 0) break;
                     const int fwdTripleIndex = queueIndex + rootIndex * queueCount;
                     const int tripleIndex = reverseTripleOrder
                         ? (tripleCount - 1 - fwdTripleIndex)
@@ -438,6 +557,17 @@ namespace {
                     node.oddCycles = static_cast<uint8_t>(initialOddCycles + delta);
                     node.fixedPoints = static_cast<uint8_t>(initialFixedPoints
                             + (omega0[c] == a) + (omega0[a] == b) + (omega0[b] == c));
+                    // Accept the first successful prefix as soon as it is
+                    // generated, before it can wait behind queued descendants.
+                    const int kind = solution_kind(ctx, node.oddCycles, node.fixedPoints, node.depth);
+                    if (kind != 0) {
+                        if (atomicCAS(ctx.foundFlag, 0, 1) == 0) {
+                            *ctx.solutionDepth = node.depth;
+                            *ctx.solutionKind = kind;
+                            ctx.solutionMoves[0] = node.moves[0];
+                        }
+                        break;
+                    }
                     // betaStart: first element of beta cycle after block transposition
                     // transposed_src_index(0, i, j, k) = j when i==0, else 0
                     node.betaStart = (moveFirst == 0)
@@ -479,6 +609,9 @@ namespace {
         __shared__ uint8_t sh_active_positions[MAX_N];
         __shared__ AlgebraicCycleMetadata<MAX_N> sh_cycle_metadata;
         __shared__ BacktrackingNode sh_children[WARP_SIZE];
+        // The whole warp expands one parent. Keeping its variable-indexed
+        // move history here avoids a separate local-memory array per lane.
+        __shared__ BacktrackingNode node;
 #if __CUDA_ARCH__ >= 700
         unsigned idleBackoff = 64;
 #endif
@@ -487,7 +620,6 @@ namespace {
         while (true) {
             if (warp_should_stop(ctx)) return;
 
-            BacktrackingNode node;
             bool hasNode = false;
 
             if (lane == 0) {
@@ -513,7 +645,7 @@ namespace {
             if (!foundNode) {
                 int noWork = 0;
                 if (lane == 0) {
-                    noWork = atomicAdd(ctx.outstandingWork, 0ULL) == 0 ? 1 : 0;
+                    noWork = load_relaxed(ctx.outstandingWork) == 0 ? 1 : 0;
                 }
                 noWork = __shfl_sync(0xFFFFFFFF, noWork, 0);
                 if (noWork != 0) return;
@@ -527,16 +659,12 @@ namespace {
             idleBackoff = 64;
 #endif
 
-            node.depth = (uint8_t)__shfl_sync(0xFFFFFFFF, lane == 0 ? node.depth : 0, 0);
-            if (node.depth == 0 || node.depth > ctx.maxDepth || node.depth > MAX_DEPTH) {
+            // Queue removal writes the shared parent from lane zero. Publish
+            // those writes before any lane reads the state or move history.
+            __syncwarp(0xFFFFFFFF);
+            if (node.depth == 0 || node.depth > ctx.searchDepth || node.depth > MAX_DEPTH) {
                 if (lane == 0) atomicAdd(ctx.outstandingWork, ~0ULL);
                 continue;
-            }
-            node.oddCycles = (uint8_t)__shfl_sync(0xFFFFFFFF, lane == 0 ? static_cast<int>(node.oddCycles) : 0, 0);
-            node.fixedPoints = (uint8_t)__shfl_sync(0xFFFFFFFF, lane == 0 ? static_cast<int>(node.fixedPoints) : 0, 0);
-            node.betaStart = (uint8_t)__shfl_sync(0xFFFFFFFF, lane == 0 ? static_cast<int>(node.betaStart) : 0, 0);
-            for (int d = 0; d < node.depth; ++d) {
-                node.moves[d] = static_cast<PackedMove>(__shfl_sync(0xFFFFFFFF, lane == 0 ? node.moves[d] : 0, 0));
             }
 
             const int parentOddCycles = node.oddCycles;
@@ -552,9 +680,33 @@ namespace {
                 return;
             }
 
-            if (node.depth >= ctx.maxDepth || !can_still_reach(ctx, parentOddCycles, node.depth)) {
+            if (node.depth >= ctx.searchDepth || !can_still_reach(ctx, parentOddCycles, node.depth)) {
                 if (lane == 0) atomicAdd(ctx.outstandingWork, ~0ULL);
                 continue;
+            }
+
+            int dominated = 0;
+            if (lane == 0) dominated = memo_dominated(ctx, node);
+            if (__shfl_sync(0xFFFFFFFF, dominated, 0)) {
+                if (lane == 0) atomicAdd(ctx.outstandingWork, ~0ULL);
+                continue;
+            }
+
+            // With no zero-move allowance left, every continuing move must
+            // lower rank (n - oddCycles)/2 by one. An all-odd permutation then
+            // stays all odd (Muehle--Nadeau, Corollary 3.3). At rank r > 0 its
+            // contracted domain has at least 2r+1 symbols. If even the lowest
+            // rank reachable before the exploration cap exceeds every rank
+            // admitting a diameter closure, this entire subtree is unresolved.
+            // The host derives the threshold from the actual diameter table.
+            if (ctx.maxDepth - ctx.searchDepth > ctx.maxAllOddClosureRank
+                    && node.depth + (ctx.n - parentOddCycles) / 2 == ctx.maxDepth) {
+                int allOdd = 0;
+                if (lane == 0) allOdd = !has_even_length_cycle(node.omega, ctx.n);
+                if (__shfl_sync(0xFFFFFFFF, allOdd, 0)) {
+                    if (lane == 0) atomicAdd(ctx.outstandingWork, ~0ULL);
+                    continue;
+                }
             }
 
             // Store parent omega in shared memory, reconstruct beta via rho invariant
@@ -585,9 +737,6 @@ namespace {
                     if (sh_parent_omega[symbol] != symbol)
                         sh_active_positions[active++] = static_cast<uint8_t>(pos);
                 }
-                // Every candidate support uses the same parent permutation.
-                // Trace its cycles once instead of three times per support.
-                build_cycle_metadata(sh_parent_omega, ctx.n, sh_cycle_metadata);
             }
             __syncwarp(0xFFFFFFFF);
 
@@ -640,9 +789,35 @@ namespace {
                 if (lane == 0) atomicAdd(ctx.outstandingWork, ~0ULL);
                 continue;
             }
+            // At an exploration cap, no child can be expanded. The fast scan
+            // above tested every support gaining at least two fixed symbols.
+            // Skip general enumeration only when neither gain zero nor gain
+            // one can close using the actual full-budget diameter table.
+            // This also handles unknown diameters without assuming a bound.
+            if (childDepth == ctx.searchDepth) {
+                bool lowGainCanClose = false;
+                for (int gain = 0; gain <= 1; ++gain) {
+                    const int remaining = ctx.n - node.fixedPoints - gain;
+                    if (remaining < 0) continue;
+                    const int diameter = ctx.knownDiameters[remaining];
+                    lowGainCanClose |= remaining == 0 || (ctx.allowDiameterClosure
+                            && diameter != INT_MAX && diameter <= ctx.maxDepth - childDepth);
+                }
+                if (!lowGainCanClose) {
+                    if (lane == 0) atomicAdd(ctx.outstandingWork, ~0ULL);
+                    continue;
+                }
+            }
+            // Only general support enumeration needs cycle metadata. Terminal
+            // nodes and fast closures above avoid this serial cycle traversal.
+            if (lane == 0) build_cycle_metadata(sh_parent_omega, ctx.n, sh_cycle_metadata);
+            __syncwarp(0xFFFFFFFF);
             const int activeCount = ctx.n - node.fixedPoints;
             const int activeTriples = combinations_of_three(activeCount);
             const int activeOffset = triple_table_offset(activeCount);
+            short undoFirst, previousSplit, undoThird;
+            unpack_move(node.moves[node.depth - 1], undoFirst, previousSplit, undoThird);
+            const int undoSecond = undoFirst + undoThird - previousSplit;
             for (int tBase = 0; tBase < activeTriples; tBase += WARP_SIZE) {
                 if (warp_should_stop(ctx)) return;
 
@@ -667,7 +842,12 @@ namespace {
                     const uint8_t b = sh_parent_beta[moveSecond];
                     const uint8_t c = sh_parent_beta[moveThird];
 
-                    if (!contains_fixed_symbol(sh_parent_omega, a, b, c)) {
+                    // Reversing the preceding segment interchange returns to the
+                    // identical pair with two fewer moves available. Removing
+                    // that adjacent inverse pair preserves every possible closure.
+                    const bool immediateUndo = moveFirst == undoFirst
+                            && moveSecond == undoSecond && moveThird == undoThird;
+                    if (!immediateUndo && !contains_fixed_symbol(sh_parent_omega, a, b, c)) {
                         const int delta = metadata_odd_cycle_delta(sh_cycle_metadata, a, b, c);
 
                         if (delta == 0 || delta == 2) {
@@ -681,7 +861,7 @@ namespace {
                                 solutionFirst = moveFirst;
                                 solutionSecond = moveSecond;
                                 solutionThird = moveThird;
-                            } else if (childDepth < ctx.maxDepth && can_still_reach(ctx, childOddCycles, childDepth)) {
+                            } else if (childDepth < ctx.searchDepth && can_still_reach(ctx, childOddCycles, childDepth)) {
                                 child_a = a;
                                 child_b = b;
                                 child_c = c;
@@ -730,6 +910,9 @@ namespace {
                     }
                     __syncwarp(0xFFFFFFFF);
 
+                    BacktrackingQueue &q = ctx.queues[warpId];
+                    int pushed = 0;
+                    int firstQueueIndex = 0;
                     if (lane == 0) {
                         // Reserve every child before publishing any queue entry.
                         // The active parent remains counted until the entire
@@ -738,20 +921,44 @@ namespace {
                         atomicAdd(ctx.outstandingWork,
                                   static_cast<unsigned long long>(pushCount));
 
-                        // Batch push to owner queue under single lock
-                        BacktrackingQueue &q = ctx.queues[warpId];
+                        // Retain the owner lock while all lanes copy its batch.
+                        // No stealer can observe a partly initialized entry.
                         acquire_lock(&q.lock);
-                        int pushed = 0;
-                        for (int c = pushCount - 1; c >= 0; --c) {
-                            if (q.size < q.capacity) {
-                                q.nodes[q.tail] = sh_children[c];
-                                q.tail = (q.tail + 1) % q.capacity;
-                                q.size++;
-                                pushed++;
-                            } else {
-                                break;
-                            }
-                        }
+                        pushed = min(pushCount, q.capacity - q.size);
+                        firstQueueIndex = q.tail;
+                    }
+                    pushed = __shfl_sync(0xFFFFFFFF, pushed, 0);
+                    firstQueueIndex = __shfl_sync(0xFFFFFFFF, firstQueueIndex, 0);
+
+                    static_assert(alignof(BacktrackingNode) >= alignof(uint32_t),
+                                  "Cooperative queue copies require aligned nodes");
+                    static_assert(sizeof(BacktrackingNode) % sizeof(uint32_t) == 0,
+                                  "Cooperative queue copies require whole words");
+                    constexpr int wordsPerNode = sizeof(BacktrackingNode) / sizeof(uint32_t);
+                    for (int word = lane; word < pushed * wordsPerNode; word += WARP_SIZE) {
+                        const int entry = word / wordsPerNode;
+                        const int wordInNode = word - entry * wordsPerNode;
+                        int queueIndex = firstQueueIndex + entry;
+                        if (queueIndex >= q.capacity) queueIndex -= q.capacity;
+                        // Consecutive destinations retain the original reverse
+                        // child order. memcpy preserves object representations
+                        // without aliasing a BacktrackingNode through uint32_t.
+                        uint32_t value;
+                        memcpy(&value,
+                               reinterpret_cast<const char *>(&sh_children[pushCount - 1 - entry])
+                                       + wordInNode * sizeof(uint32_t), sizeof(value));
+                        memcpy(reinterpret_cast<char *>(&q.nodes[queueIndex])
+                                       + wordInNode * sizeof(uint32_t), &value, sizeof(value));
+                    }
+                    // Each copying lane publishes its own global stores before
+                    // lane zero updates queue metadata and releases the lock.
+                    if (pushed > 0) __threadfence();
+                    __syncwarp(0xFFFFFFFF);
+                    if (lane == 0) {
+                        int nextQueueIndex = firstQueueIndex + pushed;
+                        if (nextQueueIndex >= q.capacity) nextQueueIndex -= q.capacity;
+                        q.tail = nextQueueIndex;
+                        q.size += pushed;
                         if (pushed > 0) __threadfence();
                         release_lock(&q.lock);
 
@@ -818,6 +1025,41 @@ namespace {
         const int remainder = fullQueueCount % divisor;
         return base + (slotOrdinalOnDevice >= 0 && slotOrdinalOnDevice < remainder ? 1 : 0);
     }
+
+    struct SlotAllocation {
+        int queueCount;
+        int localCapacity;
+        int overflowCapacity;
+    };
+
+    // Keep preflight and allocation on the same capacity calculation, including
+    // the minimum queues used when the configured budget is very small.
+    SlotAllocation slotAllocation(const int device, const size_t queueBytesBudget,
+                                  const int slotsOnDevice, const int slotOrdinalOnDevice) {
+        const int queueCount = getQueueCountForSlot(device, slotsOnDevice, slotOrdinalOnDevice);
+        const size_t overflowBudget = queueBytesBudget / 4;
+        const size_t localBudget = queueBytesBudget - overflowBudget;
+        const size_t localCapacity = std::max(size_t{2}, localBudget / (queueCount * sizeof(BacktrackingNode)));
+        const size_t overflowCapacity = std::max(size_t{1024}, overflowBudget / sizeof(BacktrackingNode));
+        if (localCapacity > static_cast<size_t>(std::numeric_limits<int>::max())
+            || overflowCapacity > static_cast<size_t>(std::numeric_limits<int>::max())) {
+            throw std::invalid_argument("GPU queue capacity exceeds the supported integer range");
+        }
+        return {queueCount, static_cast<int>(localCapacity), static_cast<int>(overflowCapacity)};
+    }
+}
+
+size_t gpuSortingSearchSlotBytes(const int device, const size_t queueBytesBudget,
+                                const int slotsOnDevice, const int slotOrdinalOnDevice) {
+    const auto plan = slotAllocation(device, queueBytesBudget, slotsOnDevice, slotOrdinalOnDevice);
+    const size_t nodeCount = static_cast<size_t>(plan.queueCount) * plan.localCapacity + plan.overflowCapacity;
+    const size_t maxTriples = static_cast<size_t>(triple_table_offset(MAX_N + 1));
+    return nodeCount * sizeof(BacktrackingNode)
+           + (static_cast<size_t>(plan.queueCount) + 1) * sizeof(BacktrackingQueue)
+           + 3 * maxTriples * sizeof(short)
+           + 2 * MAX_N * sizeof(short)
+           + sizeof(BacktrackingResult)
+           + MEMO_CAPACITY * sizeof(MemoEntry);
 }
 
 void allocateGpuSortingSearchSlot(const int slot, const int device,
@@ -832,11 +1074,10 @@ void allocateGpuSortingSearchSlot(const int slot, const int device,
     auto &buffers = gSlots[slot];
     buffers.device = device;
 
-    const int queueCount = getQueueCountForSlot(device, slotsOnDevice, slotOrdinalOnDevice);
-    const size_t overflowBudget = queueBytesBudget / 4;
-    const size_t localBudget = queueBytesBudget - overflowBudget;
-    const int localCapacity = std::max(2, (int)(localBudget / (queueCount * sizeof(BacktrackingNode))));
-    const int overflowCapacity = std::max(1024, (int)(overflowBudget / sizeof(BacktrackingNode)));
+    const auto plan = slotAllocation(device, queueBytesBudget, slotsOnDevice, slotOrdinalOnDevice);
+    const int queueCount = plan.queueCount;
+    const int localCapacity = plan.localCapacity;
+    const int overflowCapacity = plan.overflowCapacity;
 
     buffers.queues = allocateDeviceBuffer<BacktrackingQueue>(
             static_cast<size_t>(queueCount), "sort.queues");
@@ -853,6 +1094,7 @@ void allocateGpuSortingSearchSlot(const int slot, const int device,
             static_cast<size_t>(MAX_N) * 2, "sort.inputVectors");
     buffers.result = allocateDeviceBuffer<BacktrackingResult>(1, "sort.result");
     buffers.hostResult = makePinnedHostBuffer<BacktrackingResult>(1);
+    buffers.memo = allocateDeviceBuffer<MemoEntry>(MEMO_CAPACITY, "sort.memo");
 
     buffers.queueCount = queueCount;
     buffers.localCapacity = localCapacity;
@@ -880,6 +1122,8 @@ GpuSortingResult performGpuSortingSearch(std::vector<short> beta,
                                           std::vector<short> omega,
                                           const int maximumDepth,
                                           const bool allowDiameterClosure,
+                                          const int maximumSearchDepth,
+                                          const unsigned long long maximumNanos,
                                           const std::vector<int> &knownDiameters,
                                           const cudaStream_t stream,
                                           const int slot,
@@ -890,6 +1134,8 @@ GpuSortingResult performGpuSortingSearch(std::vector<short> beta,
     const int n = static_cast<int>(omega.size());
     if (n > MAX_N) throw std::invalid_argument("performGpuSortingSearch: n exceeds MAX_N");
     if (maximumDepth <= 0 || maximumDepth > MAX_DEPTH) throw std::invalid_argument("performGpuSortingSearch: invalid maximumDepth");
+    if (maximumSearchDepth < 1 || maximumSearchDepth > maximumDepth)
+        throw std::invalid_argument("Invalid exploration depth");
     if (knownDiameters.size() != MAX_N + 1) throw std::invalid_argument("Invalid diameter table size");
     uint8_t initialOmega[MAX_N];
     for (int i = 0; i < n; ++i) initialOmega[i] = static_cast<uint8_t>(omega[i]);
@@ -964,17 +1210,36 @@ GpuSortingResult performGpuSortingSearch(std::vector<short> beta,
     auto *dSolutionDepth = reinterpret_cast<int *>(resultBytes + offsetof(BacktrackingResult, solutionDepth));
     auto *dSolutionKind = reinterpret_cast<int *>(resultBytes + offsetof(BacktrackingResult, solutionKind));
     auto *dOverflow = reinterpret_cast<int *>(resultBytes + offsetof(BacktrackingResult, overflowed));
+    auto *dTimedOut = reinterpret_cast<int *>(resultBytes + offsetof(BacktrackingResult, timedOut));
     auto *dSolutionMoves = reinterpret_cast<PackedMove *>(resultBytes + offsetof(BacktrackingResult, solutionMoves));
     auto *dOutstandingWork = reinterpret_cast<unsigned long long *>(
             resultBytes + offsetof(BacktrackingResult, outstandingWork));
+    auto *dStartedAtNanos = reinterpret_cast<unsigned long long *>(
+            resultBytes + offsetof(BacktrackingResult, startedAtNanos));
 
     DeviceSearchContext host{};
     host.tripleCount = tripleCount;
     host.n = n;
     host.maxDepth = maximumDepth;
+    host.searchDepth = maximumSearchDepth;
     host.queueCount = queueCount;
     host.allowDiameterClosure = allowDiameterClosure ? 1 : 0;
     std::copy(knownDiameters.begin(), knownDiameters.end(), host.knownDiameters);
+    // Identity has rank zero. Any nonidentity all-odd state of rank r has
+    // at least 2r+1 nonfixed symbols. Relax all other partition constraints,
+    // so this maximum remains safe for every supplied diameter table.
+    host.maxAllOddClosureRank = 0;
+    if (allowDiameterClosure) {
+        for (int rank = 1; rank <= MAX_DEPTH; ++rank) {
+            for (int domain = 2 * rank + 1; domain <= n; ++domain) {
+                const int diameter = knownDiameters[domain];
+                if (diameter != INT_MAX && diameter <= rank) {
+                    host.maxAllOddClosureRank = rank;
+                    break;
+                }
+            }
+        }
+    }
 
     // Compute rho_inv for beta reconstruction via the invariant:
     // rho = omega0 ∘ beta_func, where beta_func is the function form of the cycle beta0.
@@ -992,20 +1257,6 @@ GpuSortingResult performGpuSortingSearch(std::vector<short> beta,
             host.rhoInv[rho[i]] = static_cast<uint8_t>(i);
     }
 
-    constexpr int INIT_THREADS = 128;
-    const int initBlocks = (queueCount + INIT_THREADS - 1) / INIT_THREADS;
-    initialize_queues_kernel<<<initBlocks, INIT_THREADS, 0, stream>>>(
-            slotView.tripleFirst + triple_table_offset(n),
-            slotView.tripleSecond + triple_table_offset(n),
-            slotView.tripleThird + triple_table_offset(n),
-            tripleCount,
-            slotView.queues, queueCount,
-            slotView.nodes, localCapacity,
-            slotView.overflow, slotView.overflowNodes, overflowCapacity,
-            dOverflow, dOutstandingWork, dOmega0, dBeta0, n, initialOddCycles, initialFixedPoints,
-            (queueCount == 1) ? 1 : 0);
-    CHECK_CUDA(cudaGetLastError());
-
     host.tripleFirst = slotView.tripleFirst;
     host.tripleSecond = slotView.tripleSecond;
     host.tripleThird = slotView.tripleThird;
@@ -1018,8 +1269,28 @@ GpuSortingResult performGpuSortingSearch(std::vector<short> beta,
     host.solutionKind = dSolutionKind;
     host.solutionMoves = dSolutionMoves;
     host.overflowFlag = dOverflow;
+    host.timeoutFlag = dTimedOut;
     host.outstandingWork = dOutstandingWork;
+    host.startedAtNanos = dStartedAtNanos;
+    host.maximumNanos = maximumNanos;
+    host.memo = buffers.memo.get();
+    CHECK_CUDA(cudaMemsetAsync(host.memo, 0, MEMO_CAPACITY * sizeof(MemoEntry), stream));
     host.reverseTripleOrder = (queueCount == 1) ? 1 : 0;
+
+    constexpr int INIT_THREADS = 128;
+    const int initBlocks = (queueCount + INIT_THREADS - 1) / INIT_THREADS;
+    initialize_queues_kernel<<<initBlocks, INIT_THREADS, 0, stream>>>(
+            host,
+            slotView.tripleFirst + triple_table_offset(n),
+            slotView.tripleSecond + triple_table_offset(n),
+            slotView.tripleThird + triple_table_offset(n),
+            tripleCount,
+            slotView.queues, queueCount,
+            slotView.nodes, localCapacity,
+            slotView.overflow, slotView.overflowNodes, overflowCapacity,
+            dOverflow, dOutstandingWork, dOmega0, dBeta0, n, initialOddCycles, initialFixedPoints,
+            (queueCount == 1) ? 1 : 0);
+    CHECK_CUDA(cudaGetLastError());
 
     sorting_search_persistent_kernel<<<queueCount, WARP_SIZE, 0, stream>>>(host);
     CHECK_CUDA(cudaGetLastError());
@@ -1043,7 +1314,11 @@ GpuSortingResult performGpuSortingSearch(std::vector<short> beta,
     if (!found && overflowed != 0) {
         throw GpuMemoryExhaustedException("GPU sorting search queue overflow");
     }
-    if (!found || solutionDepth <= 0) return {};
+    // A concurrent valid witness wins over cancellation. A timeout carries no
+    // witness and never claims that the permitted search tree was exhausted.
+    if (!found && resultSnapshot.timedOut != 0) return GpuSortingResult{3, {}};
+    if (!found) return GpuSortingResult{maximumSearchDepth < maximumDepth ? 4 : 0, {}};
+    if (solutionDepth <= 0) throw std::runtime_error("Invalid solution depth");
 
     std::vector<Move> result;
     for (int d = 0; d < solutionDepth; ++d) {

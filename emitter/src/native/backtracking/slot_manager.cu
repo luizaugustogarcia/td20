@@ -86,22 +86,26 @@ void initGpuSortSlots(const int totalSlots, const std::vector<int> &devices, con
     try {
         for (const int device : devices) {
             CHECK_CUDA(cudaSetDevice(device));
+            const int deviceSlots = slotsPerDevice[static_cast<size_t>(device)];
+            size_t requiredBytes = 0;
+            for (int ordinal = 0; ordinal < deviceSlots; ++ordinal) {
+                const size_t slotBytes = gpuSortingSearchSlotBytes(device, queueBytesBudget, deviceSlots, ordinal);
+                if (slotBytes > std::numeric_limits<size_t>::max() - requiredBytes) {
+                    throw std::invalid_argument("per-device GPU search memory requirement overflows size_t");
+                }
+                requiredBytes += slotBytes;
+            }
+            // Planning may load the kernel to query its occupancy. Measure
+            // available memory afterwards, before allocating any slot buffers.
             size_t freeBytes = 0;
             size_t totalBytes = 0;
             CHECK_CUDA(cudaMemGetInfo(&freeBytes, &totalBytes));
-            const size_t deviceSlots = static_cast<size_t>(
-                    slotsPerDevice[static_cast<size_t>(device)]);
-            if (deviceSlots > 0
-                && queueBytesBudget > std::numeric_limits<size_t>::max() / deviceSlots) {
-                throw std::invalid_argument("per-device GPU queue budget overflows size_t");
-            }
-            const size_t requiredQueueBytes = queueBytesBudget * deviceSlots;
-            if (requiredQueueBytes > freeBytes) {
+            if (requiredBytes > freeBytes) {
                 throw GpuMemoryExhaustedException(
                         "CUDA device " + std::to_string(device)
                         + " has " + std::to_string(freeBytes)
-                        + " free bytes, but its search queues require at least "
-                        + std::to_string(requiredQueueBytes) + " bytes");
+                        + " free bytes, but its search queues, state caches and metadata require at least "
+                        + std::to_string(requiredBytes) + " bytes");
             }
         }
 

@@ -205,7 +205,7 @@ public final class DirectTwistedBraceletGenerator {
 
     private static int defaultWorkerCount() {
         final int slotsPerDevice = Integer.parseInt(
-                System.getProperty(GPU_SLOTS_PROPERTY, "7"));
+                System.getProperty(GPU_SLOTS_PROPERTY, "8"));
         final int deviceCount = GpuDeviceLayout.parseDevices(
                 System.getProperty(GPU_DEVICES_PROPERTY, "0")).length;
         return defaultWorkerCount(Runtime.getRuntime().availableProcessors(),

@@ -26,6 +26,26 @@ class GpuDiameterClosureTest {
         check(omega,beta,result,2);
         assertEquals(GPUSortingSearch.Disposition.RESIDUAL,gpu().search(beta,new OneLinePermutation(omega),1,true).disposition());
     }
+    @Test void firstMoveSeedingReturnsAClosureBeforeSearchingDescendants() {
+        byte[] omega = {1,2,0,4,5,3,7,8,6}, beta = {0,1,2,3,4,5,6,7,8};
+        var result = gpu().search(beta, new OneLinePermutation(omega), 4, true);
+        assertEquals(GPUSortingSearch.Disposition.DIAMETER_CLOSURE, result.disposition());
+        assertEquals(1, result.moves().size());
+        check(omega, beta, result, 4);
+        var complete = gpu().search(beta, new OneLinePermutation(omega), 4, false);
+        assertEquals(GPUSortingSearch.Disposition.COMPLETE, complete.disposition());
+        assertTrue(complete.moves().size() > 1);
+        check(omega, beta, complete, 4);
+    }
+    @Test void descendantSearchReturnsAClosureBeforeExhaustingTheBudget() {
+        var permutation = new br.unb.cic.td20.permutation.MulticyclePermutation("(0 1 11 6 8 12 9 3 5 2 10 7 4)");
+        byte[] omega = new byte[13], beta = new byte[13];
+        for (int i = 0; i < 13; i++) { omega[i] = (byte) permutation.image(i); beta[i] = (byte) i; }
+        var result = gpu().search(beta, new OneLinePermutation(omega), 6, true);
+        assertEquals(GPUSortingSearch.Disposition.DIAMETER_CLOSURE, result.disposition());
+        assertTrue(result.moves().size() < 6);
+        check(omega, beta, result, 6);
+    }
     @Test void allValidPairsThroughSixSymbolsMatchAnIndependentRestrictedSearch() {
         for (int n=1;n<=6;n++) {
             byte[] beta = new byte[n];for(int i=0;i<n;i++) beta[i]=(byte)i;

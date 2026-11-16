@@ -1,0 +1,518 @@
+--- a/checker/src/main/java/br/unb/cic/td20/certificate/CertificateCodec.java
++++ b/checker/src/main/java/br/unb/cic/td20/certificate/CertificateCodec.java
+@@ -245,7 +245,7 @@
+
+     /** Version-2 values start with a kind byte and an exact move-count byte. */
+     public static byte[] resultFor(final SortingCertificate result) {
+-        if (result.moves().size() > 10) throw new IllegalArgumentException("Certificate exceeds ten moves");
++        if (result.moves().size() > 11) throw new IllegalArgumentException("Certificate exceeds eleven moves");
+         final byte[] payload = result.moves().isEmpty() ? new byte[0] : valueFor(result.moves());
+         final byte[] encoded = new byte[payload.length + 2];
+         encoded[0] = (byte) result.kind().ordinal();
+@@ -259,7 +259,7 @@
+         if (encoded == null || encoded.length < 2) throw new IllegalArgumentException("Truncated sorting result");
+         final int kind = Byte.toUnsignedInt(encoded[0]);
+         final int count = Byte.toUnsignedInt(encoded[1]);
+-        if (kind >= SortingCertificate.Kind.values().length || count > 10)
++        if (kind >= SortingCertificate.Kind.values().length || count > 11)
+             throw new IllegalArgumentException("Unsupported sorting result kind or move count");
+         final byte[] payload = java.util.Arrays.copyOfRange(encoded, 2, encoded.length);
+         requirePayload(payload, (long) TRIPLE_BITS * count, "result");
+--- a/checker/src/main/java/br/unb/cic/td20/certificate/CertificateStore.java
++++ b/checker/src/main/java/br/unb/cic/td20/certificate/CertificateStore.java
+@@ -51,7 +51,7 @@
+                     new ColumnFamilyDescriptor(OBSTRUCTIONS, obstructionOptions)), handles);
+             database = opened;
+             final var marker = database.get(handles.get(0), "td20-schema".getBytes(StandardCharsets.UTF_8));
+-            if (!Arrays.equals(marker, "joint-selection-v3".getBytes(StandardCharsets.UTF_8)))
++            if (!Arrays.equals(marker, "eriksson-three-v1".getBytes(StandardCharsets.UTF_8)))
+                 throw new IllegalStateException("Missing or unsupported certificate format marker");
+         } catch (final RocksDBException | RuntimeException failure) {
+             handles.forEach(ColumnFamilyHandle::close);
+--- a/checker/src/main/java/br/unb/cic/td20/joint/ErikssonRoute.java
++++ b/checker/src/main/java/br/unb/cic/td20/joint/ErikssonRoute.java
+@@ -5,9 +5,9 @@
+     public static final String ID="td20-eriksson-three-v1";
+     public static final int ROOT_SYMBOLS=KnownDiameters.ROOT_SYMBOLS;
+     public static final int ROOT_BUDGET=KnownDiameters.MAX_BUDGET;
+-    public static final int ROOT_PARTITIONS=53;
++    public static final int ROOT_PARTITIONS=83;
+     public static final int ENDPOINT_SYMBOLS=ROOT_SYMBOLS-5;
+     public static final int ENDPOINT_BUDGET=ROOT_BUDGET-3;
+-    public static final int ENDPOINT_TYPES=74;
++    public static final int ENDPOINT_TYPES=143;
+     private ErikssonRoute() { }
+ }
+--- a/checker/src/main/java/br/unb/cic/td20/joint/KnownDiameters.java
++++ b/checker/src/main/java/br/unb/cic/td20/joint/KnownDiameters.java
+@@ -2,17 +2,18 @@
+
+ /** Established TD(N-1) bounds for a cyclic domain of N symbols. */
+ public final class KnownDiameters {
+-    public static final int ROOT_SYMBOLS = 19;
+-    public static final int MAX_BUDGET = 10;
+-    private static final int[] BOUNDS = {0, 0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 8, 9, 9, 10};
++    public static final int ROOT_SYMBOLS = 21;
++    public static final int MAX_BUDGET = 11;
++    /** Indexed by cyclic-target domain N; established upper bounds for TD(N-1). */
++    private static final int[] BOUNDS = {0, 0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 8, 9, 9, 10, 10, 11};
+     private KnownDiameters() { }
+     public static int knownDiameter(final int domain) {
+         if (domain < 0) throw new IllegalArgumentException("Negative domain");
+         return domain < BOUNDS.length ? BOUNDS[domain] : Integer.MAX_VALUE;
+     }
+     public static boolean closes(final int domain, final int movesUsed) {
+-        return movesUsed >= 0 && movesUsed <= MAX_BUDGET
+-                && knownDiameter(domain) <= MAX_BUDGET - movesUsed;
++        if (movesUsed < 0) throw new IllegalArgumentException("Negative move count");
++        return movesUsed <= MAX_BUDGET && knownDiameter(domain) <= MAX_BUDGET - movesUsed;
+     }
+     public static int threeNorm(final int[] lengths) {
+         return java.util.Arrays.stream(lengths).map(n -> n / 2).sum();
+--- a/checker/src/main/java/br/unb/cic/td20/joint/SupportClearing.java
++++ b/checker/src/main/java/br/unb/cic/td20/joint/SupportClearing.java
+@@ -7,23 +7,23 @@
+     private SupportClearing() { }
+     public static boolean closes(final CyclicTargetPair pair) { return closingLength(pair) != 0; }
+     public static int closingLength(final CyclicTargetPair pair) {
+-        if (pair.getBeta().size() != 19) return 0;
++        if (pair.getBeta().size() != KnownDiameters.ROOT_SYMBOLS) return 0;
+         if (CyclicTargetMoves.fixed(CyclicTargetMoves.images(pair)) != 0)
+-            throw new IllegalArgumentException("Support-clearing roots require 19 nonfixed symbols");
++            throw new IllegalArgumentException("Support-clearing roots require 21 nonfixed symbols");
+         int smallest = Integer.MAX_VALUE;
+         for (final var cycle : pair.getOmega()) {
+             final int length = cycle.size();
+             final int[] powers = switch (length) {
+-                case 7 -> new int[]{4};
+                 case 9 -> new int[]{7};
+                 case 11 -> new int[]{6};
+                 case 13 -> new int[]{7, 10, 11};
++                case 17 -> new int[]{9, 13, 15};
+                 default -> new int[0];
+             };
+             if (powers.length == 0) continue;
+             final int[] support = new int[length];
+             int at = 0;
+-            final boolean[] member = new boolean[19];
++            final boolean[] member = new boolean[KnownDiameters.ROOT_SYMBOLS];
+             for (final int symbol : cycle.getSymbols()) member[symbol] = true;
+             for (final int symbol : pair.getBeta().getSymbols())
+                 if (member[symbol]) support[at++] = symbol;
+@@ -32,7 +32,9 @@
+                 for (int i = 0; i < length; i++)
+                     if (pair.getOmega().image(support[i]) != support[(i + power) % length]) { match = false; break; }
+                 if (match) {
+-                    if ((length + 1) / 2 + KnownDiameters.knownDiameter(19 - length) > 10)
++                    if ((length + 1) / 2
++                            + KnownDiameters.knownDiameter(KnownDiameters.ROOT_SYMBOLS - length)
++                            > KnownDiameters.MAX_BUDGET)
+                         throw new IllegalStateException("Unsupported clearing budget");
+                     smallest = Math.min(smallest, length);
+                 }
+--- a/checker/src/main/java/br/unb/cic/td20/runtime/CheckerParallelism.java
++++ b/checker/src/main/java/br/unb/cic/td20/runtime/CheckerParallelism.java
+@@ -13,7 +13,7 @@
+     }
+
+     public static int reconstructionBufferKeys() {
+-        return positiveProperty("td20.reconstructionBufferKeys", 1_048_576);
++        return positiveProperty("td20.reconstructionBufferKeys", 16_777_216);
+     }
+
+     public static int writeBatchEntries() {
+--- a/checker/src/main/java/br/unb/cic/td20/verification/CheckerStateStorage.java
++++ b/checker/src/main/java/br/unb/cic/td20/verification/CheckerStateStorage.java
+@@ -26,12 +26,12 @@
+ /** Bounded disk deduplication of a regenerated wave of valid-pair classes. */
+ public final class CheckerStateStorage implements AutoCloseable {
+     private static final Logger log = LoggerFactory.getLogger(CheckerStateStorage.class);
+-    static final byte VERSION = 2;
++    static final byte VERSION = 3;
+     private static final byte[] EMPTY = {};
+     private final int generatedBatchKeys = positiveProperty("td20.reconstructionGeneratedBatchKeys", 65536);
+     private static final int ADMISSION_STOPPED = Integer.MIN_VALUE;
+     static { RocksDB.loadLibrary(); }
+-    private final int bufferKeys = positiveProperty("td20.reconstructionBufferKeys", 16777216);
++    private final int bufferKeys = CheckerParallelism.reconstructionBufferKeys();
+     private final int writeBatchEntries = CheckerParallelism.writeBatchEntries();
+     private final Options options;
+     private final Path stagingDirectory;
+@@ -51,7 +51,7 @@
+
+     public record State(CyclicTargetPair pair, int maximumMoves) {
+         public State {
+-            if (maximumMoves < 1 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 1..10");
++            if (maximumMoves < 1 || maximumMoves > br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET) throw new IllegalArgumentException("Budget must be 1..11");
+             for (int symbol : pair.getBeta().getSymbols()) {
+                 if (pair.getOmega().image(symbol) == symbol)
+                     throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
+@@ -166,7 +166,7 @@
+      * A failed generation makes the incomplete set unsealable.
+      */
+     public void addGenerated(int maximumMoves, Consumer<Consumer<CyclicTargetPair>> generator) {
+-        if (maximumMoves < 1 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 1..10");
++        if (maximumMoves < 1 || maximumMoves > br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET) throw new IllegalArgumentException("Budget must be 1..11");
+         java.util.Objects.requireNonNull(generator);
+         beginGeneration();
+         try {
+--- a/checker/src/main/java/br/unb/cic/td20/verification/DirectStateKey.java
++++ b/checker/src/main/java/br/unb/cic/td20/verification/DirectStateKey.java
+@@ -4,13 +4,13 @@
+ import br.unb.cic.td20.certificate.CertificateCodec;
+ import br.unb.cic.td20.joint.ErikssonRoute;
+
+-/** Version-2 reconstruction keys. Contract every fixed point before admission. */
++/** Version-3 reconstruction keys. Contract every fixed point before admission. */
+ public final class DirectStateKey {
+     private DirectStateKey() { }
+
+     public static byte[] encode(final CyclicTargetPair pair, final int maximumMoves) {
+         if (maximumMoves < 1 || maximumMoves > ErikssonRoute.ROOT_BUDGET)
+-            throw new IllegalArgumentException("Budget must be 1..10");
++            throw new IllegalArgumentException("Budget must be 1..11");
+         final int n = pair.getBeta().size();
+         final var key = new byte[3 + CertificateCodec.keyLength(n)];
+         key[0] = CheckerStateStorage.VERSION;
+--- a/emitter/pom.xml
++++ b/emitter/pom.xml
+@@ -19,6 +19,7 @@
+         <td20.gpuStatsPeriodSeconds>10</td20.gpuStatsPeriodSeconds>
+         <td20.cpuPrefixJvmArgument></td20.cpuPrefixJvmArgument>
+         <td20.cpuPrefixMaxTriples>8192</td20.cpuPrefixMaxTriples>
++        <td20.cpuPrefixMillis>10</td20.cpuPrefixMillis>
+         <td20.reconstructionCpuPrefixMillis>10</td20.reconstructionCpuPrefixMillis>
+         <td20.reconstructionGpuMillis>0</td20.reconstructionGpuMillis>
+         <td20.reconstructionGpuWorkers></td20.reconstructionGpuWorkers>
+@@ -55,7 +56,7 @@
+                         <goals><goal>exec</goal></goals>
+                         <configuration>
+                             <executable>java</executable>
+-                            <commandlineArgs>-classpath %classpath -Djava.library.path=${project.build.directory}/native -Dtd20.gpuDevices=${td20.gpuDevices} -Dtd20.gpuSlots=${td20.gpuSlots} -Dtd20.gpuBudgetMB=${td20.gpuBudgetMB} -Dtd20.gpuQueueCapacity=${td20.gpuQueueCapacity} -Dtd20.gpuStatsPeriodSeconds=${td20.gpuStatsPeriodSeconds} ${td20.cpuPrefixJvmArgument} -Dtd20.cpuPrefixMaxTriples=${td20.cpuPrefixMaxTriples} -Dtd20.reconstructionCpuPrefixMillis=${td20.reconstructionCpuPrefixMillis} -Dtd20.reconstructionGpuMillis=${td20.reconstructionGpuMillis} -Dtd20.reconstructionGpuWorkers=${td20.reconstructionGpuWorkers} -Dtd20.cpuStatsPeriodSeconds=${td20.cpuStatsPeriodSeconds} -Dtd20.twistedBraceletWorkers=${td20.twistedBraceletWorkers} -Dtd20.certificateDb=${td20.certificateDb} -Dtd20.certificateFlushSeconds=${td20.certificateFlushSeconds} -Dtd20.certificateQueueCapacity=${td20.certificateQueueCapacity} -Dtd20.dbWriteBatchEntries=${td20.dbWriteBatchEntries} -Dtd20.certificateLookupBatchSize=${td20.certificateLookupBatchSize} -Dtd20.reconstructionBufferKeys=${td20.reconstructionBufferKeys} ${exec.mainClass} ${td20.args}</commandlineArgs>
++                            <commandlineArgs>-classpath %classpath -Djava.library.path=${project.build.directory}/native -Dtd20.gpuDevices=${td20.gpuDevices} -Dtd20.gpuSlots=${td20.gpuSlots} -Dtd20.gpuBudgetMB=${td20.gpuBudgetMB} -Dtd20.gpuQueueCapacity=${td20.gpuQueueCapacity} -Dtd20.gpuStatsPeriodSeconds=${td20.gpuStatsPeriodSeconds} ${td20.cpuPrefixJvmArgument} -Dtd20.cpuPrefixMaxTriples=${td20.cpuPrefixMaxTriples} -Dtd20.cpuPrefixMillis=${td20.cpuPrefixMillis} -Dtd20.reconstructionCpuPrefixMillis=${td20.reconstructionCpuPrefixMillis} -Dtd20.reconstructionGpuMillis=${td20.reconstructionGpuMillis} -Dtd20.reconstructionGpuWorkers=${td20.reconstructionGpuWorkers} -Dtd20.cpuStatsPeriodSeconds=${td20.cpuStatsPeriodSeconds} -Dtd20.twistedBraceletWorkers=${td20.twistedBraceletWorkers} -Dtd20.certificateDb=${td20.certificateDb} -Dtd20.certificateFlushSeconds=${td20.certificateFlushSeconds} -Dtd20.certificateQueueCapacity=${td20.certificateQueueCapacity} -Dtd20.dbWriteBatchEntries=${td20.dbWriteBatchEntries} -Dtd20.certificateLookupBatchSize=${td20.certificateLookupBatchSize} -Dtd20.reconstructionBufferKeys=${td20.reconstructionBufferKeys} ${exec.mainClass} ${td20.args}</commandlineArgs>
+                         </configuration>
+                     </execution>
+                 </executions>
+--- a/emitter/src/main/java/br/unb/cic/td20/avoidance/DiskStateSet.java
++++ b/emitter/src/main/java/br/unb/cic/td20/avoidance/DiskStateSet.java
+@@ -26,7 +26,7 @@
+ /** Bounded disk deduplication of a regenerated wave of valid-pair classes. */
+ public final class DiskStateSet implements AutoCloseable {
+     private static final Logger log = LoggerFactory.getLogger(DiskStateSet.class);
+-    private static final byte VERSION = 2;
++    private static final byte VERSION = 3;
+     private static final byte[] EMPTY = {};
+     private final int generatedBatchKeys = positiveProperty("td20.reconstructionGeneratedBatchKeys", 65536);
+     private static final int ADMISSION_STOPPED = Integer.MIN_VALUE;
+@@ -51,7 +51,7 @@
+
+     public record State(CyclicTargetPair pair, int maximumMoves) {
+         public State {
+-            if (maximumMoves < 1 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 1..10");
++            if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+             for (int symbol : pair.getBeta().getSymbols()) {
+                 if (pair.getOmega().image(symbol) == symbol)
+                     throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
+@@ -160,7 +160,7 @@
+      * A failed generation makes the incomplete set unsealable.
+      */
+     public void addGenerated(int maximumMoves, Consumer<Consumer<CyclicTargetPair>> generator) {
+-        if (maximumMoves < 1 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 1..10");
++        if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+         java.util.Objects.requireNonNull(generator);
+         beginGeneration();
+         try {
+--- a/emitter/src/main/java/br/unb/cic/td20/avoidance/RootPrefetch.java
++++ b/emitter/src/main/java/br/unb/cic/td20/avoidance/RootPrefetch.java
+@@ -161,7 +161,7 @@
+                     var state = DiskStateSet.decode(key, EMPTY);
+                     if (state.maximumMoves() != ErikssonRoute.ROOT_BUDGET
+                             || state.pair().getBeta().size() != ErikssonRoute.ROOT_SYMBOLS)
+-                        throw new IllegalArgumentException("Root prefetch requires 19 symbols and budget 10");
++                        throw new IllegalArgumentException("Root prefetch requires 21 symbols and budget 11");
+                     states.add(state);
+                 }
+                 if (states.isEmpty() || stopping) continue;
+--- a/emitter/src/main/java/br/unb/cic/td20/base/GPUSortingSearch.java
++++ b/emitter/src/main/java/br/unb/cic/td20/base/GPUSortingSearch.java
+@@ -278,7 +278,7 @@
+             throw new IllegalArgumentException("GPU search depth must lie between 1 and the move budget");
+         final long maximumNanos = new SearchLimits(maximumMillis).maximumNanos();
+         final byte[] images = omega.getOneLine().clone();
+-        if (maxMoves < 1 || maxMoves > 10 || beta.length != images.length || beta.length < 1 || beta.length > 19)
++        if (maxMoves < 1 || maxMoves > 11 || beta.length != images.length || beta.length < 1 || beta.length > 21)
+             throw new IllegalArgumentException("Invalid bounded GPU search domain or budget");
+         requirePermutation(beta); requirePermutation(images);
+         final byte[] inputBeta = beta.clone();
+--- a/emitter/src/main/java/br/unb/cic/td20/certificate/AsyncCertificateWriter.java
++++ b/emitter/src/main/java/br/unb/cic/td20/certificate/AsyncCertificateWriter.java
+@@ -32,7 +32,7 @@
+ public final class AsyncCertificateWriter implements AutoCloseable {
+     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
+     private static final byte[] SCHEMA_KEY = "td20-schema".getBytes(StandardCharsets.UTF_8);
+-    private static final byte[] SCHEMA_VALUE = "joint-selection-v3".getBytes(StandardCharsets.UTF_8);
++    private static final byte[] SCHEMA_VALUE = "eriksson-three-v1".getBytes(StandardCharsets.UTF_8);
+     private static final byte[] EMPTY = {};
+     static { RocksDB.loadLibrary(); }
+     private final DBOptions options;
+@@ -147,7 +147,7 @@
+     public Optional<SortingCertificate> findResult(CyclicTargetPair pair, int maximumMoves) {
+         throwIfFailed();
+         if (closed) throw new IllegalStateException("Certificate writer is closed");
+-        if (maximumMoves < 0 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 0..10");
++        if (maximumMoves < 0 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 0..11");
+         try {
+             return checkedResult(pair, maximumMoves, database.get(witnesses, CertificateCodec.keyFor(pair)));
+         } catch (RocksDBException error) { throw new IllegalStateException("Cannot read sorting result", error); }
+@@ -157,7 +157,7 @@
+     public List<Optional<SortingCertificate>> findResults(List<CyclicTargetPair> pairs, int maximumMoves) {
+         throwIfFailed();
+         if (closed) throw new IllegalStateException("Certificate writer is closed");
+-        if (maximumMoves < 0 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 0..10");
++        if (maximumMoves < 0 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 0..11");
+         if (pairs.isEmpty()) return List.of();
+         var keys = pairs.stream().map(CertificateCodec::keyFor).toList();
+         try {
+--- a/emitter/src/main/java/br/unb/cic/td20/certificate/CertificateCodec.java
++++ b/emitter/src/main/java/br/unb/cic/td20/certificate/CertificateCodec.java
+@@ -150,7 +150,7 @@
+
+     /** Version-2 values start with a kind byte and an exact move-count byte. */
+     public static byte[] resultFor(final SortingCertificate result) {
+-        if (result.moves().size() > 10) throw new IllegalArgumentException("Certificate exceeds ten moves");
++        if (result.moves().size() > 11) throw new IllegalArgumentException("Certificate exceeds eleven moves");
+         final byte[] payload = result.moves().isEmpty() ? new byte[0] : valueFor(result.moves());
+         final byte[] encoded = new byte[payload.length + 2];
+         encoded[0] = (byte) result.kind().ordinal();
+@@ -164,7 +164,7 @@
+         if (encoded == null || encoded.length < 2) throw new IllegalArgumentException("Truncated sorting result");
+         final int kind = Byte.toUnsignedInt(encoded[0]);
+         final int count = Byte.toUnsignedInt(encoded[1]);
+-        if (kind >= SortingCertificate.Kind.values().length || count > 10)
++        if (kind >= SortingCertificate.Kind.values().length || count > 11)
+             throw new IllegalArgumentException("Unsupported sorting result kind or move count");
+         final byte[] payload = java.util.Arrays.copyOfRange(encoded, 2, encoded.length);
+         requirePayload(payload, (long) TRIPLE_BITS * count, "result");
+--- a/emitter/src/main/java/br/unb/cic/td20/certificate/ReadOnlyWitnessSource.java
++++ b/emitter/src/main/java/br/unb/cic/td20/certificate/ReadOnlyWitnessSource.java
+@@ -44,7 +44,7 @@
+     }
+
+     public Optional<List<Cycle>> find(CyclicTargetPair pair, int maximumMoves) {
+-        if (maximumMoves < 1 || maximumMoves > 10) throw new IllegalArgumentException("Budget must be 1..10");
++        if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+         try {
+             byte[] encoded = database.get(witnesses, CertificateCodec.keyFor(pair));
+             if (encoded == null) return Optional.empty();
+--- a/emitter/src/main/java/br/unb/cic/td20/emission/ErikssonWitnessEmitter.java
++++ b/emitter/src/main/java/br/unb/cic/td20/emission/ErikssonWitnessEmitter.java
+@@ -14,6 +14,7 @@
+ import br.unb.cic.td20.runtime.ProjectPaths;
+ import br.unb.cic.td20.runtime.BoundedTasks;
+ import br.unb.cic.td20.search.WitnessSearch;
++import br.unb.cic.td20.search.CpuPrefixSearch;
+ import java.io.IOException;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+@@ -140,7 +141,7 @@
+     }
+
+     private static long reconstructionCpuPrefixMillis() {
+-        long value = Long.getLong("td20.reconstructionCpuPrefixMillis", 10L);
++        long value = Long.getLong("td20.reconstructionCpuPrefixMillis", CpuPrefixSearch.timeoutMillis());
+         if (value < 0) throw new IllegalArgumentException(
+                 "td20.reconstructionCpuPrefixMillis must not be negative");
+         return value;
+@@ -231,7 +232,7 @@
+                 else if (arg.startsWith("--database=")) database = Path.of(arg.substring(11));
+                 else if (arg.startsWith("--work=")) work = Path.of(arg.substring(7));
+                 else if (arg.startsWith("--resume-work=")) resumeWork = Path.of(arg.substring(14));
+-                else if (arg.startsWith("--source-db=") || arg.startsWith("--td16-db=") || arg.startsWith("--td20-db=") || arg.startsWith("--td14-db=")) td16 = Path.of(arg.substring(arg.indexOf('=')+1));
++                else if (arg.startsWith("--source-db=") || arg.startsWith("--td16-db=") || arg.startsWith("--td18-db=") || arg.startsWith("--td14-db=")) td16 = Path.of(arg.substring(arg.indexOf('=')+1));
+                 else if (arg.startsWith("--partitions=")) { int[] r = range(arg.substring(13),ErikssonRoute.ROOT_PARTITIONS); first = r[0]; last = r[1]; }
+                 else if (arg.startsWith("--endpoints=")) { int[] r = range(arg.substring(12),ErikssonRoute.ENDPOINT_TYPES); endpointFirst = r[0]; endpointLast = r[1]; }
+                 else throw new IllegalArgumentException("Unknown argument: " + arg);
+@@ -239,7 +240,7 @@
+             if (!List.of("roots", "endpoints", "avoidance", "all").contains(phase)) throw new IllegalArgumentException("Invalid emission phase");
+             if (resumeWork != null && (!phase.equals("avoidance") || first != 1 || last != ErikssonRoute.ROOT_PARTITIONS
+                     || endpointFirst != 1 || endpointLast != ErikssonRoute.ENDPOINT_TYPES || td16 != null))
+-                throw new IllegalArgumentException("Resume requires --phase=avoidance without ranges or a TD(16) import");
++                throw new IllegalArgumentException("Resume requires --phase=avoidance without ranges or a witness import");
+             return new Options(paper.toAbsolutePath().normalize(), database.toAbsolutePath().normalize(), work.toAbsolutePath().normalize(),
+                     td16 == null ? null : td16.toAbsolutePath().normalize(),
+                     resumeWork == null ? null : resumeWork.toAbsolutePath().normalize(),
+--- a/emitter/src/main/java/br/unb/cic/td20/joint/ErikssonRoute.java
++++ b/emitter/src/main/java/br/unb/cic/td20/joint/ErikssonRoute.java
+@@ -5,9 +5,9 @@
+     public static final String ID="td20-eriksson-three-v1";
+     public static final int ROOT_SYMBOLS=KnownDiameters.ROOT_SYMBOLS;
+     public static final int ROOT_BUDGET=KnownDiameters.MAX_BUDGET;
+-    public static final int ROOT_PARTITIONS=53;
++    public static final int ROOT_PARTITIONS=83;
+     public static final int ENDPOINT_SYMBOLS=ROOT_SYMBOLS-5;
+     public static final int ENDPOINT_BUDGET=ROOT_BUDGET-3;
+-    public static final int ENDPOINT_TYPES=74;
++    public static final int ENDPOINT_TYPES=143;
+     private ErikssonRoute() { }
+ }
+--- a/emitter/src/main/java/br/unb/cic/td20/joint/KnownDiameters.java
++++ b/emitter/src/main/java/br/unb/cic/td20/joint/KnownDiameters.java
+@@ -1,14 +1,15 @@
+ package br.unb.cic.td20.joint;
+
+-/** Known transposition diameters, indexed by the cyclic-target domain size. */
++/** Established transposition-diameter upper bounds, indexed by cyclic-target domain size. */
+ public final class KnownDiameters {
+-    public static final int ROOT_SYMBOLS = 19;
+-    public static final int MAX_BUDGET = 10;
+-    private static final int[] TD = {0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 8, 9, 9, 10};
++    public static final int ROOT_SYMBOLS = 21;
++    public static final int MAX_BUDGET = 11;
++    /** TD(18)=10 is the explicit completed-premise assumption for this project. */
++    private static final int[] TD = {0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 8, 9, 9, 10, 10, 11};
+
+     private KnownDiameters() { }
+
+-    /** Returns TD(N-1), or Integer.MAX_VALUE when no diameter is assumed. */
++    /** Returns an established upper bound for TD(N-1), or Integer.MAX_VALUE when none is assumed. */
+     public static int knownDiameter(final int cyclicDomain) {
+         if (cyclicDomain < 0) throw new IllegalArgumentException(
+                 "The cyclic domain cannot be negative");
+--- a/emitter/src/main/java/br/unb/cic/td20/joint/SupportClearing.java
++++ b/emitter/src/main/java/br/unb/cic/td20/joint/SupportClearing.java
+@@ -4,7 +4,7 @@
+
+ import java.util.Objects;
+
+-/** The support powers whose cited clearing bounds fit the ten-move root budget. */
++/** The cited support powers whose clearing bounds fit the eleven-move root budget. */
+ public final class SupportClearing {
+     private SupportClearing() { }
+
+@@ -14,7 +14,7 @@
+
+     /**
+      * Returns the least closing support length, or zero. These root closures
+-     * apply only on 19 symbols; a caller must contract fixed points first.
++     * apply only on 21 symbols; a caller must contract fixed points first.
+      */
+     public static int closingLength(final CyclicTargetPair pair) {
+         Objects.requireNonNull(pair);
+@@ -48,7 +48,7 @@
+                 x = omega[x];
+             } while (x != first);
+             seen |= cycleMask;
+-            if (length != 7 && length != 9 && length != 11 && length != 13
++            if (length != 9 && length != 11 && length != 13 && length != 17
+                     || chosen != 0 && chosen <= length) continue;
+             int index = 0;
+             for (int symbol = first; symbol < omega.length; symbol++) {
+@@ -61,12 +61,14 @@
+
+     static boolean admittedPower(final int[] omega, final int[] support, final int length) {
+         return switch (length) {
+-            case 7 -> powerOnSupport(omega, support, length, 4);
+             case 9 -> powerOnSupport(omega, support, length, 7);
+             case 11 -> powerOnSupport(omega, support, length, 6);
+             case 13 -> powerOnSupport(omega, support, length, 7)
+                     || powerOnSupport(omega, support, length, 10)
+                     || powerOnSupport(omega, support, length, 11);
++            case 17 -> powerOnSupport(omega, support, length, 9)
++                    || powerOnSupport(omega, support, length, 13)
++                    || powerOnSupport(omega, support, length, 15);
+             default -> false;
+         };
+     }
+--- a/emitter/src/main/java/br/unb/cic/td20/search/CpuPrefixSearch.java
++++ b/emitter/src/main/java/br/unb/cic/td20/search/CpuPrefixSearch.java
+@@ -18,12 +18,20 @@
+ public final class CpuPrefixSearch {
+     static final int DEFAULT_DEPTH = 3;
+     private static final int DEFAULT_TRIPLE_LIMIT = 8192;
++    private static final long DEFAULT_TIMEOUT_MILLIS = 10;
+     private static final ThreadLocal<Workspace> WORKSPACE = ThreadLocal.withInitial(Workspace::new);
+
+     private CpuPrefixSearch() { }
+
+     public static Optional<SortingCertificate> search(CyclicTargetPair pair, int maximumMoves) {
+-        return recordedSearch(pair, maximumMoves, DEFAULT_DEPTH, Long.MAX_VALUE);
++        return recordedSearch(pair, maximumMoves, DEFAULT_DEPTH, Math.multiplyExact(timeoutMillis(), 1_000_000L));
++    }
++
++    /** General wall-clock limit for roots, endpoints, and reconstructed classes. */
++    public static long timeoutMillis() {
++        long value = Long.getLong("td20.cpuPrefixMillis", DEFAULT_TIMEOUT_MILLIS);
++        if (value < 0) throw new IllegalArgumentException("td20.cpuPrefixMillis must not be negative");
++        return value;
+     }
+
+     static Optional<SortingCertificate> searchWithinNanos(CyclicTargetPair pair, int maximumMoves,
+--- a/emitter/src/main/java/br/unb/cic/td20/search/WitnessSearch.java
++++ b/emitter/src/main/java/br/unb/cic/td20/search/WitnessSearch.java
+@@ -53,7 +53,11 @@
+
+     /** Searches the full budget, accepting identity or a replayed known-diameter closure at any depth. */
+     public static SearchResult search(final CyclicTargetPair input, final int maximumMoves) {
+-        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, Long.MAX_VALUE, WitnessSearch::dispatchGpu);
++        return search(input, maximumMoves, WitnessSearch::dispatchGpu);
++    }
++
++    static SearchResult search(CyclicTargetPair input, int maximumMoves, GpuSearch dispatcher) {
++        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, Long.MAX_VALUE, dispatcher);
+     }
+
+     /** Direct root/endpoint generation supplies unique classes; search without a certificate lookup. */
+@@ -137,13 +141,13 @@
+
+     static int reconstructionGpuDepth(int maximumMoves) {
+         if (maximumMoves < 1 || maximumMoves > KnownDiameters.MAX_BUDGET)
+-            throw new IllegalArgumentException("Sorting budget must lie between 1 and 10");
++            throw new IllegalArgumentException("Sorting budget must lie between 1 and 11");
+         return maximumMoves;
+     }
+
+     static long reconstructionGpuMillis(int maximumMoves) {
+         if (maximumMoves < 1 || maximumMoves > KnownDiameters.MAX_BUDGET)
+-            throw new IllegalArgumentException("Sorting budget must lie between 1 and 10");
++            throw new IllegalArgumentException("Sorting budget must lie between 1 and 11");
+         if (maximumMoves == KnownDiameters.MAX_BUDGET) return 0;
+         long maximumMillis = Long.parseLong(System.getProperty("td20.reconstructionGpuMillis", "0").trim());
+         return new GPUSortingSearch.SearchLimits(maximumMillis).maximumMillis();
+@@ -169,7 +173,7 @@
+                                        int defaultCpuPrefixDepth, long cpuPrefixNanos, GpuSearch dispatcher, boolean lookup) {
+         Objects.requireNonNull(input);
+         if (maximumMoves < 1 || maximumMoves > KnownDiameters.MAX_BUDGET)
+-            throw new IllegalArgumentException("Sorting budget must lie between 1 and 10");
++            throw new IllegalArgumentException("Sorting budget must lie between 1 and 11");
+         final var pair = input.canonicalRepresentative();
+         final var writer = certificateWriter;
+         if (writer == null) throw new IllegalStateException("Sorting requires a proof-scoped certificate writer");
+--- a/emitter/src/native/CMakeLists.txt
++++ b/emitter/src/native/CMakeLists.txt
+@@ -18,8 +18,8 @@
+ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+ set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
+
+-set(TD20_NATIVE_MAX_N 19)
+-set(TD20_NATIVE_MAX_DEPTH 10)
++set(TD20_NATIVE_MAX_N 21)
++set(TD20_NATIVE_MAX_DEPTH 11)
+
+ # JNI bridge for the TD(20) exact bounded search.
+
+--- a/emitter/src/native/core/common.cuh
++++ b/emitter/src/native/core/common.cuh
+@@ -8,11 +8,11 @@
+ };
+
+ #ifndef MAX_DEPTH
+-#define MAX_DEPTH 10
++#define MAX_DEPTH 11
+ #endif
+
+ #ifndef MAX_N
+-#define MAX_N 19
++#define MAX_N 21
+ #endif
+
+ constexpr int packed_move_index_bits_for_max_n(const int maxN) {

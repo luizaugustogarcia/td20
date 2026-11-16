@@ -21,12 +21,22 @@ class SupportClearingTest {
         power(0,new int[]{3,13,16,5,14,0,15,17,18,19,20,2,1,4,6,7,11,8,9,10,12});
     }
     private static void power(final int expected,final int[] images) {
-        final var pair=IndependentJointRootGeneratorTest.pair(images);
+        final var pair=pair(images);
         assertEquals(expected,SupportClearing.closingLength(pair));
         final var relabeled=new MulticyclePermutation();
         for(final var cycle:pair.getOmega())
             relabeled.add(Cycle.of(Arrays.stream(cycle.getSymbols()).map(x->(5*x+3)%21).toArray()));
         final var beta=Cycle.of(Arrays.stream(pair.getBeta().getSymbols()).map(x->(5*x+3)%21).toArray());
         assertEquals(expected,SupportClearing.closingLength(CyclicTargetPair.of(relabeled,beta)));
+    }
+    private static CyclicTargetPair pair(int[] images) {
+        var omega=new MulticyclePermutation(); boolean[] seen=new boolean[images.length];
+        for (int x=0;x<images.length;x++) if (!seen[x]) {
+            int[] symbols=new int[images.length]; int size=0,y=x;
+            do { symbols[size++]=y; seen[y]=true; y=images[y]; } while (y!=x);
+            omega.add(Cycle.of(Arrays.copyOf(symbols,size)));
+        }
+        int[] beta=new int[images.length]; Arrays.setAll(beta,i->i);
+        return CyclicTargetPair.of(omega,Cycle.of(beta));
     }
 }

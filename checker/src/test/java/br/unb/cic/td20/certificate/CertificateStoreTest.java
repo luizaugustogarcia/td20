@@ -16,17 +16,20 @@ class CertificateStoreTest {
     static { RocksDB.loadLibrary(); }
     private static final CyclicTargetPair PAIR = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(0,1,2));
     private static void database(final Path path, final byte[] value, final boolean marker) throws Exception {
-        database(path,value,marker ? "joint2-selection-v2" : null);
+        database(path, value, marker ? "eriksson-three-v1" : null, PAIR);
     }
-    private static void database(final Path path, final byte[] value, final String marker) throws Exception {
+    private static void database(final Path path, final byte[] value, final String marker, final CyclicTargetPair pair) throws Exception {
         try (final var options = new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true);
              final var first = new ColumnFamilyOptions(); final var second = new ColumnFamilyOptions()) {
             final var handles = new ArrayList<ColumnFamilyHandle>();
             try (final var db = RocksDB.open(options,path.toString(),List.of(
                     new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,first),
-                    new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles)) {
-                if(marker != null) db.put(handles.get(0),"td20-schema".getBytes(StandardCharsets.UTF_8),marker.getBytes(StandardCharsets.UTF_8));
-                if(value!=null) db.put(handles.get(0),CertificateCodec.keyFor(PAIR),value);
+                    new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles);
+                 final var writes = new WriteOptions().setDisableWAL(true);
+                 final var flush = new FlushOptions().setWaitForFlush(true)) {
+                if(marker!=null) db.put(handles.get(0),writes,"td20-schema".getBytes(StandardCharsets.UTF_8),marker.getBytes(StandardCharsets.UTF_8));
+                if(value!=null) db.put(handles.get(0),writes,CertificateCodec.keyFor(pair),value);
+                db.flush(flush,handles);
                 handles.forEach(ColumnFamilyHandle::close);
             }
         }
@@ -67,6 +70,30 @@ class CertificateStoreTest {
         database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.complete(List.of(Cycle.of(0,1,2),Cycle.of(1,0,2)))),true);
         try(final var store=new CertificateStore(path.resolve("db"))) {
             assertThrows(IllegalArgumentException.class,()->store.find(PAIR,1));
+            assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(PAIR),1));
+        }
+    }
+
+    @Test void lookupReplaysInTheCanonicalFrameForRotatedCurrentCycles(@TempDir final Path path) throws Exception {
+        database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.complete(List.of(Cycle.of(0,1,2)))),true);
+        var rotated=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(1,2,0));
+        var decoded=CertificateCodec.pairForKey(CertificateCodec.keyFor(PAIR),3);
+        var missing=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2,3,4)),Cycle.of(0,1,2,3,4));
+        try(var store=new CertificateStore(path.resolve("db"))) {
+            assertEquals(List.of(Cycle.of(0,1,2)),store.require(rotated,1));
+            assertArrayEquals(new boolean[]{true,true,false},store.findAll(List.of(rotated,decoded,missing),1));
+        }
+    }
+
+    @Test void projectMaximumIsValidatedBeforeRequestedBudgetComparison(@TempDir final Path path) throws Exception {
+        var moves=new ArrayList<Cycle>();
+        for(int i=0;i<4;i++) {moves.add(Cycle.of(0,1,2));moves.add(Cycle.of(1,0,2));}
+        var pair=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2,3,4,5,6)),Cycle.of(0,1,2,3,4,5,6)).canonicalRepresentative();
+        // Eight moves return to this pair; TD(6)=4 makes the closure require twelve.
+        database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.closure(moves)),"eriksson-three-v1",pair);
+        try(var store=new CertificateStore(path.resolve("db"))) {
+            assertThrows(IllegalArgumentException.class,()->store.find(pair,20));
+            assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(pair),20));
         }
     }
     @Test void missingWitnessIsNotInventedFromInventory(@TempDir final Path path) throws Exception {
@@ -76,8 +103,8 @@ class CertificateStoreTest {
             assertThrows(IllegalStateException.class,()->store.require(PAIR,10));
         }
     }
-    @Test void rejectsSupersededJointRouteSchema(@TempDir final Path path) throws Exception {
-        database(path.resolve("old-route"),null,"unsupported-selection-v1");
+    @Test void rejectsSupersededSchema(@TempDir final Path path) throws Exception {
+        database(path.resolve("old-route"),null,"joint2-selection-v2",PAIR);
         assertThrows(IllegalStateException.class,()->new CertificateStore(path.resolve("old-route")));
     }
     @Test void rejectsMissingFormatMarker(@TempDir final Path path) throws Exception {

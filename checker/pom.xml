@@ -36,6 +36,10 @@
                 <configuration>
                     <systemProperties>
                         <systemProperty>
+                            <key>td20.dbWriteBatchEntries</key>
+                            <value>${td20.dbWriteBatchEntries}</value>
+                        </systemProperty>
+                        <systemProperty>
                             <key>td20.certificateDb</key>
                             <value>${td20.certificateDb}</value>
                         </systemProperty>

@@ -1,91 +1,112 @@
-# Computational workflow
+# TD(20) proof workflow
 
-Totally unoriented roots now participate in joint-2 selection when they contain
-even-length cycles. All-odd totally unoriented roots have no qualifying first
-move; totally unoriented successors cannot supply the second gain. Two-step
-prefixes must have gains (1,2) or (1,3). Let U be the full unoriented census and
-R its residual count. The active direct obligation count is R + O, with O = J - C.
-All 83 R counts are complete: R = 124,395,153 and R + O = 2,146,972,300.
-Independent full-inventory count verification agrees in every row. Emission and proof
-checking reject missing or pending counts.
+The [source paper](td20-reduction-count.tex) defines the active route.
+All 83 root partitions and 143 endpoint annotations on 16 symbols have been
+regenerated structurally. Root and endpoint class counts must be regenerated
+for this route and independently audited before publication. Endpoints have
+budget 8; historical joint-2 counts and TD18 execution records do not supply
+these new counts or sorting results.
+The maintained local launchers and their bounded settings are described in
+[OPERATIONS.md](OPERATIONS.md).
 
-Count R with the Java command CountTD20UnorientedResiduals. Its per-partition
-reports are versioned, deterministic resume boundaries. Use --publish to update
-the explicit paper rows after counting; --n supports small-domain checks, which
-cannot be published to the production inventory. Run the command through Maven
-or JShell using the emitter classpath. Generated artifacts remain untracked.
+## Validate and count
 
-[The source specification](td20-reduction-count.tex) defines joint-2 coverage.
-TD(18) = 10 is an independently checked premise. TD(20) = 11 is pending
-[all proof exit criteria](RESEARCH_PLAN.md).
-
-## 1. Validate small domains and inventory
-
-~~~bash
-mvn -pl emitter -am test
-mvn -pl checker -am test
+```bash
+tools/td20 build
+tools/td20 test
 tools/td20 inventory
-~~~
+tools/td20 count-roots
+tools/td20 audit-roots
+tools/td20 count-endpoints
+tools/td20 audit-endpoints
+tools/td20 endpoint-table
+```
 
-Inventory checks cover all 83 root partitions and 214 endpoint annotations.
-They accept explicit pending counts and do not check sorting certificates.
+The root census runs all 83 partitions through JShell using all available
+CPU threads. It atomically persists versioned per-partition reports under
+`data/eriksson-root-counts-v1/`, then publishes every active paper row together.
+The independent checker uses `data/eriksson-root-counts-checker-v1/` and compares
+all counts against those rows. Repeated, malformed, incompatible or missing
+fields cannot supply a completed count. Pending active rows allow structural
+checks but block emission and proof verification.
+Endpoint counting uses the full 143-annotation cover. Reports under
+`data/eriksson-endpoint-counts-v1/` and
+`data/eriksson-endpoint-counts-checker-v1/` include the route, domain, budget,
+orientations, counts and elementary-closure flag. No additional 3-norm
+restriction is imposed. A count does not discharge a sorting obligation.
 
-## 2. Generate fresh counts
+## Emit and reconstruct
 
-~~~bash
-tools/td20 count-r '-Dexec.args=--publish'
-~~~
-
-Independently regenerate every R count using the checker and JShell:
-
-~~~bash
-mvn -pl checker -am compile
-jshell --class-path checker/target/classes tools/audit/CheckUnorientedResidualCounts.jsh
-~~~
-
-The audit checks every paper row and writes versioned partition reports in
-data/unoriented-joint-residuals-checker-v1/. It reads no emitter artifact.
-Count checking does not discharge sorting witnesses or inverse obligations.
-
-The Java command detects CPU concurrency, counts the unoriented residual stream
-using the constrained prefix generator, and writes atomic per-partition reports
-in data/unoriented-joint-residuals-v1/. Existing reports are strictly validated
-before reuse. Missing source counts remain pending until published. U and J/C/O
-retain their previous scopes; the new direct count is R + O. Counting proves
-set size, never its sorting bound.
-
-## 3. Emit direct roots and endpoints
-
-~~~bash
-tools/td20 emit -Dtd20.args=--phase=roots
-tools/td20 emit -Dtd20.args=--phase=endpoints
-~~~
-
-On a configured CUDA machine, roots use budget eleven and endpoints nine.
-The 104 oriented-3-cycle annotations close structurally. Every class in the
-other 110 annotations needs a result or inverse coverage. Root emission
-rejects pending source counts. Imported witnesses are individually replayed.
-
-## 4. Reconstruct unresolved endpoints
-
-~~~bash
+```bash
+bash -ic './tools/run-local-emitter.sh --build'
+tools/td20 emit --phase=roots
+tools/td20 emit --phase=endpoints
 tools/td20 avoidance
-~~~
+```
 
-Regenerate all endpoints without nine-move discharges. Reverse gain two to
-20-symbol budget-ten classes, then gain one to 21-symbol budget-eleven roots.
-Each wave enumerates every gap and support, checks forward gain and odd-cycle
-increase, and globally deduplicates on disk. Checked results stop paths;
-unresolved classes propagate. Search misses are upper-bound obligations.
+Direct roots use budget 11; endpoints use 8. Checked intrinsic witnesses
+can be reused only when their actual required budget fits the requested one.
+Use `--source-db=PATH` for a read-only witness source. CPU prefix misses or
+limits leave the original class and its budget intact for GPU search. Neither
+an exhausted restricted search nor a timeout is a lower bound or closes an
+obligation.
 
-## 5. Independently verify
+Final reconstruction first restores two fixed points, reversing the third move
+and producing 18-symbol states with budget 9. Unclosed states branch:
+restore two for a gain-two second move, or three for a gain-three second move.
+This produces 20- or 21-symbol states with budget 10. Reverse the first
+move by restoring one fixed point in the first branch, or restoring none and
+reversing every gain-zero support in the second. Both endpoints are covered,
+all gaps and supports are enumerated, and actual forward gains are replayed.
+No qualifying-move restriction is imposed on the first inverse step.
+Intermediate GPU searches explore their full budgets (9 or 10), without the
+former depth-five cap. Their time allowance defaults to 0
+(disabled), configurable with `-Dtd20.reconstructionGpuMillis=MS`.
+Every depth-limited miss or timeout propagates through all applicable inverse
+branches. Final budget-11 root searches use full depth 11 without a time cutoff
+and must produce checked witnesses. Exploration limits never reduce the budget
+used for diameter closures or the required inverse coverage. See [operations](OPERATIONS.md) for timing
+semantics and the GPU sorting-tree restrictions.
 
-~~~bash
-tools/td20 verify
-~~~
+All waves deduplicate valid-pair classes on disk. The latest sealed wave may
+resume with `--phase=avoidance --resume-work=PATH`; its version, route, domain,
+budget, record validity and exact count are checked. Incompatible checkpoints are
+rejected. Resume is a computation convenience, not proof verification.
+CPU sorting and GPU dispatch use separate worker pools with an append-only disk
+handoff, so waiting for GPU results cannot stop the CPU scan. Progress reports
+give per-wave coverage and backlog counts. Every handoff is drained before
+sealing the next wave; interrupted handoffs are regenerated from the sealed
+source rather than trusted as complete coverage.
+Each inverse generation stage, persistence drain, inventory count and scan
+reports progress every ten seconds. Known totals show processed/total, percent
+and remaining work. During the first unique-class count, the exact total is
+explicitly unknown until enumeration finishes; the counted classes and rate
+remain visible. Writer names include their state-set directory.
 
-The CPU checker independently regenerates all roots, endpoints, and both
-inverse waves. Missing obstruction markers cannot suppress work. Every result
-is replayed at its active budget. Only a full successful report satisfying
-the research plan establishes the upper bound; partial scopes certify only
-their selected classes.
+## Verify complete coverage
+
+```bash
+bash -ic './tools/run-local-checker.sh --build'
+bash -ic './tools/run-local-checker.sh'
+```
+
+The CPU checker independently regenerates all roots, endpoint classes and all
+three inverse waves and replays the database at each actual budget. Every
+missing endpoint discharge is propagated regardless of obstruction markers.
+Any missing final root result fails verification. Ranges and partial phases
+certify only their stated scope. The final full-scope report is required for
+the checked computational part of the conditional proof of TD(20) = 11.
+Keep execution logs and settings untracked, and record the actual scope,
+configuration, timings and result locations in [the execution record](REFERENCE_SIMULATION.md).
+TD(20) = 11 remains conditional until every research-plan criterion is checked.
+
+## Endpoint table publication
+
+The `endpoint-table` command runs through JShell using all available processors.
+It validates every emitter/checker endpoint report pair, requires the exact
+complete annotation set, and writes the endpoint table and both table totals
+atomically into the source paper. Zero-count annotated types remain explicit.
+Missing or disagreeing reports stop publication. Rebuild the reading PDF with
+`latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=docs docs/td20-reduction-count.tex`.
+The table's final column counts classes outside elementary diameter closures,
+before individual certificate lookup; it excludes subsequent inverse workload.

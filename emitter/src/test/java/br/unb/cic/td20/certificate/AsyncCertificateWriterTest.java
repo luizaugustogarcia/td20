@@ -52,6 +52,40 @@ class AsyncCertificateWriterTest {
             assertTrue(writer.find(pair(),2).isEmpty()); assertEquals(moves,writer.find(pair(),3).orElseThrow());
         }
     }
+    @Test void weakerRootClosureCannotReplaceAfterOneDischarge(@TempDir Path directory) {
+        var predecessor = CertificateCodec.pairForKey(
+                java.util.HexFormat.of().parseHex("52c01118f08b1ae90c8543d2"),19);
+        var strong = br.unb.cic.td20.search.CpuPrefixSearch.search(predecessor,9,5,1000000)
+                .orElseThrow().moves();
+        var weak = List.of(Cycle.of(0,10,13));
+        assertEquals(9,CertificateValidator.requiredBudget(predecessor,SortingCertificate.closure(strong)));
+        assertEquals(10,CertificateValidator.requiredBudget(predecessor,SortingCertificate.closure(weak)));
+        try (var writer = new AsyncCertificateWriter(directory,60)) {
+            writer.enqueueClosure(predecessor,strong,9); writer.flush();
+            writer.enqueueClosure(predecessor,weak,10); writer.flush();
+            assertEquals(strong,writer.find(predecessor,9).orElseThrow(),
+                    "A skipped inverse wave must retain its budget-9 discharge");
+        }
+        try (var writer = new AsyncCertificateWriter(directory,60)) {
+            assertEquals(strong,writer.find(predecessor,9).orElseThrow());
+        }
+    }
+    @Test void duplicateCertificatesKeepTheStrongestBudgetWithAndWithoutMarkers(@TempDir Path directory) {
+        var strong = List.of(Cycle.of(0,1,2));
+        var weak = List.of(Cycle.of(0,1,2),Cycle.of(1,0,2),Cycle.of(0,1,2));
+        for (boolean marker : List.of(false,true)) {
+            try (var writer = new AsyncCertificateWriter(directory.resolve("proof-"+marker),60)) {
+                writer.enqueue(pair(),weak); writer.flush();
+                if (marker) { writer.enqueueObstruction(pair(),1); writer.flush(); }
+                writer.enqueue(pair(),strong); writer.enqueue(pair(),weak); writer.flush();
+                assertEquals(strong,writer.find(pair(),1).orElseThrow());
+                writer.enqueue(pair(),weak); writer.flush();
+                assertEquals(strong,writer.find(pair(),1).orElseThrow());
+                var markers = new ArrayList<byte[]>(); writer.forEachObstruction(markers::add);
+                assertTrue(markers.isEmpty());
+            }
+        }
+    }
     @Test void multiGetPreservesMissingDuplicateAndOverBudgetPositions(@TempDir Path directory) {
         var closure = CyclicTargetPair.of(new MulticyclePermutation("(0 1 2)(3 4 5)"),Cycle.of(0,1,2,3,4,5));
         var missing = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2,3,4)),Cycle.of(0,1,2,3,4));
@@ -78,7 +112,11 @@ class AsyncCertificateWriterTest {
              var database = RocksDB.open(options,directory.toString(),List.of(
                      new org.rocksdb.ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,familyOptions),
                      new org.rocksdb.ColumnFamilyDescriptor("obstructions".getBytes(java.nio.charset.StandardCharsets.UTF_8),familyOptions)),handles)) {
-            try { database.put(handles.getFirst(),CertificateCodec.keyFor(pair()),new byte[]{42}); }
+            try (var writes=new org.rocksdb.WriteOptions().setDisableWAL(true);
+                 var flush=new org.rocksdb.FlushOptions().setWaitForFlush(true)) {
+                database.put(handles.getFirst(),writes,CertificateCodec.keyFor(pair()),new byte[]{42});
+                database.flush(flush,handles);
+            }
             finally { handles.forEach(org.rocksdb.ColumnFamilyHandle::close); }
         }
         try (var writer = new AsyncCertificateWriter(directory,60)) {
@@ -105,9 +143,11 @@ class AsyncCertificateWriterTest {
              var database = RocksDB.open(options,directory.toString(),List.of(
                      new org.rocksdb.ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,familyOptions),
                      new org.rocksdb.ColumnFamilyDescriptor("obstructions".getBytes(java.nio.charset.StandardCharsets.UTF_8),familyOptions)),handles)) {
-            try {
-                database.put(handles.getFirst(),"td20-schema".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                        "unsupported-selection-v1".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            try (var writes = new org.rocksdb.WriteOptions().setDisableWAL(true);
+                 var flush = new org.rocksdb.FlushOptions().setWaitForFlush(true)) {
+                database.put(handles.getFirst(), writes, "td20-schema".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "joint2-selection-v2".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                database.flush(flush, handles);
             } finally { handles.forEach(org.rocksdb.ColumnFamilyHandle::close); }
         }
         assertThrows(IllegalStateException.class, () -> new AsyncCertificateWriter(directory,60));
@@ -118,7 +158,7 @@ class AsyncCertificateWriterTest {
         assertThrows(IllegalStateException.class, () -> new AsyncCertificateWriter(directory.resolve("source"),60));
         try (var writer = new AsyncCertificateWriter(directory.resolve("proof"),60)) {
             assertThrows(IllegalArgumentException.class, () -> writer.enqueue(pair(),List.of(Cycle.of(0,2,1))));
-            assertThrows(IllegalArgumentException.class, () -> writer.enqueueObstruction(pair(),8));
+            assertThrows(IllegalArgumentException.class, () -> writer.enqueueObstruction(pair(),br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET+1));
         }
     }
 }

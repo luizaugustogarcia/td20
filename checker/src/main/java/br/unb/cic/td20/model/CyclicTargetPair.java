@@ -144,6 +144,11 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
         return result;
     }
 
+    /** True only when a canonical generator or orbit normalization established this fact. */
+    public boolean isKnownCanonicalRepresentative() {
+        return canonicalRepresentative == this;
+    }
+
     @Override
     public CyclicTargetPair canonicalRepresentative() {
         var result = canonicalRepresentative;

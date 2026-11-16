@@ -1,91 +1,115 @@
 # Research plan and proof completion
 
-The objective is a checked proof that TD(20) = 11. The established
-reverse-permutation lower bound is TD(20) >= 11; see the
-[shared paper](../../td/docs/paper/main.tex). TD(18) = 10 is an independently
-checked established premise. The remaining direction is TD(20) <= 11.
-No count supplies a sorting certificate.
+The objective is a checked upper bound of eleven transpositions for every
+ordinary order-20 instance. Together with the established reverse-permutation
+lower bound TD(20) >= 11, this would establish TD(20) = 11. The upper bound is
+**not yet proved**. [The source paper](td20-reduction-count.tex) specifies the
+two-sided Eriksson-plus-third-move route. TD(18) = 10 is an explicit established
+premise, alongside the separately certified TD(16) = 9 and smaller bounds.
 
-## 1. Mathematical coverage
+The user authorized replacement of joint-2 on 16 November 2026. Its completed
+U/J/C/O/R counts and 214-annotation endpoint census describe a superseded route;
+they cannot supply counts or sorting coverage for the active route.
 
-Validate cyclic-target pairs, contraction, twisted class correspondence, and
-diameter premises. Independently regenerate all 83 even fixed-point-free
-partitions of 21 and the 214 endpoint annotations on 18 symbols with 3-norm
-at most eight, comprising 30 underlying partitions.
+## 1. Check mathematical coverage and small domains
 
-Joint-2 tests every immediate gain at least two. Otherwise inspect every
-qualifying gain-one first move followed by every gain-two or gain-three second
-move. Gain three closes; gain two produces a budget-nine endpoint. Totally
-unoriented roots with only odd-length cycles have no qualifying first move;
-test those with even-length cycles. Totally unoriented successors cannot supply
-the required second gain. Two moves creating only two fixed points are excluded. Include
-supports within even-length cycles and across cycles.
+Validate cyclic-target conventions, fixed-point contraction, fixed-content
+encoding, auxiliary standardization, twisted reflection with rank inversion,
+orbit correspondence, and the independently established diameter premises.
+Check the endpoint-side triangle inequality and reverse exception. Enumerate
+every gain-zero/one first support on both endpoints, every second move producing
+three fixed symbols, and every third move creating at least two fixed symbols.
+Two moves producing four fixed symbols or three producing six close by known
+bounds. No qualifying odd-cycle restriction applies to the first move.
 
-Exit criterion: an emitter-independent coverage derivation, exhaustive
-small-domain class-set agreement, and complete two-wave inverse construction.
+Verify the consecutive-triple characterization of gain-at-least-two moves,
+including even-length algebraic cycles. Check the explicit budget-valid support
+patterns at powers 9:7, 11:6, 13:7/10/11 and 17:9/13/15. No unlisted clearing is
+assumed. Check both inverse branches `(1,2,2)` and `(0,3,2)` on both endpoints.
 
-## 2. Class counts
+Exit criterion: a checked coverage derivation agreeing with the paper and both
+implementations, and passing complete small-domain class-set and arbitrary-support
+forward/inverse oracles, including gains zero through three.
 
-Every root partition records totally unoriented classes U, oriented joint-2
-residuals J, clearing subset C, and O = J - C. Let R count totally unoriented
-roots without a favorable prefix. Direct roots total R + O. Every paper
-partition supplies an explicit R count or pending row; missing data never means zero.
-Only powers 9:7, 11:6, 13:7/10/11, and 17:9/13/15 are admitted.
-Retain the selection-independent U count. Route-dependent counts require
-fresh artifacts; missing values remain explicitly pending.
+## 2. Independently regenerate counts and generation
 
-Burnside and generation preserve fixed content, auxiliary standardization,
-twisted reflection with rank inversion, and full-target realizability.
-Versioned artifacts contain all deterministic keys and reject missing or
-duplicate rows and superseded route formats.
+Regenerate all 83 fixed-point-free even root partitions of 21 and all 143
+orientation annotations from the 28 even endpoint partitions of 16. Algebraic
+2-cycles are unoriented. Every endpoint annotation is included without a stricter
+3-norm cutoff, including types with zero realizable classes. The endpoint census is complete and agrees between both modules in every row:
+14,098,353,328 classes, with 11,523,939,269 outside elementary closures.
+The paper's pending root rows support structural checks only.
 
-Exit criterion: complete validated count artifacts, independent small-domain
-class-set equality, and source tables agreeing row for row. Root emission
-and proof verification reject pending counts. Production checking independently
-regenerates every represented class.
+For every root partition, independently count retained unoriented roots U3,
+retained oriented roots O3, and the support-cleared subset C3. Direct obligations
+total U3 + O3 - C3. Both modules must agree in every row. Endpoint counts require
+independent Burnside/direct agreement on the full generated scope. Counting
+alone discharges no sorting obligation.
 
+Exit criterion: complete independently checked versioned reports under
+`data/eriksson-root-counts-v1/`, `data/eriksson-root-counts-checker-v1/`,
+`data/eriksson-endpoint-counts-v1/` and
+`data/eriksson-endpoint-counts-checker-v1/`, matching all active paper rows.
+Keys and iteration must be deterministic; pending, missing, duplicate,
+malformed, incompatible and out-of-scope records must be rejected.
 
-All 83 Java R counts are complete: R = 124,395,153 and R + O = 2,146,972,300.
-Joint-2 removes 12,579,718,908 former direct unoriented obligations, or 99.02%
-of U. Independent arbitrary-support regeneration agrees in all 83 rows. Versioned
-partition artifacts are in data/unoriented-joint-residuals-v1/ and
-data/unoriented-joint-residuals-checker-v1/. No count discharges a witness or
-an inverse obligation.
+## 3. Discharge direct roots and endpoints
 
-## 3. Direct roots and endpoints
+Every direct root requires a persisted complete witness or checked diameter
+closure within eleven moves. Every non-elementary endpoint requires a result
+within eight moves or full regenerated inverse coverage. Reused witnesses must
+be replayed at the requested budget; a partial source database never closes a
+type by its reported count. A valid longer witness is a miss for a smaller
+budget; malformed data are errors.
 
-Direct roots require budget-eleven results. Every class in the 214-type
-18-symbol cover requires a budget-nine discharge or inverse coverage.
-The 104 annotations containing an oriented 3-cycle close by one move plus
-TD(14) = 8. The other 110 annotations are generated in full. No endpoint
-failure count is a premise.
+A diameter prefix must replay applicable transpositions, preserve its search
+target, contract resulting fixed points, and satisfy the actual remaining known
+bound. CPU prefix and CUDA limits leave the original obligation intact. Neither
+exhaustion of the restricted CUDA tree nor a timeout proves a lower bound.
 
-Exit criterion: every root has a replayed witness or valid closure; every
-regenerated endpoint is discharged or retained for inverse coverage.
+Exit criterion: replayable results for all direct roots, and endpoint discharges
+or the complete regenerated endpoint residual set. No predicted failure list
+or count is a premise.
 
-## 4. Two-wave inverse coverage
+## 4. Complete inverse coverage
 
-Restore two fixed points and reverse gain two, producing 20-symbol budget-ten
-predecessors. Restore one fixed point and reverse gain one, producing
-21-symbol budget-eleven roots. Enumerate all cyclic gap distributions and
-compatible supports. Require exact forward gain, odd-cycle increase two,
-valid pairs and fixed-point-free predecessors. Only the gain-two intermediate
-must be non-totally-unoriented; the gain-one inverse wave admits roots of either
-orientation, including totally unoriented roots with even-length cycles.
+For each residual 16-symbol endpoint, reverse the third gain-two move by restoring
+two fixed symbols in all gaps and testing every compatible support on both
+endpoints. The resulting 18-symbol after-two states have budget nine.
 
-Exit criterion: complete independently regenerated reports for both waves,
-replayed discharges, and no unresolved root. Checkpoints assist execution;
-they are not proof inputs.
+For every unclosed state, reverse a gain-two second move to obtain 20 symbols
+with budget ten, or a gain-three second move to obtain 21 symbols with budget
+ten. Reverse respectively the gain-one first move by restoring one fixed symbol,
+or every gain-zero first support without restoring a symbol. Every accepted
+parent must pass actual forward-gain and pair replay. No odd-cycle qualifying
+restriction may remove a gain-zero/one first move.
 
-## 5. Complete proof verification
+Deduplicate valid-pair classes on disk with bounded persistence. Every final
+21-symbol root requires budget-eleven closure or a complete witness. Missing
+obstruction markers, interrupted queues, advisory prefetch misses and evicted
+cache entries cannot omit a class.
 
-The CPU checker regenerates all obligations from the certificate database.
-Missing markers, checksums, and sidecars cannot omit work.
+Exit criterion: an independently regenerated complete three-wave report with
+counts and no unresolved final root, covering both branches and both endpoints.
+If a wave is empty, the full checker must still report that scope.
 
-Exit criterion: one full successful report covering all 83 root rows, all 214
-endpoint annotations, both inverse waves, all required results, and the
-stated premises. Only then does TD(20) <= 11 follow. Combining the checked
-upper bound with the established lower bound proves TD(20) = 11.
+## 5. Independently verify the entire proof
 
-Generated artifacts remain untracked. Partial scopes and small-domain checks
-do not fulfill these production exit criteria.
+Run `tools/td20 verify --phase=all` against the finished certificate database
+with fresh checker work and no range omissions. It must independently regenerate
+inventories, roots, endpoint classes and inverse waves; enforce every count and
+budget; replay all required witnesses; and reject missing results. Emitter
+checkpoints, checksums and sidecar manifests are not proof inputs.
+
+Exit criterion: both required Maven CPU suites and one complete successful
+end-to-end checker report, together with every counted inventory, replayed
+database and cited mathematical premise. CUDA-dependent tests require a configured
+environment; a proof using only CPU certificates need not use CUDA.
+
+All five criteria require checked artifacts. Structural regeneration and tests
+alone do not establish TD(20) = 11. Full active-route counts, sorting and the
+complete checker report remain pending until their actual artifacts exist.
+Generated databases, checkpoints, reports, certificates and logs remain untracked.
+Record completed execution metadata and artifact locations in
+[REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md); see
+[VALIDATION.md](VALIDATION.md) for the procedure.

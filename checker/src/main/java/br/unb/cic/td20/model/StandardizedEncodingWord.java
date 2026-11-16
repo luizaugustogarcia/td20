@@ -3,10 +3,7 @@ package br.unb.cic.td20.model;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
-import java.util.IdentityHashMap;
-
 import static br.unb.cic.td20.search.CommonOperations.areSymbolsInCyclicOrder;
-import static br.unb.cic.td20.search.CommonOperations.cycleIndex;
 
 /**
  * Encoding word with auxiliary color names and oriented rank origins fixed by
@@ -30,45 +27,39 @@ public final class StandardizedEncodingWord extends EncodingWord {
             final MulticyclePermutation omega,
             final Cycle beta
     ) {
-        final var cycleBySymbol = cycleIndex(omega, beta);
-        for (final var symbol : beta.getSymbols()) {
-            if (cycleBySymbol[symbol] == null) {
-                cycleBySymbol[symbol] = Cycle.of(symbol);
-            }
-        }
-        final var labelByCycle = new IdentityHashMap<Cycle, Integer>();
-        final var orientedByCycle = new IdentityHashMap<Cycle, Boolean>();
-        final var rankBySymbolByCycle = new IdentityHashMap<Cycle, int[]>();
-        final var betaPosition = new int[beta.size()];
-        final var labels = new int[beta.size()];
-        final var ranks = new int[beta.size()];
+        final int n = beta.size();
+        final int[] cycleIdBySymbol = new int[n];
+        java.util.Arrays.fill(cycleIdBySymbol, -1);
+        final int[] labelByCycleId = new int[n];
+        final int[] rankBySymbol = new int[n];
+        final int[] betaPosition = new int[n];
+        final int[] labels = new int[n];
+        final int[] ranks = new int[n];
         final var betaInverse = beta.getInverse();
-        var nextLabel = 1;
-
-        for (var position = 0; position < beta.size(); position++) {
-            betaPosition[beta.get(position)] = position;
-        }
-
-        for (var position = 0; position < beta.size(); position++) {
-            final var symbol = beta.get(position);
-            final var cycle = cycleBySymbol[symbol];
-            var label = labelByCycle.get(cycle);
-            if (label == null) {
-                label = nextLabel++;
-                labelByCycle.put(cycle, label);
+        for (int i = 0; i < n; i++) betaPosition[beta.get(i)] = i;
+        int cycleId = 0;
+        for (final var cycle : omega) {
+            final int[] symbols = cycle.getSymbols();
+            for (int symbol : symbols) cycleIdBySymbol[symbol] = cycleId;
+            if (!areSymbolsInCyclicOrder(betaInverse, symbols)) {
+                int first = 0;
+                for (int i = 1; i < symbols.length; i++)
+                    if (betaPosition[symbols[i]] < betaPosition[symbols[first]]) first = i;
+                for (int i = 0; i < symbols.length; i++)
+                    rankBySymbol[symbols[(first + i) % symbols.length]] = i + 1;
             }
-            labels[position] = label;
-
-            final var oriented = orientedByCycle.computeIfAbsent(cycle,
-                    candidate -> !areSymbolsInCyclicOrder(
-                            betaInverse, candidate.getSymbols()));
-            if (oriented) {
-                final var rankBySymbol = rankBySymbolByCycle.computeIfAbsent(cycle,
-                        candidate -> ranksFromFirstOccurrence(candidate, betaPosition, beta.size()));
-                ranks[position] = rankBySymbol[symbol];
-            }
+            cycleId++;
         }
-
+        // Implicit fixed symbols remain singleton colors with rank zero.
+        for (int symbol = 0; symbol < n; symbol++)
+            if (cycleIdBySymbol[symbol] < 0) cycleIdBySymbol[symbol] = cycleId++;
+        int nextLabel = 1;
+        for (int position = 0; position < n; position++) {
+            final int symbol = beta.get(position), id = cycleIdBySymbol[symbol];
+            if (labelByCycleId[id] == 0) labelByCycleId[id] = nextLabel++;
+            labels[position] = labelByCycleId[id];
+            ranks[position] = rankBySymbol[symbol];
+        }
         return new StandardizedEncodingWord(labels, ranks);
     }
 
@@ -117,28 +108,6 @@ public final class StandardizedEncodingWord extends EncodingWord {
                     transformedRank - rankOriginByOldLabel[oldLabel], size) + 1;
         }
         return new StandardizedEncodingWord(labels, ranks);
-    }
-
-    private static int[] ranksFromFirstOccurrence(
-            final Cycle cycle,
-            final int[] betaPosition,
-            final int domainSize
-    ) {
-        final var ranks = new int[domainSize];
-        final var symbols = cycle.getSymbols();
-        var firstCycleIndex = 0;
-        var firstPosition = Integer.MAX_VALUE;
-        for (var cycleIndex = 0; cycleIndex < symbols.length; cycleIndex++) {
-            final var position = betaPosition[symbols[cycleIndex]];
-            if (position < firstPosition) {
-                firstPosition = position;
-                firstCycleIndex = cycleIndex;
-            }
-        }
-        for (var offset = 0; offset < symbols.length; offset++) {
-            ranks[symbols[(firstCycleIndex + offset) % symbols.length]] = offset + 1;
-        }
-        return ranks;
     }
 
     private void validateStandardization() {

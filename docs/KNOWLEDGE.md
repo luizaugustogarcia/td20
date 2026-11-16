@@ -1,119 +1,46 @@
-# Mathematical knowledge and references
+# Mathematical conventions and active obligations
 
-Joint-2 includes totally unoriented roots with even-length cycles. All-odd
-totally unoriented roots and all totally unoriented successors stop for the
-reasons proved in the source paper. The active direct count is R + O; R counts
-unoriented residuals. All 83 R counts are complete, with R = 124,395,153. See
-[WORKFLOW.md](WORKFLOW.md) for Java counting and the versioned artifact formats.
+Let `(omega, beta)` be a cyclic-target pair, with target `rho = omega * beta`.
+Here beta is the current cycle and omega is the algebraic permutation. Require
+a full target cycle before treating a candidate as a pair. Use
+`asCyclicTargetPair()` or `requireCyclicTargetPair()` to validate candidates.
+The sorting move is a transposition represented by an applicable 3-cycle;
+reserve 2-cycle for an algebraic cycle. State odd-length/even-length cycle
+parity explicitly. Fixed points are retained in the general model and contracted
+before fixed-point-free encodings, generators and inverse operations.
 
-[The TD(20) source specification](td20-reduction-count.tex) defines the local
-joint-2 argument. The sibling `../td` repository supplies only the shared
-twisted-bracelet framework and established conventions. The premise
-`TD(18) = 10` is an established, independently checked premise; it is not reproved here.
+A cycle on support S is unoriented when it is the inverse of beta restricted to
+S. A qualifying 2-move increases the odd-length-cycle count by two and creates a
+fixed point. The active Eriksson route allows gain-zero and nonqualifying first
+moves; it also tests totally unoriented all-odd roots.
 
-## Equality objective and established lower bound
+The first two moves must produce at least three fixed symbols; the additional
+move must produce at least two more. Moves can change either current or target.
+Swapping endpoints gives `(omega inverse, rho)` and preserves distance, but is
+not added to extended-toric class equivalence. This is a triangle-inequality
+upper-bound route, rather than a fixed-target forward prefix assertion.
+TD(18) = 10 is an explicit established premise; the separately certified TD(16) = 9 and smaller established bounds remain premises.
 
-The project objective is `TD(20) = 11`. The reverse permutation in `S_n` has
-transposition distance `floor(n / 2) + 1` for `n >= 3`, hence its distance in
-`S_20` is 11 and `TD(20) >= 11`. The
-[shared paper](../../td/docs/paper/main.tex) records this formula and its
-original reference. This established lower bound is independent of the
-joint-2 route and all class counts. The remaining proof direction is the
-certificate-checked upper bound `TD(20) <= 11`.
+Root obligations have 21 symbols and budget 11. Three moves producing
+five fixed symbols leave 16 symbols and budget 8. The endpoint cover contains all 143 even fixed-point-free annotated types on 16 symbols, with budget 8.
+No stronger endpoint 3-norm bound is imposed without proof. Every root with no
+favorable route is independently regenerated as a direct obligation; support
+clearing uses only the paper's explicit local patterns.
 
-## Pairs, moves, and fixed points
+Fixed-content words color algebraic cycles. Oriented colors carry cyclic ranks;
+unoriented colors have unranked repeated beads. Equal-color renaming and rank
+origin shifts are auxiliary symmetries. Auxiliary standardization fixes colors
+by first occurrence and the first rank at zero. The twisted dihedral action
+rotates positions or reflects them while inverting oriented ranks. A twisted
+bracelet is an orbit, not a canonical word; reflection is not word reversal.
+Realizable orbits correspond to valid-pair classes through decoder equivariance
+and full target realizability. Use `TwistedBraceletKey` for candidate orbits and
+`ExtendedToricClassKey` for validated pair classes.
 
-Let `N = n + 1`. A cyclic-target pair is `(omega, beta)`, where `beta` is the
-current `N`-cycle, `omega` is even, and `rho = omega * beta` is the target
-`N`-cycle. A `CyclicTargetCandidate` is unchecked until converted with
-`asCyclicTargetPair()` or `requireCyclicTargetPair()`.
-
-A sorting transposition is represented by a triple `(a,b,c)` in cyclic
-`beta` order. It acts by `omega' = omega * tau inverse` and
-`beta' = tau * beta`. The term 2-cycle is reserved for an algebraic cycle.
-A 2-move increases the number of odd-length algebraic cycles by two. It is
-qualifying when it also creates a fixed point; its gain is the number of new
-fixed points.
-
-The 3-norm is `(N - c_odd(omega))/2`, with fixed points included in
-`c_odd`. Contract fixed points before using any fixed-point-free encoding or
-generator. Contraction preserves distance and 3-norm.
-
-For an algebraic cycle `gamma` with support `S`, let `beta_S` be the current
-cycle restricted to `S`. The cycle is unoriented exactly when
-`gamma = beta_S inverse`. Every algebraic 2-cycle is unoriented. A state is
-totally unoriented when all its cycles are unoriented.
-
-## Fixed content and symmetry
-
-For a contracted fixed-point-free annotated type, a color identifies an
-algebraic cycle. Unoriented colors contribute repeated unranked beads;
-oriented colors contribute each cyclic rank once. Auxiliary standardization
-renames equal annotated colors by first occurrence and shifts each oriented
-rank origin to zero.
-
-Rotation and twisted reflection act on positions. Twisted reflection reverses
-positions and inverts oriented cyclic ranks; ordinary word reversal is not the
-correct action. A twisted bracelet is the whole orbit, not a canonical word.
-`TwistedBraceletKey` deduplicates candidate orbits and
-`ExtendedToricClassKey` identifies classes of valid pairs. Full-target
-realizability must be checked before a candidate becomes a pair.
-
-## Exact joint-2 selection
-
-Roots have 21 nonfixed symbols and budget eleven. Totally unoriented roots
-with even-length cycles participate; all-odd totally unoriented roots have no
-qualifying first move. Totally unoriented successors cannot supply the second gain. Immediate gain at least two
-closes by 1 + TD(18) = 11. Otherwise inspect every qualifying gain-one first
-move and every second move creating at least two fixed points. Gain three
-closes by 2 + TD(16) = 11; gain two reaches an 18-symbol budget-nine endpoint.
-Include supports within even-length cycles and across cycles.
-
-Every gain-at-least-two move uses (x, omega(x), omega squared(x)) up to cyclic
-writing in beta order. This complete consecutive-edge test gives safe prefix
-predicates. Gain-one first supports remain exhaustive.
-
-Endpoints have 3-norm at most eight. The cover has 30 partitions and 214
-annotations; 104 close by one oriented-3-cycle clearing plus TD(14) = 8.
-Every class in the other 110 annotations needs a nine-move result or inverse
-coverage. No endpoint-failure count is a premise.
-
-## Direct roots and support clearing
-
-An oriented joint-2 residual has none of the favorable routes above. It is a
-direct root unless one of these explicit local powers clears its support:
-
-| Support length | Powers relative to `beta_S` | Clearing length | Bound |
-| ---: | --- | ---: | --- |
-| 9 | 7 | 5 | `5 + TD(11) = 11` |
-| 11 | 6 | 6 | `6 + TD(9) = 11` |
-| 13 | 7, 10, 11 | 7 | `7 + TD(7) = 11` |
-| 17 | 9, 13, 15 | 9 | `9 + TD(3) = 11` |
-
-These are the only support-clearing patterns admitted by this route. The root
-inventory consists of the 83 nonincreasing partitions of 21 into parts at
-least two having an even number of even parts. For each partition the source
-table records totally unoriented classes `U`, oriented joint-2 residuals `J`,
-the support-cleared subset `C`, and `O = J - C`. Direct obligations total
-`R + O`. All 83 rows have been reconciled: `U = 12,704,114,061`,
-`J = 2,051,578,111`, `C = 29,000,964`, and `O = 2,022,577,147`.
-The direct-root obligation count is `R + O = 2,146,972,300`, with
-`R = 124,395,153` totally unoriented residuals.
-
-## Two inverse waves
-
-Restore gain two in every gap distribution, testing supports with both restored
-symbols and one survivor. This gives 20-symbol budget-ten predecessors.
-Restore gain one in every gap, testing supports with it and two survivors.
-This gives 21-symbol budget-eleven roots. Require valid fixed-point-free,
-exact forward gain and odd-cycle increase two. Only gain-two intermediates
-must be non-totally-unoriented; the gain-one wave admits roots of either orientation. Disk deduplication preserves every compatible class; all paths use (1,2).
-
-Checked results close represented paths; unresolved classes propagate. The
-checker regenerates all 83 root rows, 214 endpoint annotations, and both waves.
-Missing markers, checksums, and sidecars cannot remove work. A count is not
-a witness. Root and endpoint counting are complete; sorting, inverse coverage,
-and complete proof verification remain pending.
-
-The Java package root is `br.unb.cic.td20`. See
-[the architecture](ARCHITECTURE.md) for module boundaries.
+Inverse coverage reverses gains two, then either two followed by one or three
+followed by zero, on either endpoint. Restore fixed symbols in every cyclic gap
+and enumerate all supports. Actual forward replay, not an assumed obstruction
+list or odd-cycle shortcut, determines admission. Remaining roots require full
+budget 11. A sorting witness closes only its represented class and budget.
+See [the source paper](td20-reduction-count.tex) for the coverage argument,
+local bounds, complete inventories, and the conditional proof of TD(20) = 11.

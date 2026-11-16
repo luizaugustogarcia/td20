@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -124,8 +125,9 @@ public class GPUSortingSearch {
 
     private static final int[] DIAMETERS = java.util.stream.IntStream.rangeClosed(0, KnownDiameters.ROOT_SYMBOLS)
             .map(KnownDiameters::knownDiameter).toArray();
-    private static native int[][] searchForSortingSeq(byte[] beta, byte[] omega, int maxMoves,
-                                                     boolean allowDiameterClosure, int[] diameters, int slot);
+    private static native int[][] searchForSortingSeqWithLimits(byte[] beta, byte[] omega, int maxMoves,
+                                                     boolean allowDiameterClosure, int maximumSearchDepth, long maximumNanos,
+                                                     int[] diameters, int slot);
 
     private void startStatsReporter() {
         statsReporter.scheduleAtFixedRate(this::logWindowStats, statsPeriodSeconds, statsPeriodSeconds, TimeUnit.SECONDS);
@@ -152,11 +154,10 @@ public class GPUSortingSearch {
                 if (stats != null) {
                     stats.acquired(slot, job.queuedAtNanos(), System.nanoTime());
                 }
-                final int[][] result = searchForSortingSeq(
-                        job.beta(), job.omega(), job.maxMoves(), job.allowDiameterClosure(), DIAMETERS, slot);
-                if (result == null || result.length == 0 || result[0] == null || result[0].length != 1
-                        || result[0][0] < 0 || result[0][0] > 2) throw new IllegalStateException("Malformed native result status");
-                kind = result[0][0];
+                final int[][] result = searchForSortingSeqWithLimits(
+                        job.beta(), job.omega(), job.maxMoves(), job.allowDiameterClosure(),
+                        job.maximumSearchDepth(), job.maximumNanos(), DIAMETERS, slot);
+                kind = SearchOutcome.requireNativeResult(result, job.maxMoves(), job.beta().length).ordinal();
                 failed = false;
                 job.result().complete(result);
             } catch (final InterruptedException e) {
@@ -185,9 +186,9 @@ public class GPUSortingSearch {
                 ? 0
                 : snapshot.queueWaitNanos() / 1_000_000.0 / snapshot.started();
         log.info("GPU search stats (last {}s): started={}, completed={}, throughput={}/s, "
-                        + "complete witnesses={}, diameter closures={}, misses={}, slot occupancy={}, avg dispatch wait={} ms, pending={}/{}, failures={}",
+                        + "complete witnesses={}, diameter closures={}, misses={}, timeouts={}, slot occupancy={}, avg dispatch wait={} ms, pending={}/{}, failures={}",
                 format(elapsedSeconds), snapshot.started(), snapshot.completed(),
-                format(throughput), snapshot.completeWitnesses(), snapshot.diameterClosures(), snapshot.misses(),
+                format(throughput), snapshot.completeWitnesses(), snapshot.diameterClosures(), snapshot.misses(), snapshot.timeouts(),
                 formatPercent(occupancy), format(averageWaitMillis),
                 pendingSearches.size(), pendingCapacity,
                 snapshot.failed());
@@ -200,9 +201,9 @@ public class GPUSortingSearch {
                     ? 0
                     : device.queueWaitNanos() / 1_000_000.0 / device.started();
             log.info("  CUDA device {}: started={}, completed={}, throughput={}/s, "
-                            + "complete witnesses={}, diameter closures={}, misses={}, slot occupancy={}, avg dispatch wait={} ms, failures={}",
+                            + "complete witnesses={}, diameter closures={}, misses={}, timeouts={}, slot occupancy={}, avg dispatch wait={} ms, failures={}",
                     device.device(), device.started(), device.completed(),
-                    format(deviceThroughput), device.completeWitnesses(), device.diameterClosures(), device.misses(), formatPercent(deviceOccupancy),
+                    format(deviceThroughput), device.completeWitnesses(), device.diameterClosures(), device.misses(), device.timeouts(), formatPercent(deviceOccupancy),
                     format(deviceAverageWaitMillis), device.failed());
         }
     }
@@ -211,35 +212,83 @@ public class GPUSortingSearch {
         return String.format(Locale.ROOT, "%.3f", value);
     }
 
-    public enum Disposition { RESIDUAL, COMPLETE, DIAMETER_CLOSURE }
+    public enum Disposition { RESIDUAL, COMPLETE, DIAMETER_CLOSURE, TIMED_OUT, DEPTH_LIMIT }
+
+    /** Per-search CUDA execution allowance; zero leaves the search without a time cutoff. */
+    public record SearchLimits(long maximumMillis) {
+        public SearchLimits {
+            if (maximumMillis < 0) throw new IllegalArgumentException("GPU timeout must not be negative");
+            try { Math.multiplyExact(maximumMillis, 1_000_000L); }
+            catch (ArithmeticException error) {
+                throw new IllegalArgumentException("GPU timeout is too large", error);
+            }
+        }
+        public long maximumNanos() { return maximumMillis * 1_000_000L; }
+    }
 
     public record SearchOutcome(Disposition disposition, List<int[]> moves) {
         public SearchOutcome {
+            Objects.requireNonNull(disposition);
             moves = moves.stream().map(int[]::clone).toList();
-            if (disposition == Disposition.RESIDUAL && !moves.isEmpty())
-                throw new IllegalArgumentException("A search miss cannot contain moves");
+            if ((disposition == Disposition.RESIDUAL || disposition == Disposition.TIMED_OUT
+                    || disposition == Disposition.DEPTH_LIMIT) && !moves.isEmpty())
+                throw new IllegalArgumentException("An unresolved search cannot contain moves");
         }
         @Override public List<int[]> moves() { return moves.stream().map(int[]::clone).toList(); }
+
+        /** Validate the native status and every positional move before counting a completed result. */
+        static Disposition requireNativeResult(int[][] result, int maximumMoves, int domain) {
+            if (result == null || result.length < 1 || result[0] == null || result[0].length != 1
+                    || result[0][0] < 0 || result[0][0] >= Disposition.values().length
+                    || result.length - 1 > maximumMoves)
+                throw new IllegalStateException("Malformed native sorting result");
+            var disposition = Disposition.values()[result[0][0]];
+            if ((disposition == Disposition.RESIDUAL || disposition == Disposition.TIMED_OUT
+                    || disposition == Disposition.DEPTH_LIMIT) && result.length != 1)
+                throw new IllegalStateException("An unresolved native result contains moves");
+            for (int index = 1; index < result.length; index++) {
+                var move = result[index];
+                if (move == null || move.length != 3
+                        || !(0 <= move[0] && move[0] < move[1] && move[1] < move[2] && move[2] < domain))
+                    throw new IllegalStateException("Inapplicable native positional move");
+            }
+            return disposition;
+        }
     }
 
-    @SneakyThrows
     public SearchOutcome search(final byte[] beta, final OneLinePermutation omega,
                                 final int maxMoves, final boolean allowDiameterClosure) {
+        return search(beta, omega, maxMoves, allowDiameterClosure, 0);
+    }
+
+    /** A timeout returns an unresolved result; successful prefixes keep the full move budget. */
+    @SneakyThrows
+    public SearchOutcome search(final byte[] beta, final OneLinePermutation omega,
+                                final int maxMoves, final boolean allowDiameterClosure,
+                                final long maximumMillis) {
+        return search(beta, omega, maxMoves, allowDiameterClosure, maximumMillis, maxMoves);
+    }
+
+    /** Exploration depth is independent of the full budget used for diameter closures. */
+    @SneakyThrows
+    public SearchOutcome search(final byte[] beta, final OneLinePermutation omega,
+                                final int maxMoves, final boolean allowDiameterClosure,
+                                final long maximumMillis, final int maximumSearchDepth) {
+        if (maximumSearchDepth < 1 || maximumSearchDepth > maxMoves)
+            throw new IllegalArgumentException("GPU search depth must lie between 1 and the move budget");
+        final long maximumNanos = new SearchLimits(maximumMillis).maximumNanos();
         final byte[] images = omega.getOneLine().clone();
         if (maxMoves < 1 || maxMoves > 11 || beta.length != images.length || beta.length < 1 || beta.length > 21)
             throw new IllegalArgumentException("Invalid bounded GPU search domain or budget");
         requirePermutation(beta); requirePermutation(images);
         final byte[] inputBeta = beta.clone();
         final var resultFuture = new CompletableFuture<int[][]>();
-        final var job = new SearchJob(inputBeta, images, maxMoves, allowDiameterClosure, System.nanoTime(), resultFuture);
+        final var job = new SearchJob(inputBeta, images, maxMoves, allowDiameterClosure, maximumSearchDepth, maximumNanos, System.nanoTime(), resultFuture);
         pendingSearches.put(job);
         final int[][] result;
         try { result = resultFuture.get(); }
         catch (final ExecutionException e) { throw e.getCause(); }
-        if (result == null || result.length < 1 || result[0] == null || result[0].length != 1
-                || result[0][0] < 0 || result[0][0] > 2 || result.length - 1 > maxMoves)
-            throw new IllegalStateException("Malformed native sorting result");
-        final var disposition = Disposition.values()[result[0][0]];
+        final var disposition = SearchOutcome.requireNativeResult(result, maxMoves, inputBeta.length);
         final var currentBeta = inputBeta.clone();
         final var moves = new ArrayList<int[]>(result.length - 1);
         for (int index = 1; index < result.length; index++) {
@@ -273,6 +322,8 @@ public class GPUSortingSearch {
             byte[] omega,
             int maxMoves,
             boolean allowDiameterClosure,
+            int maximumSearchDepth,
+            long maximumNanos,
             long queuedAtNanos,
             CompletableFuture<int[][]> result
     ) {

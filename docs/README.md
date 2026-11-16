@@ -1,21 +1,23 @@
-# Documentation map
+# TD(20) proof documentation
 
-[The source specification](td20-reduction-count.tex) defines the joint-2 route
-toward the objective `TD(20) = 11`, the 83-partition root inventory, the 214
-endpoint annotations, and both inverse waves. The lower bound is already
-established by the reverse permutation; the route targets its matching upper
-bound. Any generated PDF is a reading copy, not a computational certificate.
+[The source paper](td20-reduction-count.tex) is authoritative for the active
+Eriksson-plus-third-move route.
 
 | Document | Responsibility |
 | --- | --- |
-| [RESEARCH_PLAN.md](RESEARCH_PLAN.md) | Exit criteria and pending proof artifacts. |
-| [WORKFLOW.md](WORKFLOW.md) | Stage order, commands, and scope of each result. |
-| [OPERATIONS.md](OPERATIONS.md) | CPU/GPU configuration, certificate format, import, and resumption. |
-| [KNOWLEDGE.md](KNOWLEDGE.md) | Mathematical definitions, references, and implementation entry points. |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Module responsibilities and verification boundaries. |
-| [td20-burnside-counting.md](td20-burnside-counting.md) | Burnside formulas, count-artifact requirements, and independent checks. |
+| [RESEARCH_PLAN.md](RESEARCH_PLAN.md) | Required checked evidence for the proof. |
+| [REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md) | Status and required configuration, timings and artifact locations for TD20 execution. |
+| [TD18_PORT.md](TD18_PORT.md) | Complete commit-by-commit port inventory and TD20 adaptations. |
+| [WORKFLOW.md](WORKFLOW.md) | Count, publish, emit, reconstruct and verify via JShell. |
+| [OPERATIONS.md](OPERATIONS.md) | Explicit budgets, CPU/GPU configuration, persistence and resume. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Independent modules, generators and three inverse waves. |
+| [KNOWLEDGE.md](KNOWLEDGE.md) | Pair conventions, encoding, symmetry and counting. |
+| [td20-burnside-counting.md](td20-burnside-counting.md) | Burnside derivation and the complete endpoint census. |
 
-Update the source specification first when changing the mathematical route. Recheck its
-coverage and inventory independently, then align implementation and guides.
-A documentation/code disagreement is a failed consistency check, not a choice
-of one source over the other. Generated computational artifacts stay untracked.
+Update the paper before changing the route, then align both implementations,
+counts, tests, guides and completion artifacts. Generated databases and work sets remain
+untracked, including completed execution logs and settings.
+A source/code disagreement must be identified explicitly.
+
+[VALIDATION.md](VALIDATION.md) defines validation commands, artifact locations
+and the independent verification record for the reference simulation.

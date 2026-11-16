@@ -5,6 +5,26 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class GpuSearchStatsTest {
+    @Test
+    void timeoutsHaveSeparateCountsAndResetWithTheirWindow() {
+        var stats = new GpuSearchStats(new GpuDeviceLayout(new int[]{1, 3}, 2), 0);
+        for (int slot = 0; slot < 4; slot++) {
+            stats.acquired(slot, 0, 10);
+            stats.released(slot, 20, false, slot);
+        }
+        var first = stats.snapshot(30);
+        assertEquals(4, first.completed());
+        assertEquals(1, first.completeWitnesses());
+        assertEquals(1, first.diameterClosures());
+        assertEquals(1, first.misses());
+        assertEquals(1, first.timeouts());
+        assertEquals(0, first.failed());
+        assertEquals(1, java.util.Arrays.stream(first.devices()).mapToLong(GpuSearchStats.DeviceSnapshot::timeouts).sum());
+        var second = stats.snapshot(40);
+        assertEquals(0, second.completed());
+        assertEquals(0, second.timeouts());
+    }
+
     @Test void separatesCompleteWitnessesDiameterClosuresMissesAndErrors() {
         final var stats = new GpuSearchStats(new GpuDeviceLayout(new int[]{0},1),0);
         for(int kind=0;kind<3;kind++) { stats.acquired(0,kind*10,kind*10); stats.released(0,kind*10+1,false,kind); }

@@ -5,13 +5,26 @@ import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /** Compact on-disk encoding for normalized certificate pairs and witnesses. */
 public final class CertificateCodec {
     private static final int SYMBOL_BITS = 5;
     private static final int SYMBOL_LIMIT = 1 << SYMBOL_BITS;
     private static final int TRIPLE_BITS = 3 * SYMBOL_BITS;
+    private static final int RANK_STRIDE = SYMBOL_LIMIT + 1;
+    private static final ThreadLocal<CanonicalKeyScratch> CANONICAL_KEY_SCRATCH =
+            ThreadLocal.withInitial(CanonicalKeyScratch::new);
+
+    private static final class CanonicalKeyScratch {
+        final int[] sizes = new int[RANK_STRIDE];
+        final int[] first = new int[RANK_STRIDE];
+        final int[] last = new int[RANK_STRIDE];
+        final int[] rankPositions = new int[RANK_STRIDE * RANK_STRIDE];
+        final int[] images = new int[SYMBOL_LIMIT];
+    }
 
     private CertificateCodec() {
     }
@@ -39,6 +52,89 @@ public final class CertificateCodec {
             bitOffset = writeSymbol(encoded, bitOffset, Byte.toUnsignedInt(image));
         }
         return encoded;
+    }
+
+    /**
+     * Encodes the valid-pair class directly from its canonical fixed-content word.
+     * Fixed symbols remain explicit data. No canonical permutation is constructed.
+     */
+    public static byte[] canonicalKeyFor(final CyclicTargetPair pair) {
+        final var encoded = new byte[keyLength(pair.getBeta().size())];
+        writeCanonicalKey(pair, encoded, 0, false);
+        return encoded;
+    }
+
+    public static int keyLength(final int domainSize) {
+        requireDomainSize(domainSize);
+        return byteLength((long) SYMBOL_BITS * domainSize);
+    }
+
+    /** Writes a canonical key after a caller-owned prefix; fixed points are rejected. */
+    public static void writeFixedPointFreeCanonicalKey(final CyclicTargetPair pair,
+                                                       final byte[] encoded,
+                                                       final int byteOffset) {
+        writeCanonicalKey(pair, encoded, byteOffset, true);
+    }
+
+    private static void writeCanonicalKey(final CyclicTargetPair pair, final byte[] encoded,
+                                          final int byteOffset, final boolean requireFixedPointFree) {
+        final int n = pair.getBeta().size(), length = keyLength(n);
+        Objects.checkFromIndexSize(byteOffset, length, encoded.length);
+        final var scratch = CANONICAL_KEY_SCRATCH.get();
+        if (pair.isKnownCanonicalRepresentative()) {
+            // Direct generators already establish this representative; retain their cheap path.
+            for (int symbol = 0; symbol < n; symbol++) {
+                if (pair.getBeta().get(symbol) != symbol)
+                    throw new IllegalArgumentException("Canonical certificate keys require the normalized current cycle");
+                scratch.images[symbol] = pair.getOmega().image(symbol);
+                if (requireFixedPointFree && scratch.images[symbol] == symbol)
+                    throw new IllegalArgumentException("Contract fixed points before encoding reconstruction states");
+            }
+        } else {
+            final var word = pair.extendedToricClassKey().twistedBracelet().canonicalWord();
+            Arrays.fill(scratch.sizes, 0);
+            for (int position = 0; position < n; position++) {
+                final int label = word.cycleLabelAt(position), rank = word.rankAt(position);
+                final int size = ++scratch.sizes[label];
+                if (rank == 0) {
+                    if (size == 1) scratch.first[label] = position;
+                    else scratch.images[position] = scratch.last[label];
+                    scratch.last[label] = position;
+                } else scratch.rankPositions[label * RANK_STRIDE + rank] = position;
+            }
+            for (int position = 0; position < n; position++) {
+                final int label = word.cycleLabelAt(position), rank = word.rankAt(position);
+                final int size = scratch.sizes[label];
+                if (requireFixedPointFree && size == 1)
+                    throw new IllegalArgumentException("Contract fixed points before encoding reconstruction states");
+                if (rank == 0) {
+                    // Unoriented cycles follow the inverse restricted current cycle.
+                    if (position == scratch.first[label]) scratch.images[position] = scratch.last[label];
+                } else scratch.images[position] = scratch.rankPositions[
+                        label * RANK_STRIDE + (rank == size ? 1 : rank + 1)];
+            }
+        }
+        Arrays.fill(encoded, byteOffset, byteOffset + length, (byte) 0);
+        for (int position = 0, bit = 0; position < n; position++, bit += SYMBOL_BITS) {
+            final int at = byteOffset + (bit >>> 3), offset = bit & 7, image = scratch.images[position];
+            if (offset <= 3) encoded[at] |= (byte) (image << (3 - offset));
+            else {
+                encoded[at] |= (byte) (image >>> (offset - 3));
+                encoded[at + 1] |= (byte) (image << (11 - offset));
+            }
+        }
+    }
+
+    /** Compares a key with the actual normalized pair; it does not assume persisted keys are canonical. */
+    public static boolean matchesNormalizedPair(final byte[] key, final CyclicTargetPair pair) {
+        final int n = pair.getBeta().size();
+        requireDomainSize(n);
+        requirePayload(key, (long) SYMBOL_BITS * n, "key");
+        for (int symbol = 0; symbol < n; symbol++) {
+            if (pair.getBeta().get(symbol) != symbol
+                    || readSymbol(key, symbol * SYMBOL_BITS) != pair.getOmega().image(symbol)) return false;
+        }
+        return true;
     }
 
     /** Decodes the one-line algebraic permutation stored in a key. */

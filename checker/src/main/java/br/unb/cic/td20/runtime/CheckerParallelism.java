@@ -13,7 +13,15 @@ public final class CheckerParallelism {
     }
 
     public static int reconstructionBufferKeys() {
-        return positiveProperty("td20.reconstructionBufferKeys", 1_048_576);
+        return positiveProperty("td20.reconstructionBufferKeys", 16_777_216);
+    }
+
+    public static int writeBatchEntries() {
+        String configured = System.getProperty("td20.dbWriteBatchEntries");
+        int entries = configured == null ? 524_288 : Integer.parseInt(configured.trim());
+        if (entries < 1) throw new IllegalArgumentException(
+                "td20.dbWriteBatchEntries must be positive");
+        return entries;
     }
 
     public static int lookupPipelines() {

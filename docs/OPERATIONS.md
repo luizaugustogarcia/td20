@@ -1,98 +1,327 @@
-# Computational operations
+# Runtime operations
 
-Joint-2 includes totally unoriented roots with even-length cycles. All-odd
-totally unoriented roots and all totally unoriented successors stop for the
-reasons proved in the source paper. The active direct count is R + O; R counts
-unoriented residuals. All 83 R counts are complete, with R = 124,395,153. See
-[WORKFLOW.md](WORKFLOW.md) for Java counting and the versioned artifact formats.
+The independent checker owns its scratch storage implementation. Inverse
+producers retain bounded per-thread key batches and distribute them across
+deterministic persistence shards. Each shard deduplicates and sorts its own
+window, builds an SST, and ingests it without WAL. All producer remainders and
+writers drain before sealing. Parallel read batches decode and replay complete
+lookup responses before processing misses; iterator errors, count mismatches,
+malformed records and asynchronous failures abort verification. The checker
+continues to regenerate its own obligations and never resumes emitter scratch
+sets. Certificate databases remain read-only. Scratch sizing uses
+`td20.reconstructionGeneratedBatchKeys`, `td20.reconstructionWriters`,
+`td20.reconstructionQueueBatches`, `td20.reconstructionBufferKeys`, and
+`td20.reconstructionScanBatchKeys`, with the same bounded batching approach as
+the emitter. A changed checker must restart with fresh work.
 
-CPU work requires JDK 21, Maven, and Bash. Runtime native sources
-are CUDA; standalone C++ tools are independent counting audits.
-See [workflow](WORKFLOW.md) and [proof criteria](RESEARCH_PLAN.md).
+The checker packs canonical keys directly for certificate lookups and for
+residual and inverse-state writes. This applies to roots, endpoints, all three
+inverse waves and final-root lookups. Certificate hits retain full witness replay;
+one replay-derived budget supplies both the project-maximum check and the
+requested-budget comparison. Normalized inputs are reused for replay only after
+an exact comparison with the computed canonical key. The version-2 key bytes remain compatible. The active target database requires
+the new schema marker eriksson-three-v1; old databases may supply replayed
+complete witnesses through the explicit source-database import. These changes reduce CPU work; counting,
+generation coverage, disk I/O and compaction obligations remain as specified.
 
-~~~bash
-mvn -pl emitter -am test
-mvn -pl checker -am test
-tools/td20 inventory
-~~~
+The default commands use the active route in
+[the source paper](td20-reduction-count.tex).
 
-There are 83 root partitions and 214 endpoint annotations, including 104
-elementary closures. Structural checks accept explicit pending counts.
+## JShell, CPU and GPU configuration
 
-## Counting
+`tools/td20 build` compiles both modules and prepares their dependency
+classpaths. Every prepared Java entry point runs through JShell. CPU counts use
+all JVM-visible processors, bounded generation queues and disjoint rank-placement
+prefix tasks. `tools/td20 test` runs both required Maven CPU suites.
+CUDA-dependent tests run only in a configured environment.
 
-~~~bash
-tools/td20 count-r '-Dexec.args=--publish'
-tools/td20 count-u '-Dexec.args=--output=data/joint2-reduction-audit/unoriented-v1.json'
-tools/td20 count-j '-Dexec.args=--output=data/joint2-reduction-audit/java-production-counts-v1.jsonl'
-tools/td20 count-e '-Dexec.args=--output=data/joint2-reduction-audit/endpoints-v1.json'
-~~~
+SLF4J logs in both modules default to `showDateTime=true`, with timestamps in
+`yyyy-MM-dd'T'HH:mm:ss.SSSXXX` format (milliseconds and timezone offset).
+The classpath `simplelogger.properties` files apply to JShell and packaged runs.
 
-The Java R counter detects CPU concurrency, validates its versioned partition
-reports, resumes completed partitions, and optionally publishes the R rows.
-The independent JShell audit in [WORKFLOW.md](WORKFLOW.md) checks every R count
-without reading the emitter artifact. The U, J/C/O, and endpoint counters
-retain their separate scopes; a count is not a sorting result.
-Root counting processes each partition with the bounded adaptive prefix
-scheduler on every CPU available to the JVM, including the final partition.
-Completed long-cycle prefixes that cannot yield an oriented residual are
-discarded; totally unoriented residual roots are separate obligations counted by R.
-Whole partitions are atomic resume boundaries; unfinished Java partitions
-restart. Correctly versioned native shard unions may be retained. Superseded
-route formats are rejected. Do not relabel old residual or endpoint artifacts.
-Root emission and proof verification reject pending paper counts.
+Set `TD20_JSHELL_OPTIONS` for execution-VM options, for example
+`-R-Xmx3g` or `-R-Dtd20.twistedBraceletWorkers=auto`. The launcher passes
+`-R-Dtd20.countModule=emitter|checker` to keep report ownership separate.
+Use `tools/run-local-emitter.sh --build` for the local SM 89 native library.
+The generic `tools/td20 build-gpu` retains CMake's default SM 120 target.
+GPU sorting is entered only after applicable CPU prefixes and known-diameter
+checks fail.
 
-## Emission and reconstruction
+Direct root and endpoint emission use `WitnessSearch.searchFresh`: their
+generators already emit one representative per valid-pair class within each
+type, so sorting begins with the CPU prefix without a preliminary certificate
+database lookup. Source imports and avoidance miss regeneration retain
+stored-certificate lookups. Reconstruction replays stored certificates with
+one bounded `multiGet` per source batch before dispatch; its CPU and GPU miss
+paths do not repeat individual `get` calls. Root prefetch also uses bulk
+lookup followed by searches of prepared misses. Every new result still passes
+certificate validation before persistence.
 
-~~~bash
-tools/td20 build-gpu
-tools/td20 emit -Dtd20.args=--phase=roots
-tools/td20 emit -Dtd20.args=--phase=endpoints
-tools/td20 avoidance
-tools/td20 avoidance -Dtd20.args=--resume-work=/path/to/joint2/work
-tools/td20 verify
-~~~
+Concurrent reconstruction scans copy encoded RocksDB keys into bounded batches.
+Workers decode each batch, perform its certificate lookup and replay, then search
+its misses directly. This removes serial decoding/replay and per-class task
+submission from the iterator thread. At most the JVM's available CPU count runs
+these batches; the bounded task queue applies backpressure. The batch size is
+`min(td20.reconstructionScanBatchKeys, td20.certificateLookupBatchSize)`, with
+defaults 4,096 and 262,144. Checkpoint inventory validation uses the same parallel
+decoding. Iterator errors, malformed records, incomplete lookup responses and
+worker failures abort the scan; an exact count is published only after every
+batch, including its final remainder, joins successfully.
+Resuming any sealed-wave checkpoint combines its validation with this mandatory
+processing scan. The checkpoint count is an expectation for progress and final
+coverage checks, never a completed inventory until the scan succeeds. A failed
+scan cannot publish the next checkpoint.
 
-| Obligation | Symbols | Budget |
+GPU properties retain the shared machinery: `td20.gpuDevices`,
+`td20.gpuSlots`, `td20.gpuBudgetMB`, `td20.gpuQueueCapacity`,
+and `td20.gpuStatsPeriodSeconds`. CPU prefix properties are
+`td20.cpuPrefixDepth`, `td20.cpuPrefixMaxTriples`, and
+`td20.cpuPrefixMillis`, and `td20.reconstructionCpuPrefixMillis`. Limits bound a heuristic; they do not
+remove the original sorting obligation.
+
+The maintained local launchers detect allocated CPU cores and memory limits.
+Their bounded defaults include a maximum 16 GiB heap, eight GPU slots and
+768 MiB of queue memory per slot; these are configurable resource limits,
+not TD20 measurements or hardcoded CPU allocations. Every run records its
+own settings, revision, timestamps and status under the run root. A full TD20
+reference emission and independent verification remain pending; see
+[the execution record](REFERENCE_SIMULATION.md).
+
+```bash
+bash -ic './tools/run-local-emitter.sh --build'
+bash -ic './tools/run-local-emitter.sh --dry-run'
+bash -ic './tools/run-local-emitter.sh'
+bash -ic './tools/run-local-checker.sh --build'
+bash -ic './tools/run-local-checker.sh --dry-run'
+bash -ic './tools/run-local-checker.sh'
+```
+
+Local data uses `certificates/` for the database, `emitter/target/native/`
+for CUDA, and `target/local-runtime/` for work, logs and settings. The checker
+always creates fresh work and reads certificates without writing them. Both
+launchers share a runtime lock. The local emitter uses up to 8 persistence writers,
+4,194,304 aggregate buffer keys, 512 queued batches, a 262,144-key certificate
+queue and 32,768-key lookups. Its prefetch uses 4 preparation workers,
+16 prepared batches, 32 input batches and a 262,144-key recent-key cache.
+The local checker uses the same bounded state persistence, 32,768-key lookups
+and 4 lookup pipelines.
+
+Override `TD20_RUN_ROOT`, `TD20_CERTIFICATE_DB`, `TD20_CPU_WORKERS`,
+`TD20_HEAP_GIB`, `TD20_WRITERS`, `TD20_BUFFER_KEYS`, `TD20_QUEUE_BATCHES`,
+`TD20_GENERATED_BATCH_KEYS`, `TD20_SCAN_BATCH_KEYS`, `TD20_LOOKUP_BATCH_KEYS`,
+`TD20_LOOKUP_PIPELINES`, `TD20_GPU_SLOTS`, `TD20_GPU_BUDGET_MB`,
+`TD20_GPU_QUEUE_CAPACITY`, `TD20_CERTIFICATE_WRITERS` or `TD20_MIN_FREE_GIB`
+when required by the executing machine. Changing the local run root relocates
+work, logs and settings; database and native paths keep their repository defaults.
+The build accepts `TD20_CUDA_ARCHITECTURE` (89 by default),
+`TD20_CUDA_HOST_COMPILER` and `TD20_BUILD_NATIVE_TESTS` (off by default).
+It uses `g++-12` when available, for compatibility with CUDA 12.4 toolchains.
+The installed toolkit must support the chosen architecture. For example,
+this selects SM 120 native code and forward PTX on a compatible machine:
+
+```bash
+bash -ic 'TD20_CUDA_ARCHITECTURE=120 ./tools/run-local-emitter.sh --build'
+```
+
+Select GPU slot counts, queue sizes and JVM limits separately for the executing
+machine; a compilation target does not determine those resource limits.
+
+`--dry-run` reports settings without creating files or allocating GPU memory.
+Before execution, the launcher checks available GPU memory for queues, caches
+and a 1 GiB reserve; native initialization checks exact allocation sizes. The
+32 GiB free-disk startup guard is not an estimate of full-run storage.
+Ordinary GPU entry points default to 8 slots and 768 MiB per slot.
+Other machines use explicit resource overrides with the maintained launchers.
+All RocksDB writes disable WAL; completed phases explicitly flush certificates.
+An interruption may lose unflushed results, which must be regenerated.
+
+Reconstruction runs CPU searches, GPU dispatch and inverse generation in separate worker pools.
+CPU workers scan the sealed source wave without waiting for GPU capacity;
+only CPU misses enter an append-only disk queue. GPU workers drain that queue
+and send every exhausted, depth-limited or timed-out class to a second
+disk-backed queue. Dedicated CPU inverse workers reconstruct its parents.
+GPU dispatch never waits for inverse generation or its output persistence. The CPU
+prefix depth defaults to 5, with at most 8192 support checks and a 10 ms time
+allowance per class. `td20.cpuPrefixDepth` overrides the depth; outside
+reconstruction its default remains 3. The general CPU deadline
+`td20.cpuPrefixMillis` defaults to 10 ms; the reconstruction-specific
+property can override it. The support and time properties retain
+their configured values. A CPU miss sends the original class and full budget
+to CUDA. CUDA returns as soon as a generated prefix reaches identity or the
+known diameter of its fixed-point-contracted remainder fits the remaining
+budget, including during first-move seeding.
+
+`td20.reconstructionGpuMillis` gives each intermediate reconstruction search
+an optional device time allowance, defaulting to 0 (disabled). Intermediate
+searches explore their full move budgets (9 or 10); the old depth-five cap and
+`td20.reconstructionGpuDepth` override have been removed. Budget-11 reconstruction searches always
+use full depth 11 without a time cutoff.
+Ordinary root and endpoint emission searches retain their existing behavior.
+The timer starts during first-move initialization on the device, includes device
+scheduling from that point, and excludes waiting in the host dispatch queue.
+CUDA checks it cooperatively between nodes and support batches, so the allowance
+is not a hard deadline for the host call to return. A timeout produces no
+certificate and leaves the class unresolved. All inverse parents are still
+enumerated; an unresolved final root remains an error. The obligation budget
+continues to govern admissible pruning and diameter closures. A depth-limited
+search returns an explicit unresolved status without moves. GPU statistics
+count depth-limited results among misses; timeouts remain a separate count.
+
+CUDA explores a restricted sorting tree: supports avoid fixed symbols, the
+number of odd-length cycles increases by zero or two, and supports in three
+distinct algebraic cycles are excluded. The CPU prefix search does not apply
+that last restriction. An exhausted CUDA search therefore supplies no distance
+lower bound, even with the time allowance disabled and exploration cap removed.
+
+`td20.reconstructionGpuWorkers` optionally controls the dispatch pool; its
+default is twice the total GPU slots plus `td20.gpuQueueCapacity`, covering
+active searches and the native dispatcher queue. These workers mostly wait
+for GPU results and do not replace the CPU pool.
+
+Log labels identify `Root emission partition`, `Endpoint emission type`,
+`Certificate persistence`, `State inventory`, `State persistence`, or
+`Inverse reconstruction` explicitly. Root emission reports completed sorting
+obligations separately from `generationPrefixNodes` and
+`generationStillRunning`; an empty sorting obligation count does not mean
+generation has finished. Shared progress reports omit percentages for zero
+totals instead of showing `0/0 (100%)` while generation is running.
+
+Progress reports show processed/total, percentage, remaining source cases,
+and separate cpuRemaining, gpuRemaining and inverseRemaining counts.
+Processed is cached + cpuClosed + gpuClosed + inverseCompleted. A completed
+inverse callback means its output has been queued; all writers still drain
+before sealing. gpuSubmitted is cumulative and stays fixed after CPU
+production ends. gpuMisses counts transfers to the inverse queue immediately.
+td20.reconstructionInverseWorkers controls the inverse pool; its default is
+the smaller of the CPU producer count and the JVM's available processors.
+The native GPU statistics report timeouts separately from exhausted searches;
+the reconstruction pipeline's unresolved GPU count includes both outcomes.
+A wave completes only after CPU production, GPU dispatch and all inverse work
+have joined. Coverage checks require every GPU input to be closed or transferred
+and every transferred case to finish inverse processing.
+
+The final root inventory is counted during the mandatory root-processing scan.
+Persistence writers drain before that scan starts; there is no preliminary
+count-only traversal. Until the iterator completes, progress reports an unknown
+total. The iterator validates every record and its status, and processing still
+checks all CPU/GPU/inverse coverage equalities. The ROOTS checkpoint is written
+with the exact count only after the processing workers drain. An interruption
+before that boundary resumes the preceding sealed wave. The independent checker
+continues to regenerate and verify its own inventories.
+
+The capped CUDA search combines the zero-move allowance with the invariant
+that rank-decreasing moves preserve all-odd cycle structure. Its table-driven
+subtree rejection leaves the class unresolved and preserves every inverse
+obligation; the source paper proves the rule. A zero move here preserves the
+odd-length-cycle count, independently of its fixed-symbol gain.
+GPU consumers only dispatch searches and transfer misses. The separate inverse
+pool can wait for persistence without preventing further GPU submissions.
+td20.reconstructionGeneratedBatchKeys defaults to 65,536 keys.
+Inverse generation batches these canonicalized keys into independent writer
+queues; deduplication and disk writes have no global producer lock. Every
+producer buffer is retained across callbacks and its final partial batch is
+queued after all generators join. Every writer drains and joins before sealing.
+td20.reconstructionWriters defaults to at most eight writers.
+td20.reconstructionBufferKeys defaults to 16,777,216 aggregate keys;
+td20.reconstructionQueueBatches defaults to 1,024 aggregate batches.
+Both capacities are divided across shards with rounding up. The local
+launcher selects up to 8 writers, 4,194,304 buffer keys and 512 queue batches.
+With 8 writers, each has a 524,288-key buffer budget, equal to the database
+batch limit. The effective window is the smaller of that batch limit and the
+aggregate buffer divided across writers with rounding up. Queues remain
+bounded, and full queues apply backpressure when storage cannot keep up.
+Writers sort their deduplication windows and build SST files independently.
+Ingestion bypasses the per-key WAL/memtable write path; overlapping keys
+retain the same empty value under global sequence numbers. Up to sixteen
+background jobs and eight subcompactions handle subsequent compaction.
+DEBUG persistence logs report table construction and completed ingestion with
+key counts, bytes and elapsed time. Failed construction or ingestion makes
+the wave unsealable; interrupted waves are regenerated from the sealed source.
+The inverse completion counter records finished generation and encoding.
+Producer remainders and queued tables must still drain before the persisted
+inventory is validated and the wave checkpoint is written.
+Root GPU prefetch consumes encoded output while reconstruction continues,
+starting immediately with one worker per GPU slot. Its bounded RAM queue holds up to
+16,777,216 keys in 256 full producer batches; a bounded recent-key cache
+suppresses repeated early checks. Queued advisory work can be discarded
+when switching to the complete sealed-root scan. Advisory searches use
+td20.rootPrefetchGpuMillis (100 ms by default, required positive), at full
+depth. Incomplete early searches write no obstruction markers. Ordinary
+final-root searches remain full depth with no timeout. All certificate
+validation stays in the normal search
+path. Early-search counts are scheduling statistics, not final inventory
+or proof coverage counts.
+
+## Budgets and persistence
+
+The maintained local emitter defaults to `td20.gpuSlots=8` and `td20.gpuBudgetMB=768`,
+for 6 GiB of GPU queues plus state caches and metadata.
+Per-run settings under `target/local-runtime/logs/` record the actual JVM options,
+source revision, work path, start/finish times and completion status.
+
+| State | Symbols | Budget |
 | --- | ---: | ---: |
-| Direct root | 21 | 11 |
-| Endpoint | 18 | 9 |
-| Reverse gain-two second move | 20 | 10 |
-| Reverse gain-one first move | 21 | 11 |
+| Direct/final root | 21 | 11 |
+| Endpoint | 16 | 8 |
+| After two moves | 18 | 9 |
+| After one move, gain-one branch | 20 | 10 |
+| After one move, gain-zero branch | 21 | 10 |
 
-The database schema is joint2-selection-v2. Superseded databases and
-checkpoints are rejected. Use fresh output paths; existing generated data
-is preserved. --td18-db=PATH imports an external source read-only and replays
-each witness within budget. Imports establish neither coverage nor counts.
-Work is fresh and outside the database. Sealed joint-2 intermediate/root
-checkpoints can resume into fresh work; preserve the source checkpoint.
-The checker independently regenerates obligations.
+A domain alone no longer determines the obligation budget: 21-symbol states
+can occur with budgets 10 and 11. Certificate persistence therefore
+validates intrinsic results against the project maximum, and lookups replay them
+against the explicit requested budget. A valid longer result is a miss for a
+smaller budget. Malformed results are errors. Intrinsic witnesses are independent of the route and reusable after replay;
+checkpoints must match the exact active route and format.
 
-CPU workers are detected automatically. Properties td20.twistedBraceletWorkers,
-td20.reconstructionBufferKeys, td20.certificateLookupBatchSize, and
-td20.certificateQueueCapacity control concurrency and bounded memory.
-CUDA uses td20.gpuDevices, td20.gpuSlots, and td20.gpuBudgetMB.
-Every CPU prefix has a general 10 ms wall-clock limit, configured with
-td20.cpuPrefixMillis. This applies to roots, endpoints, and reconstruction.
-The depth and support limits td20.cpuPrefixDepth and td20.cpuPrefixMaxTriples
-can end a search earlier. Java defines the default depth of three; Maven and
-the server launcher pass a depth only for an explicit override.
-A timeout or miss sends the unchanged full-budget
-obligation to GPU.
-CUDA tests run only when configured explicitly.
+All database writers use `td20.dbWriteBatchEntries`, defaulting to 524,288
+entries (512 Ki entries). This limits certificate `WriteBatch` entries,
+inverse-state external SST keys per writer, and independent checker-state
+`WriteBatch` keys. Smaller certificate queues or per-writer reconstruction
+buffers further limit batch sizes. Final partial batches still drain at
+completed persistence boundaries. A certificate entry can produce both a
+witness put and an obstruction delete, so entries do not count individual
+RocksDB operations.
 
-Storage estimates require actual compression measurements and inverse-wave
-inventories.
+Certificate persistence also uses `td20.certificateQueueCapacity` and
+`td20.certificateFlushSeconds`. Inverse sets use
+`td20.reconstructionBufferKeys` and batched reads controlled by
+`td20.certificateLookupBatchSize`. Queues and in-memory key buffers are
+bounded. Class keys and disk iteration are deterministic at persistence
+boundaries. `certificates/`, `data/`, work databases and ordinary logs are untracked.
+Completed execution logs and settings also remain untracked.
 
-## Independent checking and TeX
+Each handoff file has format `td-reconstruction-queue-v1`, a route/domain/budget
+header, fixed-size records containing versioned canonical class keys and their
+explicit budgets, and a final record count. An unfinished file keeps count -1.
+Queue memory is bounded independently of its disk backlog; truncated records
+and incomplete coverage are errors. Handoff files are temporary execution state,
+never proof inputs or resume sources. After interruption, resume regenerates
+the handoff from the latest complete sealed wave and replays stored certificates.
 
-~~~bash
-tools/td20 verify
-mkdir -p /tmp/td20-paper-build
-pdflatex -interaction=nonstopmode -halt-on-error -output-directory=/tmp/td20-paper-build docs/td20-reduction-count.tex
-pdflatex -interaction=nonstopmode -halt-on-error -output-directory=/tmp/td20-paper-build docs/td20-reduction-count.tex
-~~~
+Each sealed-wave checkpoint has route ID `td20-eriksson-three-v1`, explicit
+budgets and counts, and its own versioned file `eriksson-reconstruction-v1.txt`.
+Resuming validates every record of the latest sealed set and its exact count.
+Changing the GPU time allowance does not change the route or state format.
+The checker requires fresh work outside the certificate database and never trusts
+or resumes emitter sets. Checksums, obstruction markers and sidecar manifests
+cannot replace regenerated proof obligations.
 
-The checker rejects missing required results and replays closures against the
-actual nonfixed remainder. Missing markers, sidecars, and checksums cannot
-omit work. Partial scopes cannot prove TD(20) = 11. Artifacts remain untracked.
+## Entry points and options
+
+`emit` accepts `--phase=roots|endpoints|avoidance|all`,
+`--partitions=FIRST-LAST`, `--endpoints=FIRST-LAST`, `--paper=PATH`,
+`--database=PATH`, `--work=PATH`, and `--source-db=PATH`.
+`--resume-work=PATH` requires the complete avoidance scope without ranges or a
+witness-source import. `verify` supports the same phase/range selection and
+fresh `--work`, but never emitter checkpoint inputs. `inventory` performs only
+structural checks. Source counts and full sorting verification remain separate.
+
+Certificate persistence assigns each canonical key to one writer so updates remain
+ordered across batches. Before replacing a stored certificate, its replay-derived
+budget is compared with the new result; a weaker result cannot erase the strongest
+known bound. Certificate-only batches build ordered SSTs without WAL. In mixed
+batches, unmarked certificate entries remain on that path while obstruction
+updates use their ordered write batch. Failed writes propagate to producers, and
+explicit flushes establish completed persistence boundaries. A stored obstruction
+never substitutes for independently regenerated work.

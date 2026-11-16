@@ -40,18 +40,6 @@ class SupportClearingTest {
             for (int x = 0; x < length; x++) omega[x] = (x + exponent) % length;
             assertEquals(candidate[2] == 1, SupportClearing.admittedPower(omega, support, length),
                     "length=" + length + ", exponent=" + exponent);
-            // An admitted local power has no applicable qualifying support.
-            for (int a = 0; a < length - 2; a++) {
-                for (int b = a + 1; b < length - 1; b++) {
-                    for (int c = b + 1; c < length; c++) {
-                        final var move = new JointReductionAnalysis.Move(a, b, c);
-                        if (JointReductionAnalysis.gain(omega, move) == 0) continue;
-                        final int[] next = JointReductionAnalysis.applyToOmega(omega, move);
-                        assertNotEquals(JointReductionAnalysis.oddCycleCount(omega) + 2,
-                                JointReductionAnalysis.oddCycleCount(next));
-                    }
-                }
-            }
         }
     }
 

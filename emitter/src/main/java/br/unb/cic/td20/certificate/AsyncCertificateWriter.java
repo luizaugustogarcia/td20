@@ -1,7 +1,9 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.avoidance.ReconstructionProgress;
 import br.unb.cic.td20.permutation.Cycle;
+import br.unb.cic.td20.runtime.DatabaseWriteBatching;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,13 +13,18 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import org.rocksdb.*;
 
@@ -25,26 +32,41 @@ import org.rocksdb.*;
 public final class AsyncCertificateWriter implements AutoCloseable {
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
     private static final byte[] SCHEMA_KEY = "td20-schema".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] SCHEMA_VALUE = "joint2-selection-v2".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SCHEMA_VALUE = "eriksson-three-v1".getBytes(StandardCharsets.UTF_8);
     private static final byte[] EMPTY = {};
     static { RocksDB.loadLibrary(); }
     private final DBOptions options;
     private final ColumnFamilyOptions witnessOptions, obstructionOptions;
     private final RocksDB database;
     private final ColumnFamilyHandle witnesses, obstructions;
-    private final ArrayBlockingQueue<Entry> pending;
+    private final ConcurrentLinkedQueue<Entry> pending = new ConcurrentLinkedQueue<>();
+    private final Semaphore pendingSlots;
+    private final AtomicInteger publishers = new AtomicInteger();
+    private static final int STOPPED = Integer.MIN_VALUE;
+    private final int writeBatchEntries;
+    private final LongAdder accepted = new LongAdder(), persisted = new LongAdder();
     private final ScheduledExecutorService executor;
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
     private final AtomicBoolean drainRequested = new AtomicBoolean();
     private final Object drainLock = new Object();
+    private final java.util.concurrent.ExecutorService persistenceWorkers;
+    private final int persistenceParallelism;
+    private final Path tableDirectory;
     private volatile boolean closed;
 
     public AsyncCertificateWriter(Path directory, long flushSeconds) {
         if (flushSeconds <= 0) throw new IllegalArgumentException("Positive flush period required");
-        int capacity = Integer.getInteger("td20.certificateQueueCapacity", 16384);
+        int capacity = Integer.getInteger("td20.certificateQueueCapacity", 1048576);
         if (capacity < 1) throw new IllegalArgumentException("Positive certificate queue capacity required");
-        pending = new ArrayBlockingQueue<>(capacity);
+        writeBatchEntries = Math.min(DatabaseWriteBatching.entries(), capacity);
+        pendingSlots = new Semaphore(capacity);
+        persistenceParallelism = Integer.getInteger("td20.certificateWriters",
+                Math.min(32, Runtime.getRuntime().availableProcessors()));
+        if (persistenceParallelism < 1) throw new IllegalArgumentException("Positive certificate writer count required");
+        persistenceWorkers = Executors.newFixedThreadPool(persistenceParallelism,
+                Thread.ofPlatform().daemon(true).name("certificate-db-", 0).factory());
         Path absolute = directory.toAbsolutePath();
+        tableDirectory = absolute.resolve("certificate-sst-staging");
         boolean existing = Files.isRegularFile(absolute.resolve("CURRENT"));
         if (existing) requireFamilies(absolute);
         else if (Files.exists(absolute)) {
@@ -52,9 +74,12 @@ public final class AsyncCertificateWriter implements AutoCloseable {
                 if (files.findAny().isPresent()) throw new IllegalStateException("Certificate directory is not empty");
             } catch (java.io.IOException error) { throw new IllegalStateException(error); }
         }
-        options = new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true).setMaxBackgroundJobs(4);
-        witnessOptions = new ColumnFamilyOptions();
-        obstructionOptions = new ColumnFamilyOptions();
+        options = new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true)
+                .setAllowConcurrentMemtableWrite(true)
+                .setMaxBackgroundJobs(Math.max(2,Math.min(16,Runtime.getRuntime().availableProcessors())))
+                .setMaxSubcompactions(Math.max(1,Math.min(8,Runtime.getRuntime().availableProcessors())));
+        witnessOptions = new ColumnFamilyOptions().setWriteBufferSize(256L << 20).setMaxWriteBufferNumber(4);
+        obstructionOptions = new ColumnFamilyOptions().setWriteBufferSize(256L << 20).setMaxWriteBufferNumber(4);
         var handles = new ArrayList<ColumnFamilyHandle>();
         RocksDB opened = null;
         try {
@@ -63,11 +88,16 @@ public final class AsyncCertificateWriter implements AutoCloseable {
                     new ColumnFamilyDescriptor(OBSTRUCTIONS, obstructionOptions)), handles);
             if (existing && !Arrays.equals(opened.get(handles.get(0), SCHEMA_KEY), SCHEMA_VALUE))
                 throw new IllegalStateException("Unsupported certificate database format");
-            if (!existing) opened.put(handles.get(0), SCHEMA_KEY, SCHEMA_VALUE);
+            if (!existing) try (var writes=new WriteOptions().setDisableWAL(true);
+                               var flush=new FlushOptions().setWaitForFlush(true)) {
+                opened.put(handles.get(0),writes,SCHEMA_KEY,SCHEMA_VALUE);
+                opened.flush(flush,List.of(handles.get(0)));
+            }
             database = opened; witnesses = handles.get(0); obstructions = handles.get(1);
         } catch (RocksDBException | RuntimeException error) {
             handles.forEach(ColumnFamilyHandle::close);
             if (opened != null) opened.close();
+            persistenceWorkers.shutdown();
             witnessOptions.close(); obstructionOptions.close(); options.close();
             throw new IllegalStateException("Cannot open certificate database", error);
         }
@@ -87,24 +117,27 @@ public final class AsyncCertificateWriter implements AutoCloseable {
 
     public void enqueue(CyclicTargetPair pair, List<Cycle> moves) {
         CertificateValidator.validate(pair, moves, obligationBudget(pair.getBeta().size()));
-        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(SortingCertificate.complete(moves)), pair.getBeta().size(), 0));
+        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(SortingCertificate.complete(moves)), pair.getBeta().size(), moves.size()));
     }
 
     public void enqueueObstruction(CyclicTargetPair pair, int maximumMoves) {
-        if (maximumMoves != obligationBudget(pair.getBeta().size()))
-            throw new IllegalArgumentException("Obstruction budget disagrees with its cyclic domain");
+        if (maximumMoves < 1 || maximumMoves > obligationBudget(pair.getBeta().size()))
+            throw new IllegalArgumentException("Invalid explicit obstruction budget");
         offer(new Entry(CertificateCodec.keyFor(pair), null, pair.getBeta().size(), maximumMoves));
     }
 
     private static int obligationBudget(int domain) {
-        return domain == 18 ? 9 : domain == 20 ? 10 : 11;
+        if (domain<1 || domain>br.unb.cic.td20.joint.KnownDiameters.ROOT_SYMBOLS)
+            throw new IllegalArgumentException("Invalid certificate domain");
+        return br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET;
     }
 
     public void enqueueClosure(CyclicTargetPair pair, List<Cycle> moves, int maximumMoves) {
         var result = SortingCertificate.closure(moves);
-        CertificateValidator.validate(pair, result,
-                Math.min(maximumMoves, obligationBudget(pair.getBeta().size())));
-        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(result), pair.getBeta().size(), 0));
+        int required = CertificateValidator.requiredBudget(pair, result);
+        if (required > Math.min(maximumMoves, obligationBudget(pair.getBeta().size())))
+            throw new IllegalArgumentException("Sorting result does not close the requested move budget");
+        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(result), pair.getBeta().size(), required));
     }
 
     public Optional<List<Cycle>> find(CyclicTargetPair pair, int maximumMoves) {
@@ -158,24 +191,34 @@ public final class AsyncCertificateWriter implements AutoCloseable {
     }
 
     private void offer(Entry entry) {
+        for (;;) {
+            int active=publishers.get();
+            if (active<0 || closed) throw new IllegalStateException("Certificate writer is closed");
+            if (active==Integer.MAX_VALUE) throw new IllegalStateException("Too many certificate publishers");
+            if (publishers.compareAndSet(active,active+1)) break;
+        }
         try {
             for (;;) {
                 throwIfFailed();
                 if (closed) throw new IllegalStateException("Certificate writer is closed");
-                synchronized (pending) {
-                    if (closed) throw new IllegalStateException("Certificate writer is closed");
-                    if (pending.offer(entry)) return;
+                if (!pendingSlots.tryAcquire()) {
+                    if (drainRequested.compareAndSet(false, true)) executor.execute(this::drainBackground);
+                    if (!pendingSlots.tryAcquire(100,TimeUnit.MILLISECONDS)) continue;
                 }
-                if (drainRequested.compareAndSet(false, true)) executor.execute(this::drainBackground);
-                Thread.sleep(10);
+                try {
+                    if (closed) throw new IllegalStateException("Certificate writer is closed");
+                    pending.add(entry); accepted.increment(); return;
+                } catch (RuntimeException | Error error) { pendingSlots.release(); throw error; }
             }
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt(); throw new IllegalStateException("Interrupted certificate enqueue", error);
-        }
+        } finally { publishers.decrementAndGet(); }
     }
 
     private void drainBackground() {
-        try { drain(true); } catch (Throwable error) { failure.compareAndSet(null, error); }
+        // Background writes avoid a forced SST flush on every timer tick.
+        // WAL is disabled: explicit flush/close persist phase boundaries.
+        try { drain(false); } catch (Throwable error) { failure.compareAndSet(null, error); }
         finally { drainRequested.set(false); }
     }
 
@@ -185,56 +228,200 @@ public final class AsyncCertificateWriter implements AutoCloseable {
 
     public void flush() {
         throwIfFailed();
-        try { drain(true); } catch (RocksDBException error) { throw new IllegalStateException(error); }
+        try (var progress=new ReconstructionProgress("Certificate persistence (entries)",accepted.sum(),persisted::sum)) {
+            drain(true);
+        } catch (RocksDBException error) { throw new IllegalStateException(error); }
         throwIfFailed();
     }
 
     private void drain(boolean flush) throws RocksDBException {
         synchronized (drainLock) {
-            var entries = new ArrayList<Entry>(4096);
-            while (pending.drainTo(entries, 4096) != 0) {
-                var certified = new HashSet<ByteBuffer>();
-                for (Entry entry : entries) if (entry.value != null) certified.add(ByteBuffer.wrap(entry.key));
-                try (var batch = new WriteBatch(); var writes = new WriteOptions()) {
-                    for (Entry entry : entries) {
-                        if (entry.value != null) {
-                            batch.put(witnesses, entry.key, entry.value);
-                            batch.delete(obstructions, entry.key);
-                        } else if (!certified.contains(ByteBuffer.wrap(entry.key))) {
-                            byte[] value = database.get(witnesses, entry.key);
-                            boolean covered = false;
-                            if (value != null) {
-                                var pair = CertificateCodec.pairForKey(entry.key, entry.domain);
-                                var result = CertificateCodec.decodeResult(value);
-                                CertificateValidator.validate(pair, result, obligationBudget(entry.domain));
-                                covered = CertificateValidator.requiredBudget(pair, result) <= entry.budget;
-                            }
-                            if (!covered) batch.put(obstructions, entry.key, EMPTY);
-                        }
-                    }
-                    database.write(writes, batch);
+            var entries = new ArrayList<Entry>(writeBatchEntries);
+            for (;;) {
+                for (int i=0;i<writeBatchEntries;i++) {
+                    var entry=pending.poll(); if (entry==null) break; entries.add(entry);
                 }
+                if (entries.isEmpty()) break;
+                pendingSlots.release(entries.size());
+                persistInParallel(entries);
+                persisted.add(entries.size());
                 entries.clear();
             }
-            if (flush) try (var options = new FlushOptions().setWaitForFlush(true)) {
+            var finished=new java.util.concurrent.atomic.AtomicLong();
+            if (flush) try (var progress=new ReconstructionProgress("Certificate memtable flush (barrier)",1,finished::get);
+                           var options = new FlushOptions().setWaitForFlush(true)) {
                 database.flush(options, List.of(witnesses, obstructions));
+                finished.set(1);
             }
         }
     }
 
-    @Override public void close() {
+    /**
+     * One coordinator orders batches. Equal keys always enter the same shard;
+     * every shard joins before the next batch or a flush barrier can proceed.
+     * Each native WriteBatch atomically updates witnesses and obstructions.
+     */
+    private void persistInParallel(List<Entry> entries) {
+        int count = Math.min(persistenceParallelism, Math.max(1, (entries.size() + 4095) / 4096));
+        var shards = new ArrayList<List<Entry>>(count);
+        for (int i = 0; i < count; i++) shards.add(new ArrayList<>());
+        for (var entry : entries) {
+            int hash = Arrays.hashCode(entry.key);
+            hash ^= hash >>> 16;
+            shards.get(Math.floorMod(hash, count)).add(entry);
+        }
+        var futures = new ArrayList<java.util.concurrent.Future<?>>(count);
+        Throwable error = null;
+        try {
+            for (var shard : shards) if (!shard.isEmpty()) futures.add(persistenceWorkers.submit(() -> {
+                try { persistShard(shard); }
+                catch (RocksDBException failure) { throw new IllegalStateException("Certificate shard write failed", failure); }
+            }));
+        } catch (RuntimeException | Error submissionFailure) { error = submissionFailure; }
+        boolean interrupted = false;
+        // Never cancel native writes or close their handles while they run.
+        for (var future : futures) for (;;) {
+            try { future.get(); break; }
+            catch (InterruptedException failure) { interrupted = true; }
+            catch (java.util.concurrent.ExecutionException failure) {
+                if (error == null) error = failure.getCause();
+                break;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+            if (error == null) error = new InterruptedException("Interrupted certificate persistence barrier");
+        }
+        if (error != null) throw new IllegalStateException("Parallel certificate persistence failed", error);
+    }
+
+    private void persistShard(List<Entry> entries) throws RocksDBException {
+        // Equal keys have one owner for this batch, and earlier batches have
+        // joined. Reads cannot race with writes to those same keys. Keep the
+        // strongest discharge: inverse coverage may already depend on it.
+        var best = new LinkedHashMap<ByteBuffer,Entry>();
+        for (Entry entry : entries) if (entry.value != null) {
+            var key = ByteBuffer.wrap(entry.key);
+            var previous = best.get(key);
+            if (previous == null || entry.budget <= previous.budget) best.put(key,entry);
+        }
+        var certificates = new ArrayList<>(best.values());
+        if (!certificates.isEmpty()) {
+            var keys = certificates.stream().map(Entry::key).toList();
+            var lookupKeys = new ArrayList<>(keys); lookupKeys.addAll(keys);
+            var families = new ArrayList<>(Collections.nCopies(keys.size(), witnesses));
+            families.addAll(Collections.nCopies(keys.size(), obstructions));
+            var stored = database.multiGetAsList(families, lookupKeys);
+            if (stored.size() != lookupKeys.size()) throw new IllegalStateException("Incomplete certificate persistence lookup");
+            var certifiedKeys = new HashSet<ByteBuffer>();
+            var tables = new ArrayList<Entry>();
+            var atomic = new ArrayList<Entry>();
+            for (int i = 0; i < certificates.size(); i++) {
+                Entry entry = certificates.get(i);
+                certifiedKeys.add(ByteBuffer.wrap(entry.key));
+                byte[] previous = stored.get(i), marker = stored.get(i+keys.size());
+                if (previous != null) {
+                    var pair = CertificateCodec.pairForKey(entry.key,entry.domain);
+                    int required = CertificateValidator.requiredBudget(pair,CertificateCodec.decodeResult(previous));
+                    if (required > obligationBudget(entry.domain))
+                        throw new IllegalArgumentException("Stored sorting result exceeds the maximum move budget");
+                    if (required <= entry.budget) {
+                        if (marker == null) continue;
+                        entry = new Entry(entry.key,previous,entry.domain,required);
+                    }
+                }
+                if (marker == null) tables.add(entry); else atomic.add(entry);
+            }
+            for (Entry entry : entries)
+                if (entry.value == null && !certifiedKeys.contains(ByteBuffer.wrap(entry.key))) atomic.add(entry);
+            // Only the keys with existing markers need a cross-family atomic
+            // put/delete. A few markers must not force an entire shard back
+            // through the serialized per-key memtable path.
+            if (!tables.isEmpty()) persistCertificateTable(tables);
+            if (atomic.isEmpty()) return;
+            entries = atomic;
+        }
+        var certified = new HashSet<ByteBuffer>();
+        for (Entry entry : entries) if (entry.value != null) certified.add(ByteBuffer.wrap(entry.key));
+        try (var batch = new WriteBatch(); var writes = new WriteOptions().setDisableWAL(true)) {
+            for (Entry entry : entries) {
+                if (entry.value != null) {
+                    batch.put(witnesses, entry.key, entry.value);
+                    batch.delete(obstructions, entry.key);
+                } else if (!certified.contains(ByteBuffer.wrap(entry.key))) {
+                    byte[] value = database.get(witnesses, entry.key);
+                    boolean covered = false;
+                    if (value != null) {
+                        var pair = CertificateCodec.pairForKey(entry.key, entry.domain);
+                        var result = CertificateCodec.decodeResult(value);
+                        CertificateValidator.validate(pair, result, obligationBudget(entry.domain));
+                        covered = CertificateValidator.requiredBudget(pair, result) <= entry.budget;
+                    }
+                    if (!covered) batch.put(obstructions, entry.key, EMPTY);
+                }
+            }
+            database.write(writes, batch);
+        }
+    }
+
+    /** Exact sorted certificate keys; no WAL or per-key memtable insertion. */
+    private void persistCertificateTable(List<Entry> entries) throws RocksDBException {
+        entries.sort((left, right) -> Arrays.compareUnsigned(left.key, right.key));
+        Path path = null;
+        try {
+            Files.createDirectories(tableDirectory);
+            path = Files.createTempFile(tableDirectory, "certificates-", ".sst");
+            try (var environment = new EnvOptions();
+                 var tableOptions = new Options();
+                 var table = new SstFileWriter(environment, tableOptions);
+                 var ingest = new IngestExternalFileOptions().setMoveFiles(true)
+                         .setAllowGlobalSeqNo(true).setAllowBlockingFlush(true)) {
+                table.open(path.toString());
+                for (int i = 0; i < entries.size();) {
+                    int last = i;
+                    while (last + 1 < entries.size()
+                            && Arrays.equals(entries.get(i).key, entries.get(last + 1).key)) last++;
+                    // Shard selection already retains the strongest queued certificate.
+                    Entry entry = entries.get(last);
+                    table.put(entry.key, entry.value);
+                    i = last + 1;
+                }
+                table.finish();
+                database.ingestExternalFile(witnesses, List.of(path.toString()), ingest);
+            }
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("Cannot build certificate table", error);
+        } finally {
+            if (path != null) try { Files.deleteIfExists(path); }
+            catch (java.io.IOException error) {
+                failure.compareAndSet(null, error);
+                throw new IllegalStateException("Cannot clean certificate table", error);
+            }
+        }
+    }
+
+    @Override public synchronized void close() {
         if (closed) { throwIfFailed(); return; }
-        synchronized (pending) { closed = true; }
+        closed = true;
+        publishers.getAndUpdate(count -> count | STOPPED);
+        boolean interrupted=false;
+        while (publishers.get()!=STOPPED) {
+            if (Thread.interrupted()) interrupted=true;
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
         executor.shutdown();
         try {
-            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-                if (!executor.awaitTermination(30, TimeUnit.SECONDS)) throw new IllegalStateException("Writer thread did not stop");
+            for (;;) {
+                try { if (executor.awaitTermination(1,TimeUnit.SECONDS)) break; }
+                catch (InterruptedException error) { interrupted=true; }
             }
             drain(true); throwIfFailed();
-        } catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new IllegalStateException(error); }
-        catch (RocksDBException error) { throw new IllegalStateException(error); }
-        finally { obstructions.close(); witnesses.close(); database.close(); obstructionOptions.close(); witnessOptions.close(); options.close(); }
+        } catch (RocksDBException error) { throw new IllegalStateException(error); }
+        finally {
+            persistenceWorkers.shutdown();
+            obstructions.close(); witnesses.close(); database.close(); obstructionOptions.close(); witnessOptions.close(); options.close();
+            if (interrupted) Thread.currentThread().interrupt();
+        }
     }
     private record Entry(byte[] key, byte[] value, int domain, int budget) {}
 }

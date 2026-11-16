@@ -47,8 +47,18 @@ public final class CertificateValidator {
     }
 
     public static void validate(final CyclicTargetPair pair, final SortingCertificate result, final int maximumMoves) {
-        if (maximumMoves < 0 || requiredBudget(pair, result) > maximumMoves)
+        validatedRequiredBudget(pair, result, maximumMoves);
+    }
+
+    /** Replays once, validates the upper bound, and returns it for requested-budget comparisons. */
+    public static int validatedRequiredBudget(final CyclicTargetPair pair, final SortingCertificate result,
+                                              final int maximumMoves) {
+        if (maximumMoves < 0)
             throw new IllegalArgumentException("Sorting result does not close the requested move budget");
+        final int required = requiredBudget(pair, result);
+        if (required > maximumMoves)
+            throw new IllegalArgumentException("Sorting result does not close the requested move budget");
+        return required;
     }
 
     private static void requireApplicable(final Cycle beta, final Cycle move) {

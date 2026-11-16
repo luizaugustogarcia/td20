@@ -47,15 +47,18 @@ Java_br_unb_cic_td20_base_GPUSortingSearch_initSlots(JNIEnv *env, jclass, jint t
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_br_unb_cic_td20_base_GPUSortingSearch_searchForSortingSeq(JNIEnv *env, jclass,
+Java_br_unb_cic_td20_base_GPUSortingSearch_searchForSortingSeqWithLimits(JNIEnv *env, jclass,
                                                                jbyteArray javaBeta,
                                                                jbyteArray javaOmega,
                                                                jint maxMoves,
                                                                jboolean allowDiameterClosure,
+                                                               jint maximumSearchDepth,
+                                                               jlong maximumNanos,
                                                                jintArray javaDiameters,
                                                                jint slot) {
     try {
         clearCudaRuntimePoisoned();
+        if (maximumNanos < 0) throw std::invalid_argument("Search allowance must not be negative");
 
         if (javaBeta == nullptr || javaOmega == nullptr) {
             throw std::invalid_argument("beta and omega must not be null");
@@ -95,7 +98,9 @@ Java_br_unb_cic_td20_base_GPUSortingSearch_searchForSortingSeq(JNIEnv *env, jcla
         const std::vector<int> diameters(rawDiameters.begin(), rawDiameters.end());
         const auto result = performGpuSortingSearch(
                 std::move(beta), std::move(omega), static_cast<int>(maxMoves),
-                static_cast<bool>(allowDiameterClosure), diameters, rawStream, slotIndex);
+                static_cast<bool>(allowDiameterClosure), static_cast<int>(maximumSearchDepth),
+                static_cast<unsigned long long>(maximumNanos),
+                diameters, rawStream, slotIndex);
         const auto &moves = result.moves;
 
         jclass intArrayClass = env->FindClass("[I");

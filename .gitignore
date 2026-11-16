@@ -34,7 +34,6 @@ Thumbs.db
 *:Zone.Identifier
 
 # LaTeX build products
-docs/td20-reduction-count.pdf
 *.aux
 *.bbl
 *.blg

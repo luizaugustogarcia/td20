@@ -2,11 +2,11 @@ package br.unb.cic.td20;
 
 import java.io.IOException;
 
-/** Command-line entry point; implementation lives in {@link br.unb.cic.td20.verification.CertificateChecker}. */
+/** Command-line entry point; implementation lives in {@link br.unb.cic.td20.verification.ErikssonCertificateChecker}. */
 public final class CertificateChecker {
     private CertificateChecker() { }
 
     public static void main(final String[] args) throws IOException {
-        br.unb.cic.td20.verification.CertificateChecker.main(args);
+        br.unb.cic.td20.verification.ErikssonCertificateChecker.main(args);
     }
 }

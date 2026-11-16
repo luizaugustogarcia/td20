@@ -1,6 +1,5 @@
 package br.unb.cic.td20.model;
 
-import java.util.Arrays;
 import java.util.Objects;
 
 /** Immutable value key identifying one twisted-bracelet orbit. */
@@ -20,15 +19,18 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
     }
 
     public static TwistedBraceletKey of(final CyclicTargetCandidate candidate) {
-        final var least = candidate.dihedralOrbitWords()
-                .map(DihedralOrbitWord::word)
-                .min(TwistedBraceletKey::compareInFixedColorOrder)
-                .orElseThrow();
-        return new TwistedBraceletKey(least);
+        final var word = candidate.standardizedEncodingWord();
+        final var orbit = new OrbitMinimum(word);
+        for (int shift = 0; shift < word.length(); shift++) {
+            orbit.consider(shift, false);
+            orbit.consider(shift, true);
+        }
+        // Only the winning image needs a constructed, fully validated word.
+        return new TwistedBraceletKey(word.transform(orbit.shift, orbit.reflected));
     }
 
     /**
-     * Compares words in the fixed alphabet used by direct generation.
+     * Compares images in the fixed alphabet used by direct generation.
      *
      * <p>Standardized encoding labels record global first occurrence.  That
      * convention is useful for an intrinsic representation, but it is not the
@@ -38,60 +40,87 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
      * before oriented colors of the same size, and uses first occurrence only
      * to order indistinguishable colors.  Oriented ranks follow their color.
      */
-    private static int compareInFixedColorOrder(
-            final StandardizedEncodingWord left,
-            final StandardizedEncodingWord right
-    ) {
-        final var leftSymbols = symbolsInFixedColorOrder(left);
-        final var rightSymbols = symbolsInFixedColorOrder(right);
-        return Arrays.compare(leftSymbols, rightSymbols);
-    }
+    private static final class OrbitMinimum {
+        private final int n;
+        private final int[] labels, ranks, sizes, types, typeBases;
+        private final int[] labelEpochs, typeEpochs, typeCounts, symbolBases, origins;
+        private final int[] symbols, minimum;
+        private int epoch;
+        private int shift;
+        private boolean reflected;
 
-    private static int[] symbolsInFixedColorOrder(
-            final StandardizedEncodingWord word
-    ) {
-        final var length = word.length();
-        final var sizes = new int[length + 1];
-        final var oriented = new boolean[length + 1];
-        var colorCount = 0;
-        for (var position = 0; position < length; position++) {
-            final var label = word.cycleLabelAt(position);
-            if (sizes[label]++ == 0) {
-                colorCount++;
+        OrbitMinimum(final StandardizedEncodingWord word) {
+            n = word.length();
+            labels = new int[n];
+            ranks = new int[n];
+            sizes = new int[n + 1];
+            types = new int[n + 1];
+            typeBases = new int[2 * n];
+            labelEpochs = new int[n + 1];
+            typeEpochs = new int[2 * n];
+            typeCounts = new int[2 * n];
+            symbolBases = new int[n + 1];
+            origins = new int[n + 1];
+            symbols = new int[n];
+            minimum = new int[n];
+            for (int position = 0; position < n; position++) {
+                int label = word.cycleLabelAt(position);
+                labels[position] = label;
+                ranks[position] = word.rankAt(position);
+                sizes[label]++;
+                if (ranks[position] != 0) types[label] = 1;
             }
-            oriented[label] |= word.rankAt(position) != 0;
-        }
-
-        final var colors = new Integer[colorCount];
-        for (var label = 1; label <= colorCount; label++) {
-            colors[label - 1] = label;
-        }
-        Arrays.sort(colors, (left, right) -> {
-            final var sizeComparison = Integer.compare(sizes[right], sizes[left]);
-            if (sizeComparison != 0) {
-                return sizeComparison;
+            for (int label = 1; label <= n; label++) {
+                if (sizes[label] == 0) continue;
+                // Smaller type indices mean larger cycles, then U before O.
+                types[label] += 2 * (n - sizes[label]);
+                typeCounts[types[label]]++;
             }
-            final var orientationComparison = Boolean.compare(
-                    oriented[left], oriented[right]);
-            return orientationComparison != 0
-                    ? orientationComparison
-                    : Integer.compare(left, right);
-        });
-
-        final var firstSymbolByLabel = new int[colorCount + 1];
-        var nextSymbol = 0;
-        for (final var label : colors) {
-            firstSymbolByLabel[label] = nextSymbol;
-            nextSymbol += oriented[label] ? sizes[label] : 1;
+            int nextSymbol = 0;
+            for (int type = 0; type < typeBases.length; type++) {
+                typeBases[type] = nextSymbol;
+                int width = (type & 1) == 0 ? 1 : n - type / 2;
+                nextSymbol += typeCounts[type] * width;
+            }
         }
 
-        final var symbols = new int[length];
-        for (var position = 0; position < length; position++) {
-            final var label = word.cycleLabelAt(position);
-            symbols[position] = firstSymbolByLabel[label]
-                    + (oriented[label] ? word.rankAt(position) - 1 : 0);
+        void consider(final int imageShift, final boolean imageReflected) {
+            int currentEpoch = ++epoch;
+            int comparison = currentEpoch == 1 ? -1 : 0;
+            int position = imageReflected ? (n - imageShift) % n : imageShift;
+            for (int offset = 0; offset < n; offset++) {
+                int label = labels[position], rank = ranks[position];
+                if (labelEpochs[label] != currentEpoch) {
+                    labelEpochs[label] = currentEpoch;
+                    int type = types[label];
+                    if (typeEpochs[type] != currentEpoch) {
+                        typeEpochs[type] = currentEpoch;
+                        typeCounts[type] = 0;
+                    }
+                    int width = rank == 0 ? 1 : sizes[label];
+                    symbolBases[label] = typeBases[type] + typeCounts[type]++ * width;
+                    origins[label] = rank;
+                }
+                int symbol = symbolBases[label];
+                if (rank != 0) {
+                    // Reflection reverses both positions and oriented ranks.
+                    int difference = imageReflected ? origins[label] - rank : rank - origins[label];
+                    symbol += difference < 0 ? difference + sizes[label] : difference;
+                }
+                symbols[offset] = symbol;
+                if (comparison == 0) {
+                    if (symbol > minimum[offset]) return;
+                    if (symbol < minimum[offset]) comparison = -1;
+                }
+                if (imageReflected) position = position == 0 ? n - 1 : position - 1;
+                else position = position + 1 == n ? 0 : position + 1;
+            }
+            // Strict replacement keeps the stream minimum's first-image tie rule.
+            if (comparison == 0) return;
+            System.arraycopy(symbols, 0, minimum, 0, n);
+            shift = imageShift;
+            reflected = imageReflected;
         }
-        return symbols;
     }
 
     public StandardizedEncodingWord canonicalWord() {

@@ -134,39 +134,24 @@ It does not generate or decode encoding words, run a sorting search, or
 read certificates. Some constrained permutations and selected unoriented
 supports are still enumerated; this is not a closed formula for every term.
 
-Totally unoriented root classes are counted for every one of the 83
-fixed-point-free even partitions of 21, with all annotations unoriented. The
-same counter applies independently to the 214 annotated endpoint types on 18
-symbols with 3-norm at most eight. Empty types are retained explicitly.
+## Active Eriksson route
 
-Oriented joint-2 residual roots are counted by a constrained generator rather
-than by this Burnside calculation, because the absence of the favorable
-prefixes is not determined by annotated type alone. The Java joint count records
-the explicit support-clearing subset separately. A complete summary therefore
-combines `U` from Burnside with `J`, `C`, and `O = J - C` for each of
-the 83 deterministic partition keys. The active route also requires the
-totally unoriented residual count `R` from constrained joint generation,
-checked independently; direct root obligations total `R + O`.
-Endpoint counts form a separate 214-row artifact.
+The full endpoint cover has 143 even fixed-point-free annotated types on
+16 symbols with budget 8, from 28 even partitions. All 143 rows must be
+regenerated independently in the emitter and checker modules. Current-route
+class counts remain pending until those reports agree. The active cover imposes
+no stricter 3-norm cutoff. Contract fixed points before using this census.
 
-Burnside support, rotation, and reflection tasks use exactly the TD(18)
-Java counter and scheduling. Bracelet generation uses the same disjoint
-prefix tasks and worker detection. Java joint-2 reports identify the bounded
-adaptive prefix scheduler; each partition uses every JVM-visible CPU. The
-oriented stream excludes prefixes whose completed long cycles are all
-unoriented, since no remaining 2-cycle or admissible 3-cycle can orient a
-residual. U remains a separately counted obligation set. Reports retain their
-actual implementation provenance.
+The root inventory contains all 83 partitions of 21. Root selection is not
+determined by annotated type, so it uses the constrained generator rather than
+Burnside. Its new retained and support-cleared class counts require independent
+regeneration; historical joint-2 counts cannot be substituted.
 
-The complete versioned artifacts and source table now agree row for row. See
-[the source specification](td20-reduction-count.tex) for the exact predicates
-and two inverse waves. No sorting-failure count is an input to Burnside
-counting or joint selection.
+The three inverse waves cover both `(1,2,2)` and `(0,3,2)` paths on both
+endpoints. Class counts are separate from witnesses within 8 moves at
+endpoints and 11 moves at roots. See [the source paper](td20-reduction-count.tex)
+and [validation](VALIDATION.md) for the checked scope and reference verification record.
 
-Tests compare Burnside and direct generation on every annotated partition
-through nine symbols, including empty types and both even-domain reflection
-classes. They also check the independently enumerated example
-I = 9702, all nonidentity rotation terms zero, each reflection term 76,
-and B = 479 for (5 oriented, 3 unoriented, 3 unoriented).
-Counting is independent of sorting certificates: a class count establishes
-neither a nine-move endpoint result nor an eleven-move root result.
+Small-domain tests compare Burnside with direct generation through nine
+symbols, including empty types and both even-domain reflection classes.
+Counting remains separate from sorting certificates and final inverse coverage.

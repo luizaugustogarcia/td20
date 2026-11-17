@@ -24,6 +24,7 @@ final class FleetProgress implements AutoCloseable {
     private String phase = "starting";
     private int total, completed, reused, failed, retries;
     private long generated, residuals, reconstructed;
+    private int batchTotal, batchReady;
     FleetProgress(Path path) throws IOException {
         writer = Files.newBufferedWriter(path, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         statusFile = path.resolveSibling("status.txt");
@@ -32,8 +33,10 @@ final class FleetProgress implements AutoCloseable {
     }
     synchronized void phase(String name, int jobs, int resumed) {
         phase = name; phaseStarted = Instant.now(); total = jobs; completed = resumed; reused = resumed; failed = 0;
-        active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); generated = residuals = reconstructed = 0; report();
+        active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); generated = residuals = reconstructed = 0; batchTotal = batchReady = 0; report();
     }
+    synchronized void batchInventory(int count) { batchTotal = count; batchReady = 0; }
+    synchronized void batchPublished() { batchReady++; }
     synchronized void finished(int jobs) {
         phase = "complete"; total = jobs; completed = jobs; active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); report();
     }
@@ -88,7 +91,8 @@ final class FleetProgress implements AutoCloseable {
         append(origin,message);
     }
     synchronized void report() {
-        int queued = Math.max(0,total - completed - active.size() - downloads.size());
+        int unprepared = Math.max(0,batchTotal - batchReady);
+        int queued = Math.max(0,total - completed - active.size() - downloads.size() - unprepared);
         String percentage = total == 0 ? "n/a" : String.format(Locale.ROOT,"%.2f%%",100.0 * completed / total);
         Instant now = Instant.now();
         double minutes = Math.max(1.0 / 60,Duration.between(phaseStarted,now).toMillis() / 60000.0);
@@ -103,6 +107,8 @@ final class FleetProgress implements AutoCloseable {
                 + " queuedDownloads=" + downloads.values().stream().filter(download -> download.stage().equals("queued")).count());
         if (phase.equals("emission")) snapshot.add("Job progress counts closed remote computations; certificates stay remote; reconstruction total=unknown until inverse preparation");
         if (phase.equals("reconstruction")) snapshot.add("Job progress counts closed remote computations; certificates stay remote until the final transfer phase");
+        if (batchTotal > 0) snapshot.add("Reconstruction batches prepared=" + batchReady + "/" + batchTotal + "; pendingPreparation=" + unprepared
+                + "; preparation overlaps remote computation");
         if (phase.equals("endpoint residual downloads")) snapshot.add("Validated operational receipts: generatedEndpointClasses=" + generated
                 + " residualEndpointClasses=" + residuals + "; certificate databases remain remote");
         if (phase.equals("certificate downloads")) snapshot.add("Accepted certificate databases this phase: generatedEndpointClasses=" + generated

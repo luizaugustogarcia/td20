@@ -34,6 +34,10 @@ checkout, transfers it over SSH, and clones that pinned bundle on each server.
 The source snapshot then overlays current local changes. This supports a fresh
 run from an already available private checkout without recovering credentials
 from another process. The bundle and all generated data remain under `target/`.
+Existing bundle-backed clones fetch the pinned bundle's HEAD and reset their
+Git index to that revision before the snapshot overlay. An ordinary resume
+retains its original source archive; an authorized source upgrade archives and
+replaces source.tar and source.bundle while all workers are stopped.
 
 Set `TD20_GITHUB_TOKEN` in the local launch environment to clone from GitHub instead. Authentication
 travels over SSH standard input into transient Git configuration, with credential
@@ -206,7 +210,23 @@ The work has these boundaries:
    Residuals come from exhaustive endpoint generation, never an obstruction list.
 3. The coordinator generates the first inverse wave on all local CPU cores,
    restoring two fixed symbols in every allowed gap/support on either endpoint.
-   Its sorted, unique after-two keys are split into disjoint counted batches.
+   The closed global wave and its AFTER_TWO checkpoint are atomically published
+   under `RUN/reconstruction/waves`. Unmarked interrupted legacy waves are
+   regenerated from the validated residual sets. Its sorted, unique after-two
+   keys are split into disjoint counted batches by concurrent persistence workers.
+   Small batches use one WAL-disabled RocksDB WriteBatch and a synchronous flush,
+   retaining the existing checked state format. Each batch's database, task scope
+   and checkpoint are atomically published together. Servers claim that batch
+   immediately, while later batches are still being prepared.
+   `td20.fleetBatchWorkers` defaults to the coordinator's available CPU count;
+   `td20.fleetReadyBatches` defaults to eight ready batches per server. The bounded
+   queue backpressures preparation while keeping computing servers supplied.
+   Existing batches are reused only after matching every key against their
+   regenerated deterministic slice. Reused closed results still require validated
+   batch publication. Producer failure interrupts active dispatch; complete
+   publication and the final counted batches.txt inventory are mandatory before
+   final downloads and merging. Progress shows prepared/total batches and explicitly
+   counts pending preparation separately from ready work.
    `--reconstruction-batch-size` sets the maximum classes per batch (default 64). A smaller
    size creates more independent tasks, with more repeated downstream work.
 4. Each reconstruction job resumes an `AFTER_TWO` checkpoint at budget 9. It

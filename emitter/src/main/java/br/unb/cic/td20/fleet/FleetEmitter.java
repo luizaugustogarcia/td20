@@ -158,16 +158,18 @@ public final class FleetEmitter {
         EmissionBatches.validateCompleted(run,emissionPlan,completed);
         progress.event("coordinator","All 143 endpoint annotation counts match their complete generation task unions.");
         Path prepared = directory.resolve("reconstruction");
-        if (!Files.exists(prepared)) {
-            Path temporary = directory.resolve("reconstruction-" + UUID.randomUUID() + ".partial");
+        List<FleetTask> reconstruction;
+        if (Files.isRegularFile(prepared.resolve("batches.txt"))) {
+            reconstruction = ReconstructionBatches.read(run,prepared);
+            dispatch(reconstruction,prepared,snapshot);
+        } else {
             progress.phase("local first inverse wave and batch preparation",0,0);
-            progress.event("coordinator","Generating and splitting the first inverse wave locally using all available CPU cores.");
-            ReconstructionBatches.prepare(run,temporary,completed,batchSize,message -> progress.event("preparation",message));
-            Files.move(temporary,prepared,StandardCopyOption.ATOMIC_MOVE);
+            var wave = ReconstructionBatches.prepareWave(prepared,completed,message -> progress.event("preparation",message));
+            reconstruction = ReconstructionBatches.describe(run,wave.afterTwo(),batchSize);
+            dispatchPublished(reconstruction,prepared,snapshot,ready -> ReconstructionBatches.publish(run,prepared,wave,batchSize,ready));
+            if (!reconstruction.equals(ReconstructionBatches.read(run,prepared))) throw new IllegalStateException("Published reconstruction inventory differs");
         }
-        var reconstruction = ReconstructionBatches.read(run,prepared);
         progress.event("coordinator","Reconstruction tasks: " + reconstruction.size());
-        dispatch(reconstruction,prepared,snapshot);
         var allTasks = new ArrayList<>(emission); allTasks.addAll(reconstruction);
         var all = downloadCertificates(allTasks);
         // Recheck every expected receipt before publishing the merged database.
@@ -192,6 +194,87 @@ public final class FleetEmitter {
         if (!Files.exists(report)) FleetFiles.write(report,Files.readAllLines(output.resolve("fleet-complete.txt")));
         progress.finished(all.size());
         progress.event("coordinator","Fleet emission completed: " + output + ". Run the independent full checker against this database.");
+    }
+    @FunctionalInterface interface PublishedTasks { void produce(java.util.function.Consumer<FleetTask> ready) throws Exception; }
+
+    void dispatchPublished(List<FleetTask> tasks,Path jobs,Path snapshot,PublishedTasks producer) throws Exception {
+        Path transfers = directory.resolve("transfers/reconstruction"); Files.createDirectories(transfers);
+        var expected = new HashMap<String,FleetTask>(); tasks.forEach(task -> expected.put(task.id(),task));
+        var nodes = new HashSet<String>(); servers.forEach(server -> nodes.add(server.name()));
+        var reused = new HashSet<String>();
+        try (var files = Files.list(transfers)) {
+            for (var file : files.sorted().toList()) {
+                if (file.getFileName().toString().startsWith(".fleet-") && file.getFileName().toString().endsWith(".tmp")) { Files.delete(file); continue; }
+                var transfer = FleetTransfer.read(file);
+                if (!transfer.run().equals(run) || !expected.containsKey(transfer.task()) || !nodes.contains(transfer.server())
+                        || !file.getFileName().toString().equals(transfer.task()+".txt")) throw new IllegalArgumentException("Incompatible reconstruction transfer");
+                reused.add(transfer.task());
+            }
+        }
+        for (var task : tasks) {
+            Path output = directory.resolve("downloads").resolve(task.id());
+            if (Files.exists(output)) { validateDownload(task,output,true); reused.add(task.id()); }
+        }
+        progress.phase("reconstruction",tasks.size(),reused.size()); progress.batchInventory(tasks.size());
+        int capacity = positiveSetting("td20.fleetReadyBatches",Math.max(1,servers.size()*8));
+        var queue = new FleetTaskQueue(tasks,reused,capacity);
+        var remaining = new java.util.concurrent.atomic.AtomicInteger(tasks.size()-reused.size());
+        java.util.function.Consumer<FleetTask> publish = task -> {
+            progress.batchPublished(); queue.publish(task);
+        };
+        progress.event("coordinator","Parallel batch preparation: workers="+positiveSetting("td20.fleetBatchWorkers",Runtime.getRuntime().availableProcessors())
+                +"; ready queue capacity="+capacity+"; sealed batches are claimed immediately; complete inventory is still required.");
+        if (remaining.get()==0) { producer.produce(publish); queue.finish(); return; }
+        record Result(boolean producer,Throwable error) { }
+        var alive = new java.util.concurrent.atomic.AtomicInteger(servers.size());
+        Throwable failure = null;
+        try (var workers = Executors.newFixedThreadPool(servers.size()+1)) {
+            var completions = new ExecutorCompletionService<Result>(workers);
+            completions.submit(() -> {
+                try { producer.produce(publish); queue.finish(); return new Result(true,null); }
+                catch (Throwable error) { queue.abort(error); return new Result(true,error); }
+            });
+            for (var server : servers) completions.submit(() -> {
+                try {
+                    String source;
+                    try { source=prepare(server,snapshot,true); }
+                    catch (Exception first) { progress.event(server.name(),"Preparation interrupted; retrying: "+first); source=prepare(server,snapshot,true); }
+                    String preparedSource=source; progress.event(server.name(),"ready for published reconstruction batches");
+                    drainPublishedTasks(queue,remaining,task -> executeRemote(server,preparedSource,task,jobs.resolve(task.id()),transfers),
+                            error -> progress.failed(server.name(),error));
+                    return new Result(false,null);
+                } catch (Throwable error) { progress.failed(server.name(),error); return new Result(false,error); }
+                finally { if (alive.decrementAndGet()==0 && remaining.get()>0) queue.abort(new IllegalStateException("No server remains for published batches")); }
+            });
+            try { for (int i=0;i<servers.size()+1;i++) {
+                var result = completions.take().get();
+                if (result.error()!=null) {
+                    if (failure==null) failure=result.error();
+                    if (result.producer() || alive.get()==0) {
+                        queue.abort(result.error()); workers.shutdownNow();
+                        // shutdownNow can remove a not-yet-started completion wrapper.
+                        // Join the executor on close instead of waiting for that missing completion.
+                        break;
+                    }
+                }
+            } } catch (Exception | Error error) {
+                queue.abort(error); workers.shutdownNow(); throw error;
+            }
+        }
+        if (remaining.get()!=0) throw new IllegalStateException("Incomplete streamed reconstruction; closed results and prepared batches are retained",failure);
+        queue.finish();
+    }
+    static void drainPublishedTasks(FleetTaskQueue queue,java.util.concurrent.atomic.AtomicInteger remaining,TaskRunner runner,
+                                    java.util.function.Consumer<Throwable> failed) throws Exception {
+        int consecutiveFailures=0;
+        while (remaining.get()>0) {
+            var task=queue.poll(); if (task==null) continue;
+            try { runner.run(task); remaining.decrementAndGet(); consecutiveFailures=0; }
+            catch (Exception error) {
+                if (error instanceof InterruptedException || Thread.currentThread().isInterrupted()) throw error;
+                queue.retry(task); failed.accept(error); if (++consecutiveFailures>=3) throw error; Thread.sleep(2000);
+            }
+        }
     }
 
     void dispatch(List<FleetTask> tasks, Path jobs, Path snapshot) throws Exception {
@@ -428,8 +511,10 @@ public final class FleetEmitter {
             String bundle = source + "/../source.bundle";
             remote(server,"cat > " + FleetFiles.quote(bundle),directory.resolve("source.bundle"),null,log);
             progress.event(server.name(),"Cloning the pinned local Git bundle; overlaying the local source snapshot.");
-            remote(server,locked(source,"test -d " + FleetFiles.quote(source + "/.git")
-                    + " || git clone --no-checkout -- " + FleetFiles.quote(bundle) + " " + FleetFiles.quote(source)),null,null,log);
+            remote(server,locked(source,"if test -d " + FleetFiles.quote(source + "/.git")
+                    + "; then git -C " + FleetFiles.quote(source) + " fetch --no-tags " + FleetFiles.quote(bundle)
+                    + " HEAD && git -C " + FleetFiles.quote(source) + " reset --mixed FETCH_HEAD; else git clone --no-checkout -- "
+                    + FleetFiles.quote(bundle) + " " + FleetFiles.quote(source) + "; fi"),null,null,log);
             return;
         }
         String encoded = Base64.getEncoder().encodeToString(("x-access-token:" + token).getBytes(java.nio.charset.StandardCharsets.UTF_8));

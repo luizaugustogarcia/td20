@@ -172,3 +172,11 @@ capacity. Completion metadata is validated separately and cannot satisfy the
 existing guard requiring an actual certificate database. Bulk transfers use
 dedicated parallel compressed SSH connections. Both Maven CPU suites passed for
 this change; no frozen port-audit or full TD20 proof-check success is claimed.
+
+The operator also authorized concurrent reconstruction batch persistence and
+immediate dispatch of each sealed batch. The first inverse wave remains a
+parallel local generation; downstream reconstruction stays on the fleet. Small
+batch writes retain the existing state format with WAL disabled and explicit
+flushes. Publication is bounded, resume checks every sorted slice, and the final
+complete inventory remains a required boundary. This scheduling extension is
+unit-tested locally; it does not change the checker or certify the frozen audit.

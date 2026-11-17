@@ -215,6 +215,30 @@ public final class DiskStateSet implements AutoCloseable {
                 .put((byte) pair.getBeta().size()).put(raw).array();
     }
 
+    /** Persist a bounded, already sorted batch without creating asynchronous SST writers. */
+    public static void writeSealedBatch(Path directory, List<State> states) {
+        if (states.isEmpty()) throw new IllegalArgumentException("Empty reconstruction batch");
+        byte[] previous = null;
+        try (var options = new Options().setCreateIfMissing(true).setWriteBufferSize(4L << 20)
+                    .setMaxWriteBufferNumber(2).setMaxBackgroundJobs(2).setMaxOpenFiles(32);
+             var writes = new WriteOptions().setDisableWAL(true);
+             var flush = new FlushOptions().setWaitForFlush(true);
+             var batch = new WriteBatch()) {
+            for (var state : states) {
+                byte[] key = encode(state);
+                if (previous != null && Arrays.compareUnsigned(previous,key) >= 0)
+                    throw new IllegalArgumentException("Batch keys must be sorted and distinct");
+                batch.put(key,EMPTY); previous = key;
+            }
+            Files.createDirectory(directory);
+            try (var database = RocksDB.open(options,directory.toString())) {
+                database.write(writes,batch); database.flush(flush);
+            }
+        } catch (IOException | RocksDBException error) {
+            throw new IllegalStateException("Cannot persist reconstruction batch: " + directory,error);
+        }
+    }
+
     private void flushPending(HashSet<ByteBuffer> pending) {
         if (pending.isEmpty()) return;
         long started = System.nanoTime();

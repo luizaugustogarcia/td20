@@ -1,107 +1,93 @@
 # TD20 distributed simulation handoff — 17 November 2026
 
-## Correct project and current state
+## Active production
 
-This distributed simulation belongs to `/home/luiz/Projects/others/td20` in WSL
-`Ubuntu-24.04`. TD(18) = 10 is a completed premise. The TD18 project was restored
-to commit `701dce95bd225e3ea5d0bbcb937ddd826f18b55a` in both WSL checkouts, and
-its remote main branch was force-updated to that exact revision.
+Work belongs to /home/luiz/Projects/others/td20. TD18 is closed and restored;
+its archived attempts are not TD20 inputs. TD(16) = 9 and TD(18) = 10 are
+completed premises. TD(20) = 11 remains conditional on every checked criterion
+in docs/RESEARCH_PLAN.md.
 
-The mistaken TD18 coordinator was stopped. The complete `/workspace/td18-fleet`
-tree was deleted on all six remote servers, and the old PersonalUbuntu
-`/home/luiz/Projects/td18/target/fleet` data were deleted. The local aborted run,
-its certificates/logs/checkpoints and all migration backups were also deleted
-at the user’s request. Nothing from that attempt is a TD20 production input.
+Run: target/fleet/production-td20-20261117.
+UUID: b360c418-25af-4100-a62d-40b4b226817d.
+Earlier attempts were deleted. Preserve this run's completed emission during
+the authorized reconstruction restart; never reset or mix in older output.
 
-The first TD20 production attempt was subsequently stopped at the user's
-request, and its complete local production directory and all six remote
-`/workspace/td20-fleet` trees were deleted on 17 November 2026. The user requested
-a fresh restart after deferring certificate downloads until the final merge.
-The second attempt was also stopped and its complete local production directory
-and all six remote TD20 run trees were deleted on 17 November 2026. The user
-paused before the replacement launch, then removed `88.90.102.66` (`vast-01`)
-from the active fleet. The user then added `69.176.92.147:39547` (`vast-07`),
-restoring the active fleet to six servers. Its JDK 21, Maven and CMake installation,
-pinned-source clone, Java compilation and hardware inspection completed. It has
-185 JVM-visible CPUs, 211 GiB allocated RAM, two sockets, two NUMA nodes and an
-RTX 5080. Its individual profile explicitly enables `-R-XX:+UseNUMA`.
-The restart is still paused; no earlier production output is an input. The user
-authorized committing/pushing the implementation and synchronizing all six
-servers to the same Git revision, without source-file hashes.
+All 1,469 emission computations completed. Receipts and sealed residual sets
+were downloaded and all 143 annotation inventories validated. The residual
+union has 2,036 classes; the first inverse wave has 5,032,950 after-two states.
+There are 19,660 reconstruction batches of at most 256 states (last batch 246).
+Keep 83 root partitions, 143 full endpoint annotations, budgets 8/9/10/11,
+both endpoints, and both (1,2,2) and (0,3,2) inverse paths.
 
-## Implemented and compiled
+## Fleet
 
-The moved implementation includes plain-SSH preparation, pinned local-source
-Git bundles when no token is configured, JShell orchestration, live hardware
-inspection, independent per-server resource profiles, automatic remote-JVM
-NUMA flags, a dynamic prefix-task queue, counted reconstruction batches, staged
-deferred certificate downloads, strict versioned receipts, disk-backed deduplication, strongest-witness
-merging and concise consolidated progress with atomically replaced status.txt.
+Connections: target/fleet/servers.tsv. Individual profiles: target/fleet/profiles/.
+All six active servers have 16 certificate writers.
 
-TD20 domains and budgets are explicit: 83 root partitions on 21 symbols with
-budget 11; 143 endpoint annotations on 16 symbols with budget 8; after-two budget
-9 and after-one budget 10. Both inverse paths and both endpoints remain required.
-The TD20 certificate schema is preserved, inferred certificate domains admit 21
-symbols, and the merger enforces the TD20 root budget 11. The independent checker
-was not modified or made dependent on emitter artifacts.
-
-`bash -ic ./tools/td20 build -o` completed successfully after the port. The later
-deferred-download extension passed both required Maven CPU suites; the emitter
-reported 206 tests with zero failures/errors and 15 skipped tests, and the checker
-reported 95 tests with zero failures/errors and no skips. This is implementation
-validation, separate from the requested production launch without startup tests
-or replay. Full proof verification remains pending. Existing port-audit specifications describe the earlier frozen
-TD18 comparison; they do not yet certify the new distributed extension. Update
-that comparison record when auditing the extension, without claiming it passed.
-
-## Ready local configuration
-
-- Connections: `target/fleet/servers.tsv`.
-- Active individually selected profiles: `target/fleet/profiles/vast-02.jvm` to `vast-07.jvm`.
-- Coordinator profile: `target/fleet/coordinator.jvm` (this instance: 22 CPUs, 16 GiB heap).
-- Launch arguments: `target/fleet/launch.args`.
-- Fresh directory: `target/fleet/production-td20-20261117`, absent after cleanup and to be recreated when the user resumes.
-- Initial granularity: target 16 endpoint prefixes/type; at most 256 after-two states/batch.
-
-| Node | SSH destination | GPU | CPUs | Heap GiB | Slots | MiB/slot |
+| Node | SSH destination | GPU | JVM CPUs | Heap GiB | GPU slots | MiB/slot |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
 | vast-02 | root@208.102.196.176:40497 | RTX 5080 | 31 | 24 | 16 | 768 |
 | vast-03 | root@113.150.232.222:44197 | RTX 5070 Ti | 31 | 48 | 12 | 1024 |
 | vast-04 | root@50.5.143.218:52138 | RTX 5080 | 31 | 24 | 16 | 768 |
 | vast-05 | root@192.234.50.153:1334 | RTX 4090 | 31 | 40 | 24 | 768 |
 | vast-06 | root@192.234.50.233:3166 | RTX 5090 | 47 | 40 | 32 | 896 |
-| vast-07 | root@69.176.92.147:39547 | RTX 5080 | 185 | 128 | 16 | 768 |
+| vast-08 | root@113.150.232.222:48295 | RTX 5070 Ti | 31 | 48 | 12 | 1024 |
 
-These are explicit starting resource overrides for the inspected allocations,
-not measured TD20 throughput presets. Re-inspect each server before launch
-and tune it individually from actual utilization. Remote work is now scoped to
-`/workspace/td20-fleet`. The 4090 uses SM 89; the other servers use SM 120.
+vast-01 and expensive NUMA vast-07 were removed. vast-08 is initialized with
+JDK21, Maven, CMake, cloned source and native compilation. vast-03 and vast-08
+share an IP but are distinct containers/ports. Coordinator: 22 JVM CPUs, 16GiB
+heap, eight certificate/reconstruction writers. Re-inspect resources before
+computing; automatic UseNUMA applies to multiple allocated sockets/NUMA nodes.
+Verify identical Git revisions across servers, without source-file hashes.
 
-## Next actions
+## Authorized streaming reconstruction upgrade
 
-1. Keep the restart paused until the user resumes. Then read AGENTS.md and
-   docs/DISTRIBUTED.md. Confirm no TD20 coordinator is active
-   and the proposed run directory is fresh. Use this checkout’s pinned source.
-2. Respect the user’s instruction: **skip startup replay/tests and start production
-   directly**. Mandatory production inventory checks and hardware inspection remain.
-3. Load target/fleet/coordinator.jvm into TD20_JSHELL_OPTIONS and set
-   TD20_FLEET_LAUNCH_ARGS to target/fleet/launch.args. Launch tools/fleet/StartFleet.jsh
-   through JShell. No token recovery is needed; the local Git bundle supplies source.
-4. Confirm all six active servers are working, zero reused outputs, and concise
-   emission.log/status.txt updates. Monitor failures, useful CPU/GPU utilization,
-   disk space, transfer overhead and unequal task sizes. Tune each server separately.
-   Servers claim another computation after persisting a closed result's transfer
-   intent. Certificate databases stay remote through emission and reconstruction;
-   only receipts and residual sets are transferred before local inverse
-   preparation. Final certificates download through a bounded queue using
-   dedicated SSH connections. The coordinator derives transfer concurrency from
-   the fleet size and enforces every required validation boundary.
-5. Let emission, downloads, reconstruction and merging finish. Independent
-   full-scope checking against the merged TD20 database remains a separate run.
+The operator requested parallel batch preparation, immediate dispatch of sealed
+batches, local unit tests, deployment and reconstruction restart. No experiments
+or production startup tests/replay. Small batches use one explicitly flushed,
+WAL-disabled WriteBatch in the existing state format. Atomic publication contains
+the input database, checkpoint and task scope. A bounded queue feeds servers
+while later batches are prepared. Persistence workers default to coordinator
+CPU count; ready capacity defaults to eight batches per server. Existing slices
+are matched against regenerated sorted keys. Reused results still require every
+validated publication. Missing batches or producer failure cannot close production.
 
-All shell commands, including SSH remote commands, must load ~/.bashrc with
-bash -ic. Use plain ssh and git, never gh. Use JShell for scripting, never Python.
-Preserve TMUX_STARTED=1 and stdout isolation for binary transfers. Every RocksDB
-write disables WAL and completed boundaries flush. Generated data stay untracked.
-The authoritative mathematical route is docs/td20-reduction-count.tex. Keep every
-criterion in docs/RESEARCH_PLAN.md, and never label TD(20) = 11 proved prematurely.
+Stop the old serial coordinator, temporary streaming bridge and all remote
+workers before deployment. StopTd20.jsh preserves data; ResetTd20.jsh deletes it
+and must not be used for this upgrade. Adopt the existing partial preparation
+tree as RUN/reconstruction, preserving sealed batches. Regenerate marked waves
+if absent rather than trust an interrupted legacy global wave. Archive and replace
+source.tar and source.bundle with the new committed implementation. Existing
+remote Git clones fetch/reset to pinned bundle HEAD before source overlay/build.
+Generated source-upgrade receipts and logs stay ignored.
+
+Both mandatory Maven CPU suites passed for the initial streaming implementation.
+Dispatcher overlap, cancellation and result reuse regressions were then added;
+module target logs contain the final test totals. The independent checker is
+unchanged. The frozen TD18 comparison has not been updated/rerun for these
+explicitly authorized distributed extensions.
+
+## Completion and separate checking
+
+Load coordinator.jvm into TD20_JSHELL_OPTIONS and set TD20_FLEET_LAUNCH_ARGS to
+target/fleet/launch.args. Launch tools/fleet/StartFleet.jsh through JShell, retaining
+the plan and UUID. Start the independent waiter with target/fleet/StartVerification.jsh.
+It waits for the complete merge, builds an isolated checker from pinned source
+and verifies the full scope with fresh checker work.
+
+Certificates remain remote during emission/reconstruction. Only metadata and
+endpoint residuals were transferred for preparation. After reconstruction closes,
+the bounded background transfer pool downloads every certificate to
+RUN/downloads/TASK/ and the verified streaming merge publishes RUN/certificates.
+Full proof verification remains separate and pending. Downstream inverse totals
+and a reliable complete-run ETA remain unknown.
+
+Follow the concise ten-second RUN/emission.log with bash -ic and tail -F.
+RUN/status.txt is atomically replaced and shows preparation, active servers and
+retries. Raw task/setup logs are separate. Confirm every server is doing useful
+work after restart; endless monitoring and benchmarks are not requested.
+
+All shell commands load ~/.bashrc with bash -ic, locally and remotely. Plain SSH,
+git directly (never gh), JShell for Java/scripting, TMUX_STARTED=1 and isolated
+binary stdout remain required. Disable RocksDB WAL and flush closed boundaries.
+All generated artifacts, settings and logs remain untracked.

@@ -149,13 +149,20 @@ public final class ErikssonWitnessEmitter {
 
     static RootResult emitRoot(ErikssonInventory.Root row,PairDischarge discharge,Progress progress) {
         row.requireCompleteCounts();
+        long total = row.directClasses();
+        progress.phase(() -> null);
+        if (total == 0) {
+            // Published counts schedule emission only. The independent checker
+            // still regenerates this partition and rejects any missing witness.
+            log.info("Root emission partition {}: skipped generation; published directClasses=0; independent regeneration required",
+                    row.number());
+            return new RootResult(row.unoriented(),row.oriented(),row.supportCleared(),0);
+        }
         var unresolved=new LongAdder();
         var settled=new LongAdder();
         var prefixes=new LongAdder();
         var generating=new java.util.concurrent.atomic.AtomicBoolean(true);
         ErikssonRootGenerator.Counts counts;
-        progress.phase(() -> null);
-        long total = Math.subtractExact(Math.addExact(row.unoriented(),row.oriented()),row.supportCleared());
         try (var reporting=new ReconstructionProgress("Root emission partition "+row.number(),total,settled::sum,
                      () -> "unresolved="+unresolved.sum()+", generationPrefixNodes="+prefixes.sum()+", generationStillRunning="+generating.get());
              var tasks=new BoundedTasks(Runtime.getRuntime().availableProcessors(),"eriksson-root")) {

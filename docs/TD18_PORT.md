@@ -96,6 +96,12 @@ runtime algorithms, tests or upstream launchers. The only additional TD20 tools
 are this port's audit, its regression tests, the isolated root-publication
 regression and the reviewed adapter specifications.
 
+The execution adapter records the separate RTX 4080 Super launcher, SM 89
+build support and the emitter's published-zero root scheduling shortcut.
+Every added launcher is compared byte for byte with its frozen adapter and
+its executable mode is checked. Zero-direct rows remain mandatory independent
+checker generation and count-comparison obligations.
+
 The reviewed test/tool adapter also records a TD20 publication safeguard in
 `CountErikssonRoots.jsh`. Unlike the upstream row-only publisher, it validates
 all 83 versioned reports, partition order and table markers before atomically

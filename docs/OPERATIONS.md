@@ -82,6 +82,13 @@ instance. Increase scheduling granularity if useful prefix work leaves CPU
 workers idle; compare completed searches before changing GPU slot counts.
 All resource settings and completion status are recorded in untracked logs.
 
+Root emission skips generation when a complete published inventory row has
+`U3 + O3 - C3 = 0`, including rows closed entirely by support clearing.
+This is an emitter scheduling decision, not a checked count or proof closure.
+Pending rows still fail. The independent checker regenerates every selected
+root partition, compares all three counts and replays every direct obligation;
+an incorrect published zero cannot omit proof-verification work.
+
 Direct root and endpoint emission use `WitnessSearch.searchFresh`: their
 generators already emit one representative per valid-pair class within each
 type, so sorting begins with the CPU prefix without a preliminary certificate

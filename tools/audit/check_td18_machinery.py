@@ -22,7 +22,8 @@ LOCAL_BASELINE = "965b47475b483925db26ef72a0e5199d68225dda"
 REFERENCE_BASELINE = "6b1585c943f4c74b12cc13fbff804be59c2b93f3"
 REFERENCE_COMMIT = "22042d8d2274ce05ce1c7868cedab66937eb3ebe"
 ADAPTERS = (Path(__file__).with_name("td18-domain-adapters.patch"),
-            Path(__file__).with_name("td18-test-tool-adapters.patch"))
+            Path(__file__).with_name("td18-test-tool-adapters.patch"),
+            Path(__file__).with_name("td20-execution-adapters.patch"))
 AUDIT_ONLY = {
     "tools/audit/check_td18_machinery.py",
     "tools/audit/test_td18_machinery.py",
@@ -114,6 +115,16 @@ def check(reference: Path) -> tuple[list[str], str]:
                      revision).splitlines())
     sources = [p for p in modes if shared_file(p)]
     expected_paths = {renamed(p) for p in sources}
+    # Project-specific execution files must be specified in a frozen adapter
+    # and compared exactly, including their executable mode.
+    additions = {}
+    for adapter in ADAPTERS:
+        for path, mode in re.findall(r"^diff --git a/(\S+) b/\1\nnew file mode (100644|100755)\n",
+                                     adapter.read_text(), re.MULTILINE):
+            if not shared_file(path) or path in expected_paths or path in additions:
+                raise ValueError(f"Invalid execution adapter addition: {path}")
+            additions[path] = mode
+    expected_paths.update(additions)
     survivors = [p for p in retired_shared_files(reference, revision, expected_paths)
                  if (PROJECT / p).exists()]
     if survivors:
@@ -128,6 +139,12 @@ def check(reference: Path) -> tuple[list[str], str]:
             raise ValueError(f"Shared file must be a regular source file: {renamed(source)}")
         if bool(actual.stat().st_mode & 0o100) != (modes[source] == "100755"):
             raise ValueError(f"Shared file executable mode differs: {renamed(source)}")
+    for path, mode in additions.items():
+        actual = PROJECT / path
+        if actual.is_symlink():
+            raise ValueError(f"Shared file must be a regular source file: {path}")
+        if bool(actual.stat().st_mode & 0o100) != (mode == "100755"):
+            raise ValueError(f"Shared file executable mode differs: {path}")
     with tempfile.TemporaryDirectory(prefix="td20-machinery-") as directory:
         mirror = Path(directory)
         for source in sources:

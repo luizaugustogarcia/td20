@@ -98,6 +98,27 @@ class CompletePortAuditTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Shared file set differs: missing=.*ExampleTest"):
             audit.check(self.reference)
 
+    def test_execution_addition_requires_exact_content_mode_and_presence(self):
+        path = "tools/run-special-emitter.sh"
+        content = "#!/usr/bin/env bash\necho configured\n"
+        self.adapter.write_text(self.adapter.read_text() +
+            f"diff --git a/{path} b/{path}\nnew file mode 100755\n"
+            f"--- /dev/null\n+++ b/{path}\n@@ -0,0 +1,2 @@\n"
+            "+#!/usr/bin/env bash\n+echo configured\n")
+        launcher = self.write(self.project, path, content, 0o755)
+        checked, _ = audit.check(self.reference)
+        self.assertEqual(self.expected | {path}, set(checked))
+        launcher.write_text(content.replace("configured", "changed"))
+        with self.assertRaisesRegex(ValueError, path):
+            audit.check(self.reference)
+        launcher.write_text(content)
+        launcher.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "executable mode differs"):
+            audit.check(self.reference)
+        launcher.unlink()
+        with self.assertRaisesRegex(ValueError, "Shared file set differs: missing="):
+            audit.check(self.reference)
+
     def test_extra_source_is_rejected(self):
         self.write(self.project, "checker/src/main/java/Unreviewed.java", "class Unreviewed {}\n")
         with self.assertRaisesRegex(ValueError, "extra=.*Unreviewed.java"):

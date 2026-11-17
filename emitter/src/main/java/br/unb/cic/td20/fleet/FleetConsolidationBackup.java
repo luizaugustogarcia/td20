@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 
 /** Physical consolidation on each server, followed by parallel downloads of large SSTs. */
 public final class FleetConsolidationBackup {
-    private record FileEntry(String name,long bytes) { }
+    record FileEntry(String name,long bytes) { }
     private record DownloadFile(FleetServer server,FileEntry entry) { }
     private final Path root,run,directory; private final String uuid; private final List<FleetServer> servers; private final FleetProgress progress;
     private FleetConsolidationBackup(Path root,Path run,String uuid,List<FleetServer> servers,FleetProgress progress) {
@@ -136,7 +136,7 @@ public final class FleetConsolidationBackup {
         var result=new TreeMap<String,List<FleetConsolidationWorker.Candidate>>();servers.forEach(s->result.put(s.name(),new ArrayList<>()));
         chosen.values().forEach(c->result.get(c.server().name()).add(c.candidate()));return result;
     }
-    private static List<FileEntry> readFiles(Path file,String run,String server)throws Exception {
+    static List<FileEntry> readFiles(Path file,String run,String server)throws Exception {
         var lines=Files.readAllLines(file);if(lines.size()<5||!lines.subList(0,4).equals(List.of("td20-consolidation-files-v1","route="+ErikssonRoute.ID,"run="+run,"server="+server)))
             throw new IllegalArgumentException("Wrong consolidated file inventory");
         int n=Integer.parseInt(FleetFiles.field(lines,4,"files"));if(n<1||lines.size()!=n+5L)throw new IllegalArgumentException("Missing consolidated files");
@@ -145,7 +145,7 @@ public final class FleetConsolidationBackup {
             long size=Long.parseLong(values[1]);if(size<0)throw new IllegalArgumentException("Negative file size");result.add(new FileEntry(values[0],size));}
         return List.copyOf(result);
     }
-    private static void validate(Path path,String run,String server,List<FleetConsolidationWorker.Candidate> candidates)throws Exception {
+    static void validate(Path path,String run,String server,List<FleetConsolidationWorker.Candidate> candidates)throws Exception {
         for(var file:readFiles(path.resolve("files-v1.txt"),run,server))if(Files.size(path.resolve(file.name()))!=file.bytes())throw new IllegalStateException("Missing or truncated consolidated file");
         if(!candidates.equals(FleetConsolidationWorker.read(path.resolve("tasks-v1.txt"),run,server)))throw new IllegalArgumentException("Different downloaded task scope");
         var roots=ErikssonInventory.read(ProjectPaths.root(Path.of("")).resolve("docs/td20-reduction-count.tex"));

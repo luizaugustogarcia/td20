@@ -21,6 +21,7 @@ Computation:
   avoidance    Reconstruct endpoint failures via JShell
   fleet        Distribute emission and reconstruction over SSH; download and merge
   fleet-consolidate  Compact closed emission DBs remotely, then download large SSTs
+  fleet-recover-emission  Regenerate a lost server's exact emission scope
   merge        Replay and merge certificate DBs into a fresh local database
   verify       Independently replay obligations via checker JShell
 
@@ -83,6 +84,7 @@ case "$command" in
     fleet-hardware) entry=br.unb.cic.td20.fleet.FleetHardware ;;
     fleet-consolidate-worker) entry=br.unb.cic.td20.fleet.FleetConsolidationWorker ;;
     fleet-consolidate) entry=br.unb.cic.td20.fleet.FleetConsolidationBackup ;;
+    fleet-recover-emission) entry=br.unb.cic.td20.fleet.FleetEmissionRecovery ;;
     merge) entry=br.unb.cic.td20.certificate.CertificateDatabaseMerger ;;
     *) printf 'Unknown command: %s\n' "$command" >&2; exit 2 ;;
 esac

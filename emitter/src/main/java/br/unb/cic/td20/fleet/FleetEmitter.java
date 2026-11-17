@@ -566,11 +566,15 @@ public final class FleetEmitter {
     }
     static void runShell(String command, Path cwd, Path input, Path output, Path log,
                          java.util.function.Consumer<String> observer, byte[] secretInput) throws IOException, InterruptedException {
+        runShell(command,cwd,input,output,log,observer,secretInput,false);
+    }
+    static void runShell(String command, Path cwd, Path input, Path output, Path log,
+                         java.util.function.Consumer<String> observer, byte[] secretInput,boolean appendOutput) throws IOException, InterruptedException {
         var builder = new ProcessBuilder("bash","-ic",command).directory(cwd.toFile());
         builder.environment().remove("TD20_GITHUB_TOKEN");
         if (secretInput == null) builder.redirectInput(input == null ? ProcessBuilder.Redirect.from(Path.of("/dev/null").toFile()) : ProcessBuilder.Redirect.from(input.toFile()));
         builder.redirectErrorStream(output == null);
-        if (output != null) builder.redirectOutput(ProcessBuilder.Redirect.to(output.toFile()));
+        if (output != null) builder.redirectOutput(appendOutput?ProcessBuilder.Redirect.appendTo(output.toFile()):ProcessBuilder.Redirect.to(output.toFile()));
         var process = builder.start();
         var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
         var drain = Thread.ofPlatform().name("fleet-command-output").start(() -> {

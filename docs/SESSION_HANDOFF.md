@@ -25,7 +25,8 @@ both endpoints, and both (1,2,2) and (0,3,2) inverse paths.
 ## Fleet
 
 Connections: fleet/servers.tsv. Individual profiles: fleet/profiles/.
-All six active servers have 16 certificate writers.
+The five surviving active servers have 16 certificate writers. vast-06 crashed
+irrecoverably and must not be contacted or included in the recovery fleet.
 
 | Node | SSH destination | GPU | JVM CPUs | Heap GiB | GPU slots | MiB/slot |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
@@ -41,7 +42,43 @@ JDK21, Maven, CMake, cloned source and native compilation. vast-03 and vast-08
 share an IP but are distinct containers/ports. Coordinator: 22 JVM CPUs, 16GiB
 heap, eight certificate/reconstruction writers. Re-inspect resources before
 computing; automatic UseNUMA applies to multiple allocated sockets/NUMA nodes.
-Verify identical Git revisions across servers, without source-file hashes.
+Verify identical Git revisions across surviving servers, without source-file hashes.
+
+## Lost emission recovery
+
+All five surviving emission databases finished downloading at 19:18:52 Lisbon
+and passed local file/schema/count/checksum validation by 19:19:34. They are
+under RUN/downloads/vast-02, vast-03, vast-04, vast-05 and vast-08. Their
+completion marker is RUN/consolidation/survivors-complete-v1.txt.
+vast-06 saved 16/26 SSTs locally; ten SSTs (about 9.6 GiB) are missing. Its
+incomplete database is not an input. All original receipts, endpoint residuals,
+the 2,036-class union and the prepared 5,032,950-state inverse wave are retained.
+
+The operator authorized regenerating the lost data with all five survivors
+and cleaning their remote run files before launch. Cleanup completed with no
+remote Java workers active and their local accepted backups checked. Remote
+source clones/native caches were retained; other old remote run files were
+deleted. The cleanup record is RUN/emission-recovery-vast-06-v1/cleanup-v1.txt.
+Use fleet/servers-survivors.tsv and each server's existing individual profile.
+
+tools/td20 fleet-recover-emission --run=fleet/production-td20-20261117
+--servers=fleet/servers-survivors.tsv --lost-server=vast-06 regenerates exactly
+the 333 task definitions recorded in RUN/consolidation/vast-06-inputs-v1.txt.
+It uses the existing shared dynamic queue, schedules larger endpoint prefixes
+first, re-inspects resources, applies automatic NUMA flags, and performs no
+startup sorting tests/replay. Its state and ten-second log are under
+RUN/emission-recovery-vast-06-v1. Both mandatory local CPU suites passed.
+
+Regenerated receipts and every residual class must match the preserved
+originals before adopting certificates. New emission databases are physically
+consolidated per server, targeting 1 GiB SSTs, then transferred with bounded
+parallel SSH workers. Retries resume at the saved byte offset. Publication uses
+RUN/downloads/recovered-vast-06-vast-XX/certificates; the five survivor inputs
+remain intact. The combined scope must cover all 1,469 original emission tasks
+exactly once before RUN/consolidation/complete-v1.txt is published.
+Inverse reconstruction and the independent proof-verification waiter remain
+stopped. The final single merged database still belongs at project-root
+certificates/ after inverse reconstruction completes.
 
 ## Authorized streaming reconstruction upgrade
 

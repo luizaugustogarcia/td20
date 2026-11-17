@@ -333,6 +333,26 @@ accepted locally; completed computations and prepared reconstruction inputs
 are unaffected.
 
 Fleet receipts and checkpoints are operational records, never proof inputs.
+
+If one source server is irrecoverable, keep all accepted local databases and
+the original full task/residual inventory. Recover that server's exact selected
+emission scope with the surviving server profiles:
+
+```bash
+bash -ic './tools/td20 fleet-recover-emission --run=fleet/run-01 --servers=fleet/survivors.tsv --lost-server=lost-node'
+```
+
+The selected scope comes from RUN/consolidation/lost-node-inputs-v1.txt and is
+checked against the full emission plan and original receipts. This command
+never starts inverse reconstruction. It schedules the lost emission tasks in
+the existing shared queue, checks regenerated receipts and residual classes,
+consolidates the replacement data remotely, and resumes interrupted SST
+transfers without discarding saved bytes. Replacement inputs have separate
+recovered-lost-node-SERVER directories. Complete combined coverage is required
+before adopting the replacement emission backup; partial SST databases cannot
+be used. Clean old remote work only after surviving databases are accepted
+locally and every computing worker has stopped.
+
 They do not establish exhaustive proof coverage. Run the independent checker
 against the merged database, using fresh checker work and the full scope:
 

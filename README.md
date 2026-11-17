@@ -47,7 +47,7 @@ bash -ic './tools/run-local-checker.sh'
 
 The maintained launchers detect available CPU cores and memory limits and record
 each run's configuration, timings and status. Their resource limits and CUDA
-architecture are configurable. The generic GPU build retains SM 120; the local
+architecture are configurable. The generic GPU build includes SM 89 and SM 120; the local
 launcher defaults to SM 89. Neither is evidence of a completed TD20 run.
 Successful CPU computations do not initialize CUDA. The checker has no emitter
 artifact dependency and independently regenerates obligations before replay.

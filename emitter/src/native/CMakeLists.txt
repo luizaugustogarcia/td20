@@ -3,8 +3,12 @@ project(td20_native LANGUAGES CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 
-set(TD20_CUDA_ARCHITECTURES "120-real;120-virtual"
-    CACHE STRING "CUDA architectures (default: SM 120 native code and forward PTX)")
+set(TD20_CUDA_ARCHITECTURES "89-real;120-real;120-virtual"
+    CACHE STRING "CUDA architectures (default: SM 89 and SM 120 native code, SM 120 forward PTX)")
+if(TD20_CUDA_ARCHITECTURES MATCHES "(^|;)89(-real|-virtual)?(;|$)"
+        AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.8)
+    message(FATAL_ERROR "CUDA architecture SM 89 requires CUDA Toolkit 11.8 or newer")
+endif()
 if(TD20_CUDA_ARCHITECTURES MATCHES "(^|;)120(-real|-virtual)?(;|$)"
         AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
     message(FATAL_ERROR "CUDA architecture SM 120 requires CUDA Toolkit 12.8 or newer")

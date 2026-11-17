@@ -291,6 +291,41 @@ Certificates use normalized cyclic-target pairs and their existing deterministic
 keys; cross-server deduplication keeps the strongest intrinsic witness, which is
 necessary when an earlier inverse wave has already relied on a smaller budget.
 
+Closed emission databases can instead be physically consolidated on their source
+servers before downloading. This reduces thousands of small file transfers:
+
+```bash
+bash -ic './tools/td20 fleet-consolidate --run=target/fleet/run-01 --servers=target/fleet/servers.tsv'
+```
+
+Stop all computation and earlier download coordinators first. This command
+requires a complete, validated local emission receipt/residual inventory and
+every original closed remote database. It re-inspects the sources, applies each
+profile with automatic NUMA flags, and runs raw KV copying on all servers in
+parallel. Disjoint sorted ranges are copied into external SSTs without decoding
+or replaying witnesses. Native compaction targets 1 GiB ZSTD SSTs. Repeated schema
+records are written once; unexpected duplicate class keys or missing KV records
+reject publication. This path applies to disjoint root/endpoint emission tasks,
+not overlapping inverse reconstruction results. Source databases are preserved.
+
+The consolidation source snapshot and ten-second log/status snapshots are under
+RUN/consolidation, separate from the original computational snapshot. Downloads
+use 24 independent SSH workers, with a bounded queue of 48 and round-robin server
+ordering. SSH recompression is disabled for the already compressed SSTs. Progress
+includes transferred bytes, current throughput, retries and transfer ETA. Stable
+per-server staging retains complete SSTs across retries. Exact file sizes, task
+receipts, schema, counts and RocksDB checksums are checked before publishing
+RUN/downloads/SERVER/certificates. All expected tasks are mandatory in
+RUN/consolidation/complete-v1.txt. These operational checks do not replay witnesses
+or establish proof coverage.
+
+A subsequent fleet resume validates and reuses the consolidated emission scope
+without redispatching emission. Its final replaying merge combines these DBs
+with every required reconstruction result. Independent full checking stays
+separate. Keep the source servers until consolidation downloads are fully
+accepted locally; completed computations and prepared reconstruction inputs
+are unaffected.
+
 Fleet receipts and checkpoints are operational records, never proof inputs.
 They do not establish exhaustive proof coverage. Run the independent checker
 against the merged database, using fresh checker work and the full scope:

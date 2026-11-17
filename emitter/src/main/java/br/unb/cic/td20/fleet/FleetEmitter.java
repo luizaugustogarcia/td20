@@ -107,7 +107,7 @@ public final class FleetEmitter {
         }
     }
 
-    private Path snapshot() throws Exception {
+    Path snapshot() throws Exception {
         Path snapshot = directory.resolve("source.tar");
         if (!Files.exists(snapshot)) {
             Path temporary = directory.resolve("source-" + UUID.randomUUID() + ".partial");
@@ -153,7 +153,11 @@ public final class FleetEmitter {
             Files.move(temporary,emissionPlan,StandardCopyOption.ATOMIC_MOVE);
         }
         var emission = EmissionBatches.read(run,emissionPlan);
-        dispatch(emission,emissionPlan,snapshot);
+        if (Files.isRegularFile(directory.resolve("consolidation/complete-v1.txt"))) {
+            FleetConsolidationBackup.completedInputs(directory,run,emission);
+            progress.phase("emission",emission.size(),emission.size());
+            progress.event("coordinator","Reusing complete local consolidated emission; no old server is required");
+        } else dispatch(emission,emissionPlan,snapshot);
         var completed = downloadMetadata(emission);
         EmissionBatches.validateCompleted(run,emissionPlan,completed);
         progress.event("coordinator","All 143 endpoint annotation counts match their complete generation task unions.");
@@ -171,13 +175,15 @@ public final class FleetEmitter {
         }
         progress.event("coordinator","Reconstruction tasks: " + reconstruction.size());
         var allTasks = new ArrayList<>(emission); allTasks.addAll(reconstruction);
-        var all = downloadCertificates(allTasks);
-        // Recheck every expected receipt before publishing the merged database.
-        var inputs = all.stream().map(path -> path.resolve("certificates")).toList();
+        var inputs = new ArrayList<Path>();
+        if (Files.isRegularFile(directory.resolve("consolidation/complete-v1.txt"))) {
+            inputs.addAll(FleetConsolidationBackup.completedInputs(directory,run,emission));
+            inputs.addAll(downloadCertificates(reconstruction).stream().map(path->path.resolve("certificates")).toList());
+        } else inputs.addAll(downloadCertificates(allTasks).stream().map(path->path.resolve("certificates")).toList());
         Path output = directory.resolve("certificates");
         Path report = directory.resolve("complete.txt");
         if (Files.exists(output)) {
-            var expected = List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + all.size());
+            var expected = List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + allTasks.size());
             if (!Files.readAllLines(output.resolve("fleet-complete.txt")).equals(expected)
                     || Files.exists(report) && !Files.readAllLines(report).equals(expected) || !Files.isRegularFile(output.resolve("CURRENT"))
                     || !Files.isRegularFile(output.resolve("merge-v1.txt"))) throw new IllegalStateException("Incomplete published fleet merge");
@@ -187,12 +193,12 @@ public final class FleetEmitter {
             progress.event("coordinator","Replaying and merging " + inputs.size() + " downloaded certificate databases.");
             var result = CertificateDatabaseMerger.merge(temporary,inputs,message -> progress.event("merge",message));
             // The receipt and merge record also travel with the atomic database publication.
-            FleetFiles.write(temporary.resolve("fleet-complete.txt"),List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + all.size()));
+            FleetFiles.write(temporary.resolve("fleet-complete.txt"),List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + allTasks.size()));
             Files.move(temporary,output,StandardCopyOption.ATOMIC_MOVE);
             progress.event("coordinator","Merged certificates: " + result);
         }
         if (!Files.exists(report)) FleetFiles.write(report,Files.readAllLines(output.resolve("fleet-complete.txt")));
-        progress.finished(all.size());
+        progress.finished(allTasks.size());
         progress.event("coordinator","Fleet emission completed: " + output + ". Run the independent full checker against this database.");
     }
     @FunctionalInterface interface PublishedTasks { void produce(java.util.function.Consumer<FleetTask> ready) throws Exception; }
@@ -395,7 +401,7 @@ public final class FleetEmitter {
             }
         }
     }
-    private String prepare(FleetServer server, Path snapshot, boolean computing) throws Exception {
+    String prepare(FleetServer server, Path snapshot, boolean computing) throws Exception {
         String source = server.directory() + "/" + run + "/" + server.name() + "/source";
         Path log = directory.resolve(server.name() + "-setup.log");
         progress.event(server.name(),"preparing source and runtime");

@@ -53,16 +53,22 @@ record FleetServer(String name, List<String> ssh, String directory, String archi
             throw new IllegalArgumentException("SSH connection must end with its destination and contain no remote command");
     }
     List<String> remote(String command) {
-        return remote(command,false);
+        return remote(command,false,true);
     }
     List<String> transferRemote(String command) {
-        return remote(command,true);
+        return transferRemote(command,true);
     }
-    private List<String> remote(String command, boolean transfer) {
+    List<String> transferRemote(String command,boolean compression) {
+        return remote(command,true,compression);
+    }
+    private List<String> remote(String command, boolean transfer,boolean compression) {
         var args = new ArrayList<String>(); args.add("ssh");
         args.addAll(List.of("-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6"));
         // OpenSSH uses the first value: override any configured multiplexing for bulk transfers.
-        if (transfer) args.addAll(List.of("-C","-o","ControlMaster=no","-o","ControlPath=none"));
+        if (transfer) {
+            if(compression)args.add("-C");else args.addAll(List.of("-o","Compression=no"));
+            args.addAll(List.of("-o","ControlMaster=no","-o","ControlPath=none"));
+        }
         args.addAll(ssh.subList(1,ssh.size()));
         args.add(FleetFiles.interactive(command));
         return List.copyOf(args);

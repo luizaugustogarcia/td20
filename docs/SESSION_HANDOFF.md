@@ -69,18 +69,39 @@ explicitly authorized distributed extensions.
 
 ## Completion and separate checking
 
-Load coordinator.jvm into TD20_JSHELL_OPTIONS and set TD20_FLEET_LAUNCH_ARGS to
-target/fleet/launch.args. Launch tools/fleet/StartFleet.jsh through JShell, retaining
-the plan and UUID. Start the independent waiter with target/fleet/StartVerification.jsh.
-It waits for the complete merge, builds an isolated checker from pinned source
-and verifies the full scope with fresh checker work.
+Reconstruction is stopped at the operator's request, pending a replacement fleet.
+Zero reconstruction batches completed. The coordinator, remote workers, temporary
+streaming bridge and independent verification waiter are stopped. Preserve all
+completed emission databases, RUN/results and RUN/reconstruction. Do not restart
+reconstruction or its waiter until the operator supplies the replacement fleet.
 
-Certificates remain remote during emission/reconstruction. Only metadata and
-endpoint residuals were transferred for preparation. After reconstruction closes,
-the bounded background transfer pool downloads every certificate to
-RUN/downloads/TASK/ and the verified streaming merge publishes RUN/certificates.
-Full proof verification remains separate and pending. Downstream inverse totals
-and a reliable complete-run ETA remain unknown.
+The old 24-worker per-task download was aborted. All RUN/downloads contents and
+partial transfer archives were deleted, freeing 52,030,878,767 bytes. Old successful
+downloads had removed their transfer intents, so recover the complete 1,469-task
+scope from closed remote receipts and match them against local validated results.
+
+The authorized replacement is tools/td20 fleet-consolidate, with --run and --servers
+pointing to this run and target/fleet/servers.tsv. It re-inspects all sources, uses
+their individual profiles and automatic NUMA flags, and performs physical KV
+consolidation concurrently on all six servers. Values remain opaque; no witness
+replay occurs. Final native compaction targets 1 GiB ZSTD SSTs. Original closed
+databases remain remote. The separate consolidation source snapshot is under
+RUN/consolidation; preserve the original computational source.tar/source.bundle.
+
+After consolidation, 24 independent SSH workers download SSTs in round-robin
+server order. SSH recompression is disabled for these already compressed tables.
+Files are staged separately per server, then accepted after exact file sizes,
+task scope, schema, KV counts and RocksDB checksums pass. Publication is
+RUN/downloads/vast-XX/certificates, with RUN/consolidation/complete-v1.txt requiring
+every emission task. Resume can use these six DBs without old emission servers;
+the later replaying merge still includes every completed reconstruction result.
+The project-root certificates/ was an earlier interrupted local run (41 GiB),
+never a fleet input, and was deleted at the operator's request.
+
+Consolidation progress is RUN/consolidation/emission.log and status.txt. Raw setup
+and per-server logs remain separate. Full proof verification remains separate
+and pending, with fresh checker work after the final merged certificate exists.
+Downstream inverse totals and a reliable complete-run ETA remain unknown.
 
 Follow the concise ten-second RUN/emission.log with bash -ic and tail -F.
 RUN/status.txt is atomically replaced and shows preparation, active servers and

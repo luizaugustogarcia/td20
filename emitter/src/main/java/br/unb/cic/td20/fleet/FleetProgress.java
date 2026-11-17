@@ -25,6 +25,9 @@ final class FleetProgress implements AutoCloseable {
     private int total, completed, reused, failed, retries;
     private long generated, residuals, reconstructed;
     private int batchTotal, batchReady;
+    private long transferTotal,previousTransferBytes;
+    private Instant previousTransferSample;
+    private java.util.function.LongSupplier transferBytes;
     FleetProgress(Path path) throws IOException {
         writer = Files.newBufferedWriter(path, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         statusFile = path.resolveSibling("status.txt");
@@ -33,12 +36,15 @@ final class FleetProgress implements AutoCloseable {
     }
     synchronized void phase(String name, int jobs, int resumed) {
         phase = name; phaseStarted = Instant.now(); total = jobs; completed = resumed; reused = resumed; failed = 0;
-        active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); generated = residuals = reconstructed = 0; batchTotal = batchReady = 0; report();
+        active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); generated = residuals = reconstructed = 0; batchTotal = batchReady = 0; transferBytes=null; report();
+    }
+    synchronized void transferBytes(long total,java.util.function.LongSupplier bytes) {
+        transferTotal=total;transferBytes=bytes;previousTransferBytes=bytes.getAsLong();previousTransferSample=Instant.now();
     }
     synchronized void batchInventory(int count) { batchTotal = count; batchReady = 0; }
     synchronized void batchPublished() { batchReady++; }
     synchronized void finished(int jobs) {
-        phase = "complete"; total = jobs; completed = jobs; active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); report();
+        phase = "complete"; total = jobs; completed = jobs; active.clear(); latest.clear(); started.clear(); stages.clear(); downloads.clear(); transferBytes=null; report();
     }
     synchronized void start(String server, String job) {
         active.put(server,job); started.put(server,Instant.now()); stages.put(server,"uploading");
@@ -113,6 +119,15 @@ final class FleetProgress implements AutoCloseable {
                 + " residualEndpointClasses=" + residuals + "; certificate databases remain remote");
         if (phase.equals("certificate downloads")) snapshot.add("Accepted certificate databases this phase: generatedEndpointClasses=" + generated
                 + " reconstructedRootClasses=" + reconstructed + " (cross-task duplicates possible)");
+        if(transferBytes!=null) {
+            long bytes=transferBytes.getAsLong();
+            double seconds=Math.max(0.001,Duration.between(previousTransferSample,now).toMillis()/1000.0);
+            double rate=Math.max(0,bytes-previousTransferBytes)/seconds;
+            String eta=rate>0?elapsed(now,now.plusSeconds((long)Math.ceil(Math.max(0,transferTotal-bytes)/rate))):"unknown";
+            snapshot.add(String.format(Locale.ROOT,"SST transfer: %.2f/%.2f GiB; current=%.1f MB/s; transfer ETA=%s",
+                    bytes/(double)(1L<<30),transferTotal/(double)(1L<<30),rate/1e6,eta));
+            previousTransferBytes=bytes;previousTransferSample=now;
+        }
         var reportingServers = new TreeSet<>(active.keySet());
         downloads.values().forEach(download -> reportingServers.add(download.server()));
         for (String server : reportingServers) {
@@ -144,6 +159,10 @@ final class FleetProgress implements AutoCloseable {
             case "reconstruction" -> "4/6 remote reconstruction computation";
             case "certificate downloads" -> "5/6 final certificate downloads";
             case "local certificate merge" -> "6/6 certificate merge";
+            case "consolidation source preparation" -> "preparing completed emission backup";
+            case "remote emission database consolidation" -> "consolidating completed emission; reconstruction stopped";
+            case "consolidated SST downloads" -> "downloading consolidated emission; reconstruction stopped";
+            case "validating consolidated emission downloads" -> "validating completed emission backup";
             case "complete" -> "production complete";
             default -> "preparing production (" + phase + ")";
         };

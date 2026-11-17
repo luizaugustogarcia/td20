@@ -180,3 +180,11 @@ batch writes retain the existing state format with WAL disabled and explicit
 flushes. Publication is bounded, resume checks every sorted slice, and the final
 complete inventory remains a required boundary. This scheduling extension is
 unit-tested locally; it does not change the checker or certify the frozen audit.
+
+The operator subsequently stopped reconstruction for a replacement fleet and
+authorized physical consolidation of completed emission DBs on the existing
+servers before transfer. This TD20 extension copies opaque disjoint KV ranges,
+compacts to roughly 1 GiB ZSTD SSTs, and downloads them through a bounded parallel
+SSH queue. Exact scope/count validation rejects missing records or unexpected
+duplicate classes. It preserves original sources and the later replaying merge
+and independent checker. The frozen TD18 checkout and audit remain unchanged.

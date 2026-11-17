@@ -1,0 +1,878 @@
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,6 +1,8 @@
+ # Maven and Java build products
+ **/target/
+ *.class
++__pycache__/
++*.py[cod]
+ 
+ # Generated computational artifacts
+ certificates/
+@@ -46,9 +48,3 @@
+ 
+ # Locally supplied research articles
+ docs/refs/*.pdf
+-
+-# Retained evidence for the designated reference simulation
+-!logs/
+-logs/*
+-!logs/reference/
+-!logs/reference/**
+--- a/checker/src/test/java/br/unb/cic/td20/certificate/CanonicalCertificateKeyTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/certificate/CanonicalCertificateKeyTest.java
+@@ -27,7 +27,7 @@
+ 
+     @Test void arbitraryCurrentCyclesAndFullWireDomainsMatchIncludingFixedPoints() {
+         var random = new Random(0x77425090L);
+-        for (int n : new int[]{14, 16, 18, 19, 23, 32}) {
++        for (int n : new int[]{14, 16, 18, 19, 20, 21, 23, 32}) {
+             for (int sample = 0; sample < 50; sample++) {
+                 int[] current = shuffled(n, random), target = shuffled(n, random);
+                 int[] previous = new int[n], next = new int[n], images = new int[n];
+@@ -104,7 +104,7 @@
+             if (pair.getOmega().image(symbol) == symbol) fixedPointFree = false;
+         if (fixedPointFree) {
+             byte[] state = DirectStateKey.encode(pair, 9);
+-            assertEquals(2, state[0]);
++            assertEquals(3, state[0]);
+             assertEquals(9, state[1]);
+             assertEquals(pair.getBeta().size(), state[2]);
+             assertArrayEquals(direct, Arrays.copyOfRange(state, 3, state.length));
+--- a/checker/src/test/java/br/unb/cic/td20/certificate/CertificateStoreTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/certificate/CertificateStoreTest.java
+@@ -16,6 +16,9 @@
+     static { RocksDB.loadLibrary(); }
+     private static final CyclicTargetPair PAIR = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(0,1,2));
+     private static void database(final Path path, final byte[] value, final boolean marker) throws Exception {
++        database(path, value, marker ? "eriksson-three-v1" : null, PAIR);
++    }
++    private static void database(final Path path, final byte[] value, final String marker, final CyclicTargetPair pair) throws Exception {
+         try (final var options = new DBOptions().setCreateIfMissing(true).setCreateMissingColumnFamilies(true);
+              final var first = new ColumnFamilyOptions(); final var second = new ColumnFamilyOptions()) {
+             final var handles = new ArrayList<ColumnFamilyHandle>();
+@@ -24,8 +27,8 @@
+                     new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles);
+                  final var writes = new WriteOptions().setDisableWAL(true);
+                  final var flush = new FlushOptions().setWaitForFlush(true)) {
+-                if(marker) db.put(handles.get(0),writes,"td20-schema".getBytes(StandardCharsets.UTF_8),"joint-selection-v3".getBytes(StandardCharsets.UTF_8));
+-                if(value!=null) db.put(handles.get(0),writes,CertificateCodec.keyFor(PAIR),value);
++                if(marker!=null) db.put(handles.get(0),writes,"td20-schema".getBytes(StandardCharsets.UTF_8),marker.getBytes(StandardCharsets.UTF_8));
++                if(value!=null) db.put(handles.get(0),writes,CertificateCodec.keyFor(pair),value);
+                 db.flush(flush,handles);
+                 handles.forEach(ColumnFamilyHandle::close);
+             }
+@@ -84,12 +87,13 @@
+ 
+     @Test void projectMaximumIsValidatedBeforeRequestedBudgetComparison(@TempDir final Path path) throws Exception {
+         var moves=new ArrayList<Cycle>();
+-        for(int i=0;i<5;i++) {moves.add(Cycle.of(0,1,2));moves.add(Cycle.of(1,0,2));}
+-        // Ten moves return to PAIR, whose nonfixed remainder requires one more move.
+-        database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.closure(moves)),true);
++        for(int i=0;i<4;i++) {moves.add(Cycle.of(0,1,2));moves.add(Cycle.of(1,0,2));}
++        var pair=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2,3,4,5,6)),Cycle.of(0,1,2,3,4,5,6)).canonicalRepresentative();
++        // Eight moves return to this pair; TD(6)=4 makes the closure require twelve.
++        database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.closure(moves)),"eriksson-three-v1",pair);
+         try(var store=new CertificateStore(path.resolve("db"))) {
+-            assertThrows(IllegalArgumentException.class,()->store.find(PAIR,20));
+-            assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(PAIR),20));
++            assertThrows(IllegalArgumentException.class,()->store.find(pair,20));
++            assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(pair),20));
+         }
+     }
+     @Test void missingWitnessIsNotInventedFromInventory(@TempDir final Path path) throws Exception {
+@@ -99,6 +103,10 @@
+             assertThrows(IllegalStateException.class,()->store.require(PAIR,10));
+         }
+     }
++    @Test void rejectsSupersededSchema(@TempDir final Path path) throws Exception {
++        database(path.resolve("old-route"),null,"joint2-selection-v2",PAIR);
++        assertThrows(IllegalStateException.class,()->new CertificateStore(path.resolve("old-route")));
++    }
+     @Test void rejectsMissingFormatMarker(@TempDir final Path path) throws Exception {
+         database(path.resolve("db"),null,false);
+         assertThrows(IllegalStateException.class,()->new CertificateStore(path.resolve("db")));
+--- a/checker/src/test/java/br/unb/cic/td20/certificate/ExplicitBudgetPersistenceTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/certificate/ExplicitBudgetPersistenceTest.java
+@@ -35,7 +35,7 @@
+                     new org.rocksdb.ColumnFamilyDescriptor("obstructions".getBytes(java.nio.charset.StandardCharsets.UTF_8),second)),handles);
+                  var writes=new org.rocksdb.WriteOptions().setDisableWAL(true);
+                  var flush=new org.rocksdb.FlushOptions().setWaitForFlush(true)) {
+-                database.put(handles.get(0),writes,"td20-schema".getBytes(java.nio.charset.StandardCharsets.UTF_8),"joint-selection-v3".getBytes(java.nio.charset.StandardCharsets.UTF_8));
++                database.put(handles.get(0),writes,"td20-schema".getBytes(java.nio.charset.StandardCharsets.UTF_8),"eriksson-three-v1".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                 database.put(handles.get(0),writes,CertificateCodec.keyFor(pair),CertificateCodec.resultFor(SortingCertificate.closure(List.of())));
+                 database.flush(flush,handles);
+                 handles.forEach(org.rocksdb.ColumnFamilyHandle::close);
+--- a/checker/src/test/java/br/unb/cic/td20/certificate/SortingCertificateTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/certificate/SortingCertificateTest.java
+@@ -28,10 +28,10 @@
+         CertificateValidator.validate(pair,record,1);
+         assertThrows(IllegalArgumentException.class,()->CertificateValidator.validate(pair,record,0));
+     }
+-    @Test void unknownDiameterCannotCertifyTheNineteenSymbolDomain() {
+-        int[] symbols = java.util.stream.IntStream.range(0,19).toArray();
++    @Test void unknownDiameterCannotCertifyTheTwentyOneSymbolDomain() {
++        int[] symbols = java.util.stream.IntStream.range(0,21).toArray();
+         var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(symbols)),Cycle.of(symbols));
+-        assertThrows(IllegalArgumentException.class,()->CertificateValidator.validate(pair,SortingCertificate.closure(List.of()),10));
++        assertThrows(IllegalArgumentException.class,()->CertificateValidator.validate(pair,SortingCertificate.closure(List.of()),11));
+     }
+     @Test void codecRejectsUnknownKindsCountsTruncationAndPadding() {
+         assertThrows(IllegalArgumentException.class,()->CertificateCodec.decodeResult(new byte[0]));
+--- a/checker/src/test/java/br/unb/cic/td20/joint/SupportClearingTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/joint/SupportClearingTest.java
+@@ -5,32 +5,29 @@
+ import br.unb.cic.td20.permutation.Cycle;
+ import br.unb.cic.td20.permutation.MulticyclePermutation;
+ import java.util.Arrays;
+-import static org.junit.jupiter.api.Assertions.*;
++import static org.junit.jupiter.api.Assertions.assertEquals;
+ 
+ class SupportClearingTest {
+-    @Test void admittedPowersAndTheirRelabelingsMatchTheRootBudget() {
+-        int[][] candidates={
+-                {5, 3, 0}, {7, 4, 1}, {9, 5, 0}, {9, 7, 1},
+-                {11, 6, 1}, {13, 7, 1}, {13, 10, 1}, {13, 11, 1}, {15, 8, 0}
+-        };
+-        for (int[] candidate:candidates) {
+-            if (candidate[2]==0) continue;
+-            int length=candidate[0],power=candidate[1],n=KnownDiameters.ROOT_SYMBOLS,k=(n-length)/2;
+-            // A two-symbol complement cannot form an even fixed-point-free root.
+-            if (k==1) continue;
+-            int[] images=new int[n];
+-            for (int x=0;x<length;x++) images[x]=(x+power)%length;
+-            for (int i=0;i<k;i++) {
+-                images[length+2*i]=length+2*((i+k-1)%k);
+-                images[length+2*i+1]=length+2*((i+k-1)%k)+1;
+-            }
+-            var pair=pair(images);
+-            assertEquals(length,SupportClearing.closingLength(pair));
+-            var omega=new MulticyclePermutation();
+-            for (var cycle:pair.getOmega()) omega.add(Cycle.of(Arrays.stream(cycle.getSymbols()).map(x->(2*x+3)%n).toArray()));
+-            var beta=Cycle.of(Arrays.stream(pair.getBeta().getSymbols()).map(x->(2*x+3)%n).toArray());
+-            assertEquals(length,SupportClearing.closingLength(CyclicTargetPair.of(omega,beta)));
+-        }
++    @Test void allAdmittedPowersAndTheirRelabelingsMatchTheRootBudget() {
++        power(9,new int[]{18,16,5,19,20,15,2,3,4,1,7,8,9,14,6,13,0,10,12,11,17});
++        power(11,new int[]{12,6,14,7,15,17,9,16,19,18,0,20,3,2,4,5,10,8,1,11,13});
++        power(13,new int[]{14,11,12,6,13,16,7,15,17,20,1,2,4,5,18,3,8,9,19,0,10});
++        power(13,new int[]{15,16,19,20,0,10,1,2,17,4,8,6,7,18,9,11,12,5,3,14,13});
++        power(13,new int[]{17,16,13,19,0,3,4,5,1,6,8,7,9,20,11,12,10,14,2,15,18});
++        power(17,new int[]{12,13,14,15,16,7,17,5,20,18,19,0,1,2,3,4,6,9,10,11,8});
++        power(17,new int[]{17,18,19,20,0,1,2,12,3,13,4,5,7,9,6,8,10,11,14,15,16});
++        power(17,new int[]{19,20,0,1,2,3,4,5,6,7,14,8,9,11,10,17,12,15,13,16,18});
++        power(0,new int[]{16,15,17,8,0,11,18,4,14,19,5,3,7,1,10,2,20,6,9,13,12});
++        power(0,new int[]{3,13,16,5,14,0,15,17,18,19,20,2,1,4,6,7,11,8,9,10,12});
++    }
++    private static void power(final int expected,final int[] images) {
++        final var pair=pair(images);
++        assertEquals(expected,SupportClearing.closingLength(pair));
++        final var relabeled=new MulticyclePermutation();
++        for(final var cycle:pair.getOmega())
++            relabeled.add(Cycle.of(Arrays.stream(cycle.getSymbols()).map(x->(5*x+3)%21).toArray()));
++        final var beta=Cycle.of(Arrays.stream(pair.getBeta().getSymbols()).map(x->(5*x+3)%21).toArray());
++        assertEquals(expected,SupportClearing.closingLength(CyclicTargetPair.of(relabeled,beta)));
+     }
+     private static CyclicTargetPair pair(int[] images) {
+         var omega=new MulticyclePermutation(); boolean[] seen=new boolean[images.length];
+--- a/checker/src/test/java/br/unb/cic/td20/verification/CheckerStateSetTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/verification/CheckerStateSetTest.java
+@@ -49,11 +49,11 @@
+             try (var pool = java.util.concurrent.Executors.newFixedThreadPool(4)) {
+                 var jobs = new ArrayList<java.util.concurrent.Future<?>>();
+                 for (int worker=0;worker<4;worker++) jobs.add(pool.submit(() -> {
+-                    for (int i=0;i<103;i++) states.add(new SearchState(1+i%10,pair));
++                    for (int i=0;i<103;i++) states.add(new SearchState(1+i%11,pair));
+                 }));
+                 for (var job:jobs) job.get(30, java.util.concurrent.TimeUnit.SECONDS);
+             }
+-            assertEquals(10, states.seal().count());
++            assertEquals(11, states.seal().count());
+             var seen = java.util.concurrent.ConcurrentHashMap.<Integer>newKeySet();
+             states.forEachConcurrently(4, batch -> {
+                 boolean[] hits = new boolean[batch.size()];
+@@ -61,7 +61,7 @@
+                 return hits;
+             }, state -> assertTrue(seen.add(state.maximumMoves())),
+                state -> assertTrue(seen.add(state.maximumMoves())));
+-            assertEquals(10,seen.size());
++            assertEquals(11,seen.size());
+             assertThrows(IllegalStateException.class, () -> states.forEachConcurrently(4,
+                     batch -> new boolean[0], state -> {}, state -> {}));
+         } finally {
+@@ -76,8 +76,8 @@
+         try (var states = new CheckerStateSet(directory.resolve("small"));
+              var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+             var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(0,1,2));
+-            for(int budget=1;budget<=10;budget++) states.add(new SearchState(budget,pair));
+-            assertEquals(10,states.seal().count());
++            for(int budget=1;budget<=11;budget++) states.add(new SearchState(budget,pair));
++            assertEquals(11,states.seal().count());
+             var completed = new java.util.concurrent.atomic.AtomicInteger();
+             var run=executor.submit(() -> states.forEachConcurrently(2,state -> {
+                 entered.countDown();
+@@ -88,7 +88,7 @@
+             try { assertTrue(entered.await(10,java.util.concurrent.TimeUnit.SECONDS),"Small inventories must use concurrent callbacks"); }
+             finally { release.countDown(); }
+             run.get(10,java.util.concurrent.TimeUnit.SECONDS);
+-            assertEquals(10,completed.get());
++            assertEquals(11,completed.get());
+         } finally { release.countDown(); }
+     }
+ }
+--- a/checker/src/test/java/br/unb/cic/td20/verification/ErikssonCertificateCheckerTest.java
++++ b/checker/src/test/java/br/unb/cic/td20/verification/ErikssonCertificateCheckerTest.java
+@@ -52,7 +52,7 @@
+                     new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles);
+                 final var writes=new WriteOptions().setDisableWAL(true);
+                 final var flush=new FlushOptions().setWaitForFlush(true)) {
+-                database.put(handles.get(0),writes,"td20-schema".getBytes(StandardCharsets.UTF_8),"joint-selection-v3".getBytes(StandardCharsets.UTF_8));
++                database.put(handles.get(0),writes,"td20-schema".getBytes(StandardCharsets.UTF_8),"eriksson-three-v1".getBytes(StandardCharsets.UTF_8));
+                 database.flush(flush,handles);
+                 handles.forEach(ColumnFamilyHandle::close);
+             }
+--- a/emitter/src/test/java/br/unb/cic/td20/avoidance/DiskStateSetTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/avoidance/DiskStateSetTest.java
+@@ -44,7 +44,7 @@
+         var parents = new ArrayList<CyclicTargetPair>();
+         ErikssonInverseReconstruction.preimages(ActiveErikssonAvoidanceTest.pair(5), 1, parents::add);
+         var expected = new java.util.TreeSet<String>();
+-        for (int budget = 8; budget <= 10; budget++) for (var pair : parents)
++        for (int budget = 8; budget <= 11; budget++) for (var pair : parents)
+             expected.add(HexFormat.of().formatHex(DiskStateSet.encode(new DiskStateSet.State(pair, budget))));
+         String oldWriters = System.getProperty("td20.reconstructionWriters");
+         String oldQueue = System.getProperty("td20.reconstructionQueueBatches");
+@@ -55,7 +55,7 @@
+             for (int writerCount : new int[]{1, 3, 8}) {
+                 System.setProperty("td20.reconstructionWriters", Integer.toString(writerCount));
+                 try (var states = new DiskStateSet(directory.resolve("writers-" + writerCount))) {
+-                    for (int budget = 8; budget <= 10; budget++) {
++                    for (int budget = 8; budget <= 11; budget++) {
+                         int moves = budget;
+                         states.addGenerated(moves, output -> {
+                             for (int repetition = 0; repetition < 3; repetition++) parents.forEach(output);
+@@ -89,16 +89,16 @@
+         try {
+             try (var baseline = new DiskStateSet(directory.resolve("baseline"));
+                  var batched = new DiskStateSet(batchedPath)) {
+-                for (int budget = 8; budget <= 10; budget++) {
++                for (int budget = 8; budget <= 11; budget++) {
+                     for (int i = 0; i < 8193; i++) baseline.add(parents.get(i % parents.size()), budget);
+                     baseline.add(lastPair, budget);
+                 }
+                 expected = keys(baseline);
+                 var start = new CountDownLatch(1);
+-                try (var workers = Executors.newFixedThreadPool(6)) {
++                try (var workers = Executors.newFixedThreadPool(8)) {
+                     var futures = new ArrayList<Future<?>>();
+-                    for (int task = 0; task < 6; task++) {
+-                        int budget = 8 + task % 3;
++                    for (int task = 0; task < 8; task++) {
++                        int budget = 8 + task % 4;
+                         futures.add(workers.submit(() -> {
+                             try {
+                                 if (!start.await(30, TimeUnit.SECONDS)) throw new AssertionError("Workers did not start");
+@@ -178,7 +178,7 @@
+         try (var states = new DiskStateSet(directory.resolve("states"))) {
+             states.addGenerated(8, output -> { });
+             assertThrows(IllegalArgumentException.class, () -> states.addGenerated(0, output -> fail("Invalid budget accepted")));
+-            assertThrows(IllegalArgumentException.class, () -> states.addGenerated(11, output -> fail("Invalid budget accepted")));
++            assertThrows(IllegalArgumentException.class, () -> states.addGenerated(12, output -> fail("Invalid budget accepted")));
+             states.addGenerated(9, output -> output.accept(pair));
+             assertEquals(1, states.seal());
+         }
+@@ -323,7 +323,7 @@
+                 Path path = directory.resolve("invalid-" + invalidValue);
+                 byte[] valid = DiskStateSet.encode(new DiskStateSet.State(ActiveErikssonAvoidanceTest.pair(3), 8));
+                 byte[] invalid = valid.clone();
+-                if (invalidValue) invalid[1] = 9; else invalid[0] = 3;
++                if (invalidValue) invalid[1] = 9; else invalid[0] = 2;
+                 try (var options = new org.rocksdb.Options().setCreateIfMissing(true);
+                      var database = org.rocksdb.RocksDB.open(options, path.toString());
+                      var writes = new org.rocksdb.WriteOptions().setDisableWAL(true);
+--- a/emitter/src/test/java/br/unb/cic/td20/avoidance/RootPrefetchTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/avoidance/RootPrefetchTest.java
+@@ -15,13 +15,13 @@
+ 
+ class RootPrefetchTest {
+     @Test void waitsForActivationAndDeduplicatesExactRootKeys() throws Exception {
+-        byte[] first = key(1, 10), last = key(2, 10);
++        byte[] first = key(1, 11), last = key(2, 11);
+         assertFalse(Arrays.equals(first, last));
+         var completed = new CountDownLatch(2);
+         var calls = new AtomicInteger();
+         try (var prefetch = new RootPrefetch(1, (pair, budget) -> {
+-            assertEquals(19, pair.getBeta().size());
+-            assertEquals(10, budget);
++            assertEquals(21, pair.getBeta().size());
++            assertEquals(11, budget);
+             calls.incrementAndGet();
+             completed.countDown();
+             return false;
+@@ -43,14 +43,14 @@
+         try (var prefetch = new RootPrefetch(1, (pair, budget) -> {
+             calls.incrementAndGet(); searched.countDown(); return false;
+         }, 1, 4)) {
+-            prefetch.publish(List.of(key(1, 10)));
++            prefetch.publish(List.of(key(1, 11)));
+             assertTimeoutPreemptively(Duration.ofSeconds(1),
+-                    () -> prefetch.publish(List.of(key(2, 10))));
++                    () -> prefetch.publish(List.of(key(2, 11))));
+             prefetch.activate();
+             assertTrue(searched.await(10, TimeUnit.SECONDS));
+             prefetch.finish();
+             assertEquals(1, calls.get());
+-            prefetch.publish(List.of(key(2, 10)));
++            prefetch.publish(List.of(key(2, 11)));
+             assertEquals(1, calls.get());
+         }
+     }
+@@ -67,7 +67,7 @@
+             catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new IllegalStateException(error); }
+             return false;
+         }, 2, 4); var closer = Executors.newSingleThreadExecutor()) {
+-            prefetch.publish(List.of(key(1, 10), key(2, 10)));
++            prefetch.publish(List.of(key(1, 11), key(2, 11)));
+             prefetch.activate();
+             assertTrue(entered.await(10, TimeUnit.SECONDS));
+             var close = closer.submit(() -> {
+@@ -96,7 +96,7 @@
+         var failure = assertThrows(IllegalStateException.class, prefetch::finish);
+         assertInstanceOf(IllegalArgumentException.class, failure.getCause());
+         assertEquals(0, calls.get());
+-        assertThrows(IllegalStateException.class, () -> prefetch.publish(List.of(key(1, 10))));
++        assertThrows(IllegalStateException.class, () -> prefetch.publish(List.of(key(1, 11))));
+     }
+ 
+     @Test void bulkReplayFeedsOnlyMissesToIndependentGpuCallers() throws Exception {
+@@ -108,15 +108,15 @@
+             lookups.incrementAndGet(); assertEquals(2,states.size());
+             return new boolean[]{true,false};
+         })) {
+-            prefetch.publish(List.of(key(1,10),key(2,10))); prefetch.activate();
++            prefetch.publish(List.of(key(1,11),key(2,11))); prefetch.activate();
+             assertTrue(searched.await(10,TimeUnit.SECONDS)); prefetch.finish();
+             assertEquals(1,lookups.get()); assertEquals(1,calls.get());
+         }
+     }
+ 
+     private static byte[] key(int step, int budget) {
+-        int[] beta = new int[19], omega = new int[19];
+-        for (int i = 0; i < 19; i++) { beta[i] = i; omega[i] = i * step % 19; }
++        int[] beta = new int[21], omega = new int[21];
++        for (int i = 0; i < 21; i++) { beta[i] = i; omega[i] = i * (step == 2 ? 4 : step) % 21; }
+         var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(omega)), Cycle.of(beta));
+         return DiskStateSet.encode(new DiskStateSet.State(pair, budget));
+     }
+--- a/emitter/src/test/java/br/unb/cic/td20/base/GpuExplorationCapTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/base/GpuExplorationCapTest.java
+@@ -26,28 +26,28 @@
+     }
+ 
+     @Test void allOddZeroAllowanceCannotCloseBeforeItsNecessaryRankIsReached() {
+-        byte[] omega = new byte[19];
++        byte[] omega = new byte[KnownDiameters.ROOT_SYMBOLS];
+         for (int i = 0; i < omega.length; i++) omega[i] = (byte) ((i + 1) % omega.length);
+         var pair = pair(omega, 3);
+-        // Rank nine and budget nine leave no zero moves. Every descendant
++        // Rank ten and budget ten leave no zero moves. Every descendant
+         // remains all odd, so the current diameter table first permits a
+-        // closure at rank one, after eight moves. Fixed points count as odd.
+-        for (int cap : new int[]{5, 7}) {
+-            var result = gpu().search(beta(pair), new OneLinePermutation(omega), 9, true, 0, cap);
++        // closure at rank one, after nine moves. Fixed points count as odd.
++        for (int cap : new int[]{6, 8}) {
++            var result = gpu().search(beta(pair), new OneLinePermutation(omega), 10, true, 0, cap);
+             assertEquals(GPUSortingSearch.Disposition.DEPTH_LIMIT, result.disposition());
+             assertTrue(result.moves().isEmpty());
+         }
+-        var closure = gpu().search(beta(pair), new OneLinePermutation(omega), 9, true, 0, 8);
++        var closure = gpu().search(beta(pair), new OneLinePermutation(omega), 10, true, 0, 9);
+         assertEquals(GPUSortingSearch.Disposition.DIAMETER_CLOSURE, closure.disposition());
+-        assertEquals(8, closure.moves().size());
+-        replay(pair, closure, 9, 8);
+-        var capped = gpu().search(beta(pair), new OneLinePermutation(omega), 9, false, 0, 8);
++        assertEquals(9, closure.moves().size());
++        replay(pair, closure, 10, 9);
++        var capped = gpu().search(beta(pair), new OneLinePermutation(omega), 10, false, 0, 9);
+         assertEquals(GPUSortingSearch.Disposition.DEPTH_LIMIT, capped.disposition());
+         assertTrue(capped.moves().isEmpty());
+-        var complete = gpu().search(beta(pair), new OneLinePermutation(omega), 9, false, 0, 9);
++        var complete = gpu().search(beta(pair), new OneLinePermutation(omega), 10, false, 0, 10);
+         assertEquals(GPUSortingSearch.Disposition.COMPLETE, complete.disposition());
+-        assertEquals(9, complete.moves().size());
+-        replay(pair, complete, 9, 9);
++        assertEquals(10, complete.moves().size());
++        replay(pair, complete, 10, 10);
+     }
+ 
+     @Test void closureAtTheExplorationCapRetainsTheFullBudget() {
+--- a/emitter/src/test/java/br/unb/cic/td20/certificate/AsyncCertificateWriterTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/certificate/AsyncCertificateWriterTest.java
+@@ -25,7 +25,7 @@
+                 var tasks = new ArrayList<java.util.concurrent.Future<?>>();
+                 for (int i=0;i<100;i++) tasks.add(pool.submit(() -> writer.enqueue(pair(),List.of(Cycle.of(0,1,2)))));
+                 for (var task : tasks) task.get();
+-                writer.enqueueObstruction(pair(),10);
++                writer.enqueueObstruction(pair(),11);
+             }
+             try (var writer = new AsyncCertificateWriter(directory,60)) {
+                 assertEquals(List.of(Cycle.of(0,1,2)),writer.find(pair(),10).orElseThrow());
+@@ -38,7 +38,7 @@
+     }
+     @Test void witnessRemovesAnUnresolvedKey(@TempDir Path directory) {
+         try (var writer = new AsyncCertificateWriter(directory,60)) {
+-            writer.enqueueObstruction(pair(),10); writer.flush();
++            writer.enqueueObstruction(pair(),11); writer.flush();
+             var keys = new ArrayList<byte[]>(); writer.forEachObstruction(keys::add);
+             assertEquals(1,keys.size()); assertTrue(writer.find(pair(),10).isEmpty());
+             writer.enqueue(pair(),List.of(Cycle.of(0,1,2))); writer.flush();
+@@ -125,7 +125,7 @@
+     }
+     @Test void closureRemovesObstructionAndReopensWithItsActualBudget(@TempDir Path directory) {
+         try (var writer = new AsyncCertificateWriter(directory,60)) {
+-            writer.enqueueObstruction(pair(),10); writer.flush();
++            writer.enqueueObstruction(pair(),11); writer.flush();
+             writer.enqueueClosure(pair(),List.of(),1); writer.flush();
+             assertTrue(writer.find(pair(),0).isEmpty());
+             assertTrue(writer.find(pair(),1).isPresent());
+@@ -135,6 +135,22 @@
+             assertEquals(SortingCertificate.Kind.DIAMETER_CLOSURE,writer.findResult(pair(),1).orElseThrow().kind());
+             assertTrue(writer.find(pair(),1).orElseThrow().isEmpty());
+         }
++    }
++    @Test void rejectsSupersededJointRouteSchema(@TempDir Path directory) throws Exception {
++        try (var writer = new AsyncCertificateWriter(directory,60)) { writer.flush(); }
++        var handles = new ArrayList<org.rocksdb.ColumnFamilyHandle>();
++        try (var options = new org.rocksdb.DBOptions(); var familyOptions = new org.rocksdb.ColumnFamilyOptions();
++             var database = RocksDB.open(options,directory.toString(),List.of(
++                     new org.rocksdb.ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,familyOptions),
++                     new org.rocksdb.ColumnFamilyDescriptor("obstructions".getBytes(java.nio.charset.StandardCharsets.UTF_8),familyOptions)),handles)) {
++            try (var writes = new org.rocksdb.WriteOptions().setDisableWAL(true);
++                 var flush = new org.rocksdb.FlushOptions().setWaitForFlush(true)) {
++                database.put(handles.getFirst(), writes, "td20-schema".getBytes(java.nio.charset.StandardCharsets.UTF_8),
++                        "joint2-selection-v2".getBytes(java.nio.charset.StandardCharsets.UTF_8));
++                database.flush(flush, handles);
++            } finally { handles.forEach(org.rocksdb.ColumnFamilyHandle::close); }
++        }
++        assertThrows(IllegalStateException.class, () -> new AsyncCertificateWriter(directory,60));
+     }
+     @Test void rejectsUnversionedDatabaseAndInvalidWitness(@TempDir Path directory) throws Exception {
+         RocksDB.loadLibrary();
+--- a/emitter/src/test/java/br/unb/cic/td20/certificate/CertificateValidatorTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/certificate/CertificateValidatorTest.java
+@@ -84,7 +84,7 @@
+         CertificateValidator.validate(pair, sorted, 1);
+         assertThrows(IllegalArgumentException.class, () -> CertificateValidator.validate(pair, sorted, 0));
+ 
+-        final int[] symbols = IntStream.range(0, 19).toArray();
++        final int[] symbols = IntStream.range(0, 21).toArray();
+         final var fullRoot = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(symbols)), Cycle.of(symbols));
+         final var unchanged = SortingCertificate.closure(List.of(Cycle.of(0, 1, 2), Cycle.of(1, 0, 2)));
+         assertThrows(IllegalArgumentException.class, () -> referenceRequiredBudget(fullRoot, unchanged));
+--- a/emitter/src/test/java/br/unb/cic/td20/certificate/SortingCertificateTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/certificate/SortingCertificateTest.java
+@@ -28,10 +28,10 @@
+         CertificateValidator.validate(pair,record,1);
+         assertThrows(IllegalArgumentException.class,()->CertificateValidator.validate(pair,record,0));
+     }
+-    @Test void unknownDiameterCannotCertifyTheNineteenSymbolDomain() {
+-        int[] symbols = java.util.stream.IntStream.range(0,19).toArray();
++    @Test void unknownDiameterCannotCertifyTheTwentyOneSymbolDomain() {
++        int[] symbols = java.util.stream.IntStream.range(0,21).toArray();
+         var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(symbols)),Cycle.of(symbols));
+-        assertThrows(IllegalArgumentException.class,()->CertificateValidator.validate(pair,SortingCertificate.closure(List.of()),10));
++        assertThrows(IllegalArgumentException.class,()->CertificateValidator.validate(pair,SortingCertificate.closure(List.of()),11));
+     }
+     @Test void codecRejectsUnknownKindsCountsTruncationAndPadding() {
+         assertThrows(IllegalArgumentException.class,()->CertificateCodec.decodeResult(new byte[0]));
+--- a/emitter/src/test/java/br/unb/cic/td20/joint/SupportClearingTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/joint/SupportClearingTest.java
+@@ -1,22 +1,77 @@
+ package br.unb.cic.td20.joint;
+ 
++import br.unb.cic.td20.model.CyclicTargetPair;
++import br.unb.cic.td20.permutation.Cycle;
++import br.unb.cic.td20.permutation.MulticyclePermutation;
+ import org.junit.jupiter.api.Test;
++
++import java.util.Arrays;
+ import java.util.stream.IntStream;
++
+ import static org.junit.jupiter.api.Assertions.*;
+ 
+ class SupportClearingTest {
+-    @Test void onlyTheBudgetAdmittedLocalPowersAreAccepted() {
++    @Test
++    void rootClearingPowersAreRecognizedIndependentlyOfSymbolLabels() {
++        closing(9,new int[]{18,16,5,19,20,15,2,3,4,1,7,8,9,14,6,13,0,10,12,11,17});
++        closing(11,new int[]{12,6,14,7,15,17,9,16,19,18,0,20,3,2,4,5,10,8,1,11,13});
++        closing(13,new int[]{14,11,12,6,13,16,7,15,17,20,1,2,4,5,18,3,8,9,19,0,10});
++        closing(13,new int[]{15,16,19,20,0,10,1,2,17,4,8,6,7,18,9,11,12,5,3,14,13});
++        closing(13,new int[]{17,16,13,19,0,3,4,5,1,6,8,7,9,20,11,12,10,14,2,15,18});
++        closing(17,new int[]{12,13,14,15,16,7,17,5,20,18,19,0,1,2,3,4,6,9,10,11,8});
++        closing(17,new int[]{17,18,19,20,0,1,2,12,3,13,4,5,7,9,6,8,10,11,14,15,16});
++        closing(17,new int[]{19,20,0,1,2,3,4,5,6,7,14,8,9,11,10,17,12,15,13,16,18});
++        closing(0,new int[]{16,15,17,8,0,11,18,4,14,19,5,3,7,1,10,2,20,6,9,13,12});
++        closing(0,new int[]{3,13,16,5,14,0,15,17,18,19,20,2,1,4,6,7,11,8,9,10,12});
++    }
++
++    @Test
++    void onlyTheBudgetAdmittedLocalPowersAreAccepted() {
+         final int[][] candidates = {
+-                {5, 3, 0}, {7, 4, 1}, {9, 5, 0}, {9, 7, 1},
+-                {11, 6, 1}, {13, 7, 1}, {13, 10, 1}, {13, 11, 1}, {15, 8, 0}
++                {5, 3, 0}, {7, 4, 0}, {9, 5, 0}, {9, 7, 1},
++                {11, 6, 1}, {13, 7, 1}, {13, 10, 1}, {13, 11, 1},
++                {15, 8, 0}, {17, 9, 1}, {17, 13, 1}, {17, 15, 1}
+         };
+-        for (int[] candidate:candidates) {
+-            int length=candidate[0],exponent=candidate[1];
+-            int[] omega=IntStream.range(0,KnownDiameters.ROOT_SYMBOLS).toArray();
+-            int[] support=IntStream.range(0,length).toArray();
+-            for (int x=0;x<length;x++) omega[x]=(x+exponent)%length;
+-            assertEquals(candidate[2]==1,SupportClearing.admittedPower(omega,support,length),
+-                    "length="+length+", exponent="+exponent);
++        for (final int[] candidate : candidates) {
++            final int length = candidate[0];
++            final int exponent = candidate[1];
++            final int[] omega = IntStream.range(0, 21).toArray();
++            final int[] support = IntStream.range(0, length).toArray();
++            for (int x = 0; x < length; x++) omega[x] = (x + exponent) % length;
++            assertEquals(candidate[2] == 1, SupportClearing.admittedPower(omega, support, length),
++                    "length=" + length + ", exponent=" + exponent);
+         }
+     }
++
++    private static void closing(final int expected, final int[] images) {
++        final CyclicTargetPair pair = pair(images);
++        assertEquals(expected, SupportClearing.closingLength(pair));
++        final MulticyclePermutation relabeledOmega = new MulticyclePermutation();
++        for (final Cycle cycle : pair.getOmega()) {
++            relabeledOmega.add(Cycle.of(IntStream.of(cycle.getSymbols())
++                    .map(x -> (5 * x + 3) % 21).toArray()));
++        }
++        final Cycle relabeledBeta = Cycle.of(IntStream.of(pair.getBeta().getSymbols())
++                .map(x -> (5 * x + 3) % 21).toArray());
++        assertEquals(expected, SupportClearing.closingLength(
++                CyclicTargetPair.of(relabeledOmega, relabeledBeta)));
++    }
++
++    private static CyclicTargetPair pair(final int[] images) {
++        final MulticyclePermutation omega = new MulticyclePermutation();
++        final boolean[] seen = new boolean[images.length];
++        for (int first = 0; first < images.length; first++) {
++            if (seen[first]) continue;
++            final int[] cycle = new int[images.length];
++            int size = 0;
++            int symbol = first;
++            do {
++                cycle[size++] = symbol;
++                seen[symbol] = true;
++                symbol = images[symbol];
++            } while (symbol != first);
++            omega.add(Cycle.of(Arrays.copyOf(cycle, size)));
++        }
++        return CyclicTargetPair.of(omega, Cycle.of(IntStream.range(0, images.length).toArray()));
++    }
+ }
+--- a/emitter/src/test/java/br/unb/cic/td20/search/CpuPrefixSearchTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/search/CpuPrefixSearchTest.java
+@@ -108,11 +108,11 @@
+         assertTrue(br.unb.cic.td20.joint.CyclicTargetMoves.isTotallyUnoriented(
+                 java.util.stream.IntStream.range(0, 19).map(input.getOmega()::image).toArray(),
+                 input.getBeta().getSymbols()));
+-        var result = CpuPrefixSearch.search(input, 10, 3, 8192).orElseThrow();
++        var result = CpuPrefixSearch.search(input, 9, 3, 8192).orElseThrow();
+         assertEquals(3, result.moves().size());
+         assertEquals(SortingCertificate.Kind.DIAMETER_CLOSURE, result.kind());
+         check(input, result);
+-        CertificateValidator.validate(input, result, 10);
++        CertificateValidator.validate(input, result, 9);
+     }
+ 
+     private static void check(CyclicTargetPair input, SortingCertificate result) {
+--- a/emitter/src/test/java/br/unb/cic/td20/search/WitnessSearchTest.java
++++ b/emitter/src/test/java/br/unb/cic/td20/search/WitnessSearchTest.java
+@@ -67,15 +67,15 @@
+             WitnessSearch.installWriter(writer);
+             try {
+                 var dispatched = new java.util.concurrent.atomic.AtomicInteger();
+-                for (int maximumMoves : new int[]{8, 9, 10}) {
++                for (int maximumMoves : new int[]{9, 10, 11}) {
+                     var result = WitnessSearch.searchReconstructedGpu(pair(), maximumMoves, (input, budget, timeout, depth) -> {
+                         assertEquals(maximumMoves, budget);
+                         assertEquals(maximumMoves, depth);
+-                        assertEquals(maximumMoves == 10 ? 0 : 37, timeout);
++                        assertEquals(maximumMoves == 11 ? 0 : 37, timeout);
+                         assertEquals(pair().extendedToricClassKey(), input.extendedToricClassKey());
+                         dispatched.incrementAndGet();
+-                        return new GPUSortingSearch.SearchOutcome(maximumMoves == 10
+-                                ? GPUSortingSearch.Disposition.RESIDUAL : maximumMoves == 8
++                        return new GPUSortingSearch.SearchOutcome(maximumMoves == 11
++                                ? GPUSortingSearch.Disposition.RESIDUAL : maximumMoves == 9
+                                 ? GPUSortingSearch.Disposition.TIMED_OUT : GPUSortingSearch.Disposition.DEPTH_LIMIT,
+                                 java.util.List.of());
+                     });
+@@ -84,7 +84,7 @@
+                 }
+                 assertEquals(3, dispatched.get());
+                 writer.flush();
+-                assertTrue(writer.findResult(pair(), 10).isEmpty());
++                assertTrue(writer.findResult(pair(), 11).isEmpty());
+                 writer.forEachObstruction(key -> fail("An incomplete search cannot record a certificate or a proven failure"));
+             } finally { WitnessSearch.uninstallWriter(writer); }
+         } finally {
+@@ -97,15 +97,15 @@
+         String previous = System.getProperty("td20.reconstructionGpuMillis");
+         try {
+             System.clearProperty("td20.reconstructionGpuMillis");
+-            assertEquals(0, WitnessSearch.reconstructionGpuMillis(8));
+             assertEquals(0, WitnessSearch.reconstructionGpuMillis(9));
+             assertEquals(0, WitnessSearch.reconstructionGpuMillis(10));
++            assertEquals(0, WitnessSearch.reconstructionGpuMillis(11));
+             System.setProperty("td20.reconstructionGpuMillis", "0");
+-            assertEquals(0, WitnessSearch.reconstructionGpuMillis(9));
++            assertEquals(0, WitnessSearch.reconstructionGpuMillis(10));
+             for (String invalid : new String[]{"-1", "invalid", Long.toString(Long.MAX_VALUE)}) {
+                 System.setProperty("td20.reconstructionGpuMillis", invalid);
+-                assertThrows(IllegalArgumentException.class, () -> WitnessSearch.reconstructionGpuMillis(9));
+-                assertEquals(0, WitnessSearch.reconstructionGpuMillis(10));
++                assertThrows(IllegalArgumentException.class, () -> WitnessSearch.reconstructionGpuMillis(10));
++                assertEquals(0, WitnessSearch.reconstructionGpuMillis(11));
+             }
+         } finally {
+             if (previous == null) System.clearProperty("td20.reconstructionGpuMillis");
+@@ -121,21 +121,21 @@
+         try (var writer = new AsyncCertificateWriter(path, 60)) {
+             WitnessSearch.installWriter(writer);
+             try {
+-                var result = WitnessSearch.searchGpuPrefetch(pair(), 10, (input, budget, timeout, depth) -> {
+-                    assertEquals(10, budget); assertEquals(10, depth); assertEquals(100, timeout);
++                var result = WitnessSearch.searchGpuPrefetch(pair(), 11, (input, budget, timeout, depth) -> {
++                    assertEquals(11, budget); assertEquals(11, depth); assertEquals(100, timeout);
+                     return new GPUSortingSearch.SearchOutcome(GPUSortingSearch.Disposition.TIMED_OUT, java.util.List.of());
+                 });
+                 assertEquals(WitnessSearch.Disposition.RESIDUAL, result.disposition());
+-                WitnessSearch.searchReconstructedGpu(pair(), 10, (input, budget, timeout, depth) -> {
+-                    assertEquals(10, budget); assertEquals(10, depth); assertEquals(0, timeout);
++                WitnessSearch.searchReconstructedGpu(pair(), 11, (input, budget, timeout, depth) -> {
++                    assertEquals(11, budget); assertEquals(11, depth); assertEquals(0, timeout);
+                     return new GPUSortingSearch.SearchOutcome(GPUSortingSearch.Disposition.RESIDUAL, java.util.List.of());
+                 });
+                 writer.flush();
+-                assertTrue(writer.findResult(pair(), 10).isEmpty());
++                assertTrue(writer.findResult(pair(), 11).isEmpty());
+                 writer.forEachObstruction(key -> fail("An advisory timeout cannot persist an obstruction"));
+                 for (String invalid : new String[]{"0", "-1", "invalid", Long.toString(Long.MAX_VALUE)}) {
+                     System.setProperty("td20.rootPrefetchGpuMillis", invalid);
+-                    assertThrows(IllegalArgumentException.class, () -> WitnessSearch.searchGpuPrefetch(pair(), 10,
++                    assertThrows(IllegalArgumentException.class, () -> WitnessSearch.searchGpuPrefetch(pair(), 11,
+                             (input, budget, timeout, depth) -> { fail("Invalid time slice must not dispatch"); return null; }));
+                 }
+             } finally { WitnessSearch.uninstallWriter(writer); }
+@@ -151,17 +151,17 @@
+         String previous = System.getProperty("td20.reconstructionGpuDepth");
+         try {
+             System.clearProperty("td20.reconstructionGpuDepth");
+-            assertEquals(8, WitnessSearch.reconstructionGpuDepth(8));
+-            assertEquals(9, WitnessSearch.reconstructionGpuDepth(9));
+-            assertEquals(3, WitnessSearch.reconstructionGpuDepth(3));
+-            assertEquals(10, WitnessSearch.reconstructionGpuDepth(10));
+-            System.setProperty("td20.reconstructionGpuDepth", "2");
+             assertEquals(9, WitnessSearch.reconstructionGpuDepth(9));
+             assertEquals(10, WitnessSearch.reconstructionGpuDepth(10));
+-            for (String invalid : new String[]{"0", "-1", "11", "invalid"}) {
++            assertEquals(3, WitnessSearch.reconstructionGpuDepth(3));
++            assertEquals(11, WitnessSearch.reconstructionGpuDepth(11));
++            System.setProperty("td20.reconstructionGpuDepth", "2");
++            assertEquals(10, WitnessSearch.reconstructionGpuDepth(10));
++            assertEquals(11, WitnessSearch.reconstructionGpuDepth(11));
++            for (String invalid : new String[]{"0", "-1", "12", "invalid"}) {
+                 System.setProperty("td20.reconstructionGpuDepth", invalid);
+-                assertEquals(9, WitnessSearch.reconstructionGpuDepth(9));
+                 assertEquals(10, WitnessSearch.reconstructionGpuDepth(10));
++                assertEquals(11, WitnessSearch.reconstructionGpuDepth(11));
+             }
+         } finally {
+             if (previous == null) System.clearProperty("td20.reconstructionGpuDepth");
+@@ -279,6 +279,36 @@
+     }
+ 
+     @Test
++    void generalTimeoutFallsThroughAndReusesCheckedCertificates(@TempDir Path path) {
++        String previous = System.getProperty("td20.cpuPrefixMillis");
++        System.setProperty("td20.cpuPrefixMillis", "0");
++        try (var writer = new AsyncCertificateWriter(path, 60)) {
++            WitnessSearch.installWriter(writer);
++            try {
++                var input = pair();
++                String before = input.toString();
++                var result = WitnessSearch.search(input, 2, (unchanged, budget) -> {
++                    assertEquals(2, budget);
++                    assertEquals(input.extendedToricClassKey(), unchanged.extendedToricClassKey());
++                    return new GPUSortingSearch.SearchOutcome(GPUSortingSearch.Disposition.DIAMETER_CLOSURE,
++                            java.util.List.of(new int[]{0,1,2}));
++                });
++                assertEquals(WitnessSearch.Disposition.DIAMETER_CLOSURE, result.disposition());
++                assertEquals(before, input.toString());
++                writer.flush();
++                assertEquals(result, WitnessSearch.search(input, 2, (unused, budget) -> {
++                    fail("A checked stored result must avoid CPU and GPU searches"); return null;
++                }));
++                System.setProperty("td20.cpuPrefixMillis", "-1");
++                assertThrows(IllegalArgumentException.class, () -> CpuPrefixSearch.search(input, 2));
++            } finally { WitnessSearch.uninstallWriter(writer); }
++        } finally {
++            if (previous == null) System.clearProperty("td20.cpuPrefixMillis");
++            else System.setProperty("td20.cpuPrefixMillis", previous);
++        }
++    }
++
++    @Test
+     void cpuClosureIsPersistedReplayedAndNotACompleteWitness(@TempDir Path path) {
+         try (var writer = new AsyncCertificateWriter(path,60)) {
+             WitnessSearch.installWriter(writer);
+--- a/tools/td20
++++ b/tools/td20
+@@ -6,7 +6,7 @@
+ 
+ CPU validation:
+   test         Run both required CPU test suites
+-  inventory    Check the 53 root partitions and 74 endpoint annotations
++  inventory    Check the 83 root partitions and 143 endpoint annotations
+   structure    Alias for inventory
+   count        Check root and endpoint class counts on all available CPU cores
+   count-roots  Regenerate and publish all active root U3,O3,C3 values; resumable
+@@ -40,7 +40,7 @@
+ Both direct arguments and -Dexec.args / -Dtd20.args syntax are supported.
+ See docs/WORKFLOW.md, docs/OPERATIONS.md, and docs/RESEARCH_PLAN.md.
+ Generated databases, reports, checkpoints, and ordinary logs remain untracked.
+-Completed reference logs and settings are committed under logs/reference/.
++Completed execution logs and settings also remain untracked.
+ USAGE
+ }
+ dry_run=false
+--- a/tools/audit/CountErikssonRoots.jsh
++++ b/tools/audit/CountErikssonRoots.jsh
+@@ -49,6 +49,100 @@
+             Files.move(temporary,path,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+         } finally { Files.deleteIfExists(temporary); }
+     }
++    static int uniqueLine(List<String> lines,String marker,boolean prefix) {
++        int found=-1;
++        for (int i=0;i<lines.size();i++) {
++            String line=lines.get(i).strip();
++            if (!(prefix ? line.startsWith(marker):line.equals(marker))) continue;
++            if (found!=-1) throw new IllegalStateException("Duplicate root publication marker: "+marker);
++            found=i;
++        }
++        if (found==-1) throw new IllegalStateException("Missing root publication marker: "+marker);
++        return found;
++    }
++    static String tableNumber(long value) {
++        return "$\\mathbf{"+String.format(Locale.ROOT,"%,d",value).replace(",","\\,")+"}$";
++    }
++    /**
++     * TD20 starts with pending rows, totals and editorial status. The TD18
++     * row-only publisher leaves those parts inconsistent. Validate the entire
++     * versioned inventory before atomically replacing all three count sections;
++     * publication never asserts completed sorting or a proved TD20 upper bound.
++     */
++    static void publish(Path paper,List<int[]> parts) throws Exception {
++        if (CHECKER) throw new IllegalArgumentException("The checker cannot publish emitter counts");
++        var rows=ErikssonInventory.read(paper);
++        if (parts.size()!=ErikssonRoute.ROOT_PARTITIONS || rows.size()!=parts.size())
++            throw new IllegalStateException("Incomplete active publication inventory");
++        var counts=new ArrayList<ErikssonRootGenerator.Counts>();
++        long totalU=0,totalO=0,totalC=0;
++        for (int i=0;i<parts.size();i++) {
++            if (!Arrays.equals(parts.get(i),rows.get(i).partition()))
++                throw new IllegalStateException("Publication partition differs at row "+(i+1));
++            var count=validate(i+1,parts.get(i),read(OUTPUT.resolve(String.format("partition-%02d.txt",i+1))));
++            counts.add(count);
++            totalU=Math.addExact(totalU,count.unoriented());
++            totalO=Math.addExact(totalO,count.oriented());
++            totalC=Math.addExact(totalC,count.supportCleared());
++        }
++        long totalDirect=Math.subtractExact(Math.addExact(totalU,totalO),totalC);
++        var lines=new ArrayList<>(Files.readAllLines(paper));
++        int status=uniqueLine(lines,"All "+parts.size()+" root partitions below",true);
++        int table=uniqueLine(lines,"\\begin{longtable}{@{}rlrrrr@{}}",false);
++        int begin=uniqueLine(lines,"% BEGIN ERIKSSON_ROOT_TOTALS_V1",false);
++        int end=uniqueLine(lines,"% END ERIKSSON_ROOT_TOTALS_V1",false);
++        int tableEnd=-1;
++        for (int i=table+1;i<lines.size();i++) {
++            String line=lines.get(i).strip();
++            if (line.startsWith("\\begin{longtable}")) throw new IllegalStateException("Nested active root table");
++            if (line.equals("\\end{longtable}")) { tableEnd=i; break; }
++        }
++        if (!(status<table && table<begin && end==begin+3 && end<tableEnd)
++                || !lines.get(begin+1).strip().startsWith("\\midrule\\multicolumn{2}{r}{\\textbf{Total}} & ")
++                || !lines.get(begin+2).strip().equals("\\bottomrule\\endlastfoot"))
++            throw new IllegalStateException("Malformed active root publication sections");
++        var publishedStatus=List.of(
++                "All "+parts.size()+" root partitions below have complete versioned emitter counts.",
++                "The independent checker regenerates every retained unoriented count $U_3$,",
++                "retained oriented count $O_3$ and support-cleared count $C_3$, comparing",
++                "them with these rows. The aggregate totals are sums of the published rows.",
++                "Counting discharges no sorting obligation or full proof-verification requirement.");
++        var previousStatus=lines.get(status).strip().equals(publishedStatus.getFirst()) ? publishedStatus:List.of(
++                "All "+parts.size()+" root partitions below have been regenerated structurally. Their new",
++                "Eriksson-route counts are pending; historical joint-2 counts cannot populate",
++                "these rows. Both modules must independently regenerate every count. Sorting",
++                "verification is a separate requirement.");
++        int statusEnd=status+previousStatus.size();
++        if (statusEnd>table || !lines.subList(status,statusEnd).stream().map(String::strip).toList().equals(previousStatus))
++            throw new IllegalStateException("Incompatible active root count status");
++        int replaced=0;
++        for (int i=0;i<lines.size();i++) {
++            String line=lines.get(i).strip();
++            if (!line.startsWith("\\erikssonrow{") && !line.startsWith("\\erikssonpendingrow{")) continue;
++            if (i<=end || i>=tableEnd) throw new IllegalStateException("Active root row outside its table");
++            int index=++replaced; var count=counts.get(index-1);
++            lines.set(i,"\\erikssonrow{"+index+"}{"+String.join(",",Arrays.stream(parts.get(index-1)).mapToObj(Integer::toString).toList())
++                    +"}{"+count.unoriented()+"}{"+count.oriented()+"}{"+count.supportCleared()+"}");
++        }
++        if (replaced!=parts.size()) throw new IllegalStateException("Incomplete active publication inventory");
++        lines.set(begin+1,"\\midrule\\multicolumn{2}{r}{\\textbf{Total}} & "+tableNumber(totalU)+" & "
++                +tableNumber(totalO)+" & "+tableNumber(totalC)+" & "+tableNumber(totalDirect)+"\\\\");
++        lines.subList(status,statusEnd).clear();
++        lines.addAll(status,publishedStatus);
++        Path temporary=Files.createTempFile(paper.toAbsolutePath().getParent(),".active-counts-",".tmp");
++        try {
++            Files.write(temporary,lines);
++            var published=ErikssonInventory.read(temporary);
++            for (int i=0;i<parts.size();i++) {
++                var row=published.get(i); var count=counts.get(i);
++                row.requireCompleteCounts();
++                if (row.unoriented()!=count.unoriented() || row.oriented()!=count.oriented() || row.supportCleared()!=count.supportCleared())
++                    throw new IllegalStateException("Published count differs at row "+(i+1));
++            }
++            Files.move(temporary,paper,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
++        }
++        finally { Files.deleteIfExists(temporary); }
++    }
+     static void run() throws Exception {
+         Files.createDirectories(OUTPUT);
+         var parts=Partitions.generateValidPartitions(ErikssonRoute.ROOT_SYMBOLS);
+@@ -78,18 +172,7 @@
+             reporter.shutdownNow();
+         }
+         Path paper=Path.of("docs/td20-reduction-count.tex");
+-        if (Boolean.getBoolean("td20.eriksson.publish")) {
+-            if (CHECKER) throw new IllegalArgumentException("The checker cannot publish emitter counts");
+-            var rows=ErikssonInventory.read(paper); var lines=Files.readAllLines(paper); int replaced=0;
+-            for (int i=0;i<lines.size();i++) if (lines.get(i).startsWith("\\erikssonrow{") || lines.get(i).startsWith("\\erikssonpendingrow{")) {
+-                int index=++replaced; var counts=validate(index,parts.get(index-1),read(OUTPUT.resolve(String.format("partition-%02d.txt",index))));
+-                lines.set(i,"\\erikssonrow{"+index+"}{"+String.join(",",Arrays.stream(parts.get(index-1)).mapToObj(Integer::toString).toList())+"}{"+counts.unoriented()+"}{"+counts.oriented()+"}{"+counts.supportCleared()+"}");
+-            }
+-            if (replaced!=parts.size()) throw new IllegalStateException("Incomplete active publication inventory");
+-            Path temporary=Files.createTempFile(paper.toAbsolutePath().getParent(),".active-counts-",".tmp");
+-            try { Files.write(temporary,lines); Files.move(temporary,paper,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
+-            finally { Files.deleteIfExists(temporary); }
+-        }
++        if (Boolean.getBoolean("td20.eriksson.publish")) publish(paper,parts);
+         if (CHECKER) for (var row:ErikssonInventory.read(paper)) {
+             row.requireCompleteCounts(); var counts=validate(row.number(),row.partition(),read(OUTPUT.resolve(String.format("partition-%02d.txt",row.number()))));
+             if (row.unoriented()!=counts.unoriented() || row.oriented()!=counts.oriented() || row.supportCleared()!=counts.supportCleared())

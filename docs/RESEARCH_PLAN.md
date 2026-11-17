@@ -4,8 +4,9 @@ The objective is a checked upper bound of eleven transpositions for every
 ordinary order-20 instance. Together with the established reverse-permutation
 lower bound TD(20) >= 11, this would establish TD(20) = 11. The upper bound is
 **not yet proved**. [The source paper](td20-reduction-count.tex) specifies the
-two-sided Eriksson-plus-third-move route. TD(18) = 10 is an explicit established
-premise, alongside the separately certified TD(16) = 9 and smaller bounds.
+two-sided Eriksson-plus-third-move route. TD(16) = 9 and TD(18) = 10 are
+established results using the same computational methodology and explicit
+completed premises, alongside the smaller established bounds.
 
 The user authorized replacement of joint-2 on 16 November 2026. Its completed
 U/J/C/O/R counts and 214-annotation endpoint census describe a superseded route;
@@ -31,14 +32,25 @@ Exit criterion: a checked coverage derivation agreeing with the paper and both
 implementations, and passing complete small-domain class-set and arbitrary-support
 forward/inverse oracles, including gains zero through three.
 
+Completed unit validation includes both modules' exhaustive retained-class
+comparisons for every domain of three through eight symbols against an
+arbitrary-support oracle on the actual current and target cycles, with duplicate
+classes rejected. Separate passed tests compare serial and parallel counts and
+check the 21-symbol reverse exception. These scopes validate the port; they do
+not supply exhaustive 21-symbol count or witness-replay evidence.
+
 ## 2. Independently regenerate counts and generation
 
 Regenerate all 83 fixed-point-free even root partitions of 21 and all 143
 orientation annotations from the 28 even endpoint partitions of 16. Algebraic
 2-cycles are unoriented. Every endpoint annotation is included without a stricter
-3-norm cutoff, including types with zero realizable classes. The endpoint census is complete and agrees between both modules in every row:
+3-norm cutoff, including types with zero realizable classes. The endpoint census
+is complete and agrees between both modules in every row:
 14,098,353,328 classes, with 11,523,939,269 outside elementary closures.
-The paper's pending root rows support structural checks only.
+The paper contains all 83 complete emitter root-count rows: U3 = 0, O3 = 8
+and C3 = 2, leaving six direct obligations. The standalone checker census
+completed the first 24 matching reports before an intentional stop; 59 rows
+remain. This criterion still requires independent agreement in every row.
 
 For every root partition, independently count retained unoriented roots U3,
 retained oriented roots O3, and the support-cleared subset C3. Direct obligations
@@ -101,14 +113,24 @@ inventories, roots, endpoint classes and inverse waves; enforce every count and
 budget; replay all required witnesses; and reject missing results. Emitter
 checkpoints, checksums and sidecar manifests are not proof inputs.
 
+Record emission and verification separately, with their actual source revisions,
+runtime settings, exact regenerated counts, phase timings, success messages
+and exit status. Audit source changes between the two runs. Keep test executions
+and versioned census reports as distinct evidence: a replay success cannot
+mark an unexecuted test or unpublished report checked. Fresh TD20 emission and
+full independent checking will supply new execution logs; the result remains
+unproved until every exit criterion has its required artifact.
+
 Exit criterion: both required Maven CPU suites and one complete successful
 end-to-end checker report, together with every counted inventory, replayed
 database and cited mathematical premise. CUDA-dependent tests require a configured
 environment; a proof using only CPU certificates need not use CUDA.
 
 All five criteria require checked artifacts. Structural regeneration and tests
-alone do not establish TD(20) = 11. Full active-route counts, sorting and the
-complete checker report remain pending until their actual artifacts exist.
+alone do not establish TD(20) = 11. Emitter root counts are published and the
+endpoint census is independently checked. Independent completion of the root
+census, sorting and the complete proof-checker report remain pending until
+their actual artifacts exist.
 Generated databases, checkpoints, reports, certificates and logs remain untracked.
 Record completed execution metadata and artifact locations in
 [REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md); see

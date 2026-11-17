@@ -4,7 +4,7 @@ package br.unb.cic.td20.joint;
 public final class KnownDiameters {
     public static final int ROOT_SYMBOLS = 21;
     public static final int MAX_BUDGET = 11;
-    /** TD(18)=10 is the explicit completed-premise assumption for this project. */
+    /** TD(16)=9 and TD(18)=10 are established using this computational methodology. */
     private static final int[] TD = {0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 8, 9, 9, 10, 10, 11};
 
     private KnownDiameters() { }

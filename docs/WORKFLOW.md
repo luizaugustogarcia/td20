@@ -1,11 +1,14 @@
 # TD(20) proof workflow
 
 The [source paper](td20-reduction-count.tex) defines the active route.
-All 83 root partitions and 143 endpoint annotations on 16 symbols have been
-regenerated structurally. Root and endpoint class counts must be regenerated
-for this route and independently audited before publication. Endpoints have
-budget 8; historical joint-2 counts and TD18 execution records do not supply
-these new counts or sorting results.
+All 83 root partitions on 21 symbols and 143 endpoint annotations on 16 symbols
+have been regenerated structurally. All 83 emitter root-count rows are published:
+U3 = 0, O3 = 8 and C3 = 2, leaving six direct obligations. The first 24
+independent root-count rows agree; 59 remain to check. Both modules independently
+agree on all 143 endpoint
+counts: 14,098,353,328 classes in total and 11,523,939,269 outside elementary
+closures. Endpoints have budget 8; sorting and full proof verification remain
+separate obligations.
 The maintained local launchers and their bounded settings are described in
 [OPERATIONS.md](OPERATIONS.md).
 
@@ -22,13 +25,29 @@ tools/td20 audit-endpoints
 tools/td20 endpoint-table
 ```
 
+Both CPU suites passed complete retained-class comparisons for every domain
+of three through eight symbols. Their oracle enumerates every valid
+fixed-point-free input, moves the actual current and target cycles on arbitrary
+supports, and checks the full generated class set without duplicate classes.
+Separate tests compare serial and parallel counts and cover the 21-symbol
+reverse exception. These tests validate their stated domains; complete
+21-symbol independent counting and full witness replay remain required.
+
 The root census runs all 83 partitions through JShell using all available
 CPU threads. It atomically persists versioned per-partition reports under
-`data/eriksson-root-counts-v1/`, then publishes every active paper row together.
+`data/eriksson-root-counts-v1/`, then publishes all 83 active paper rows, the
+four aggregate totals and the count-status paragraph in one atomic replacement.
+Publication requires complete compatible reports and the exact paper partition
+order; malformed table sections, missing or duplicate markers and count
+overflow are errors. The publisher reparses the result before replacement.
 The independent checker uses `data/eriksson-root-counts-checker-v1/` and compares
 all counts against those rows. Repeated, malformed, incompatible or missing
 fields cannot supply a completed count. Pending active rows allow structural
 checks but block emission and proof verification.
+The standalone checker census was intentionally stopped after 24 completed
+matching reports. Completed reports persist; unfinished partition 25 regenerates
+when the census resumes. The planned fresh full proof checker independently
+regenerates the complete 21-symbol scope.
 Endpoint counting uses the full 143-annotation cover. Reports under
 `data/eriksson-endpoint-counts-v1/` and
 `data/eriksson-endpoint-counts-checker-v1/` include the route, domain, budget,

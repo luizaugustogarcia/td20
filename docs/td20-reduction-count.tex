@@ -5,13 +5,11 @@
 \usepackage[hyphens]{url}
 \usepackage[hidelinks]{hyperref}
 \newcommand{\TD}{\operatorname{TD}}
-\newcommand{\pending}{\textit{pending}}
 \newtheorem{proposition}{Proposition}
 \newtheorem{lemma}{Lemma}
 \newtheorem{theorem}{Theorem}
 
 \newcommand{\erikssonrow}[5]{#1 & $(#2)$ & #3 & #4 & #5 & \number\numexpr#3+#4-#5\relax\\}
-\newcommand{\erikssonpendingrow}[2]{#1 & $(#2)$ & \pending & \pending & \pending & \pending\\}
 \title{Toward a computer-assisted proof that $\TD(20)=11$\\
 \large Eriksson reduction, complete root generation, and two-sided inverse coverage}
 \author{}\date{}
@@ -35,9 +33,17 @@ permutation $\omega$, current $N$-cycle $\beta$, and target $\rho=\omega\beta$
 also an $N$-cycle. Composition is from right to left. A transposition is an
 applicable $3$-cycle $\tau$ ordered around the current cycle, acting as
 $(\omega,\beta)\mapsto(\omega\tau^{-1},\tau\beta)$. Reserve $2$-cycle for an
-algebraic cycle of length two. The gain counts newly fixed symbols. Existing
-fixed points are first-class data and are contracted from both cycles before
-using fixed-point-free generation or move tests. Contraction preserves distance
+algebraic cycle of length two. Define
+$F(\omega)=\{x:\omega(x)=x\}$, $f(\omega)=|F(\omega)|$, and the gain
+\[
+g_\tau(\omega)=f(\omega\tau^{-1})-f(\omega).
+\]
+Gain is the net increase in fixed symbols. It equals the number of newly fixed
+symbols when the input has no fixed points or the move preserves all existing
+fixed points. Fixed points are first-class data: contract them from both cycles
+before using a fixed-point-free generator or move test. Full-cycle move tests
+instead retain existing fixed symbols explicitly and compute the net gain.
+Contraction preserves distance
 by the shared framework~\cite{framework},
 \nolinkurl{prop:contraction-preserves-distance}.
 
@@ -49,7 +55,17 @@ The active rule does not require every first move to be qualifying and permits
 first gain zero. It therefore imposes no unjustified $\kappa\leq7$ restriction
 on the new endpoint inventory.
 
-The established premise $\TD(18)=10$, the separately certified shared-framework result $\TD(16)=9$, and the established smaller diameters are premises. The insertion bound $\TD(n+1)\leq\TD(n)+1$ gives $\TD(19)\leq11$: after sorting the permutation with one symbol deleted, one transposition inserts that symbol at its target position. Thus a root with an existing fixed symbol requires no new diameter premise.
+The established results $\TD(16)=9$ and $\TD(18)=10$ use the same
+computational methodology of exhaustive class generation, intrinsic sorting
+certificates, and independent regeneration and replay. Both are explicit
+completed premises here, together with the established smaller diameters.
+The shared-framework result is cited in~\cite{framework}; the TD18 reference
+emission and separate-machine full-scope verification completed on
+16 November 2026, with exit zero and all 1,349,910,890 reconstructed TD18
+root classes checked~\cite{td18-reference}. Those execution records belong
+to the established smaller result. The TD20 upper bound still requires its
+own complete checked artifacts.
+The insertion bound $\TD(n+1)\leq\TD(n)+1$ gives $\TD(19)\leq11$: after sorting the permutation with one symbol deleted, one transposition inserts that symbol at its target position. Thus a root with an existing fixed symbol requires no new diameter premise.
 A known-diameter closure at a contracted domain of $m$ symbols is valid with
 remaining budget $b$ exactly when $\TD(m-1)\leq b$ (distance zero for $m\leq1$).
 A root with an existing fixed point closes using the established smaller bound.
@@ -61,7 +77,9 @@ Sorting distance on cycles is symmetric. Moving either endpoint by one edge
 of its undirected transposition graph costs one in a triangle-inequality upper
 bound. Interchanging endpoints is represented by $(\omega^{-1},\rho)$ and
 costs nothing. This operation is used inside the argument; it is not silently
-added to extended-toric class equivalence.
+added to extended-toric class equivalence. Since
+$F(\omega^{-1})=F(\omega)$, interchange preserves the fixed symbols; the same
+net-gain definition applies to a move on either endpoint after this interchange.
 
 Lemma 5.1 of Eriksson et al.~\cite{eriksson} gives three bonds using two block
 moves for a non-reverse permutation, permitting moves on either side. The
@@ -84,14 +102,22 @@ budget-valid support patterns below may clear oriented retained roots. Every
 other retained root requires a result with budget 11.
 \end{enumerate}
 
-Every transposition creating at least two fixed points is supported, up to
-cyclic writing, on $(x,\omega(x),\omega^2(x))$, in current cyclic order. Indeed,
-its three changed images can fix two symbols only if two consecutive edges
-agree with $\omega$; the converse follows by multiplying the permutations.
-This characterization covers even-length cycles and across-cycle first supports.
-Destroying one old fixed point permits at most two newly fixed symbols and net
-gain at most one. Thus the required second and third moves preserve previously
-fixed symbols; contracting them loses no eligible support. Totally unoriented
+A transposition changes only three images. Every previously fixed symbol $x$
+in its support is destroyed, since injectivity and $\omega(x)=x$ imply
+$\omega(\tau^{-1}(x))\ne x$. Let $d$ count these destroyed fixed symbols.
+At most $3-d$ other support symbols become newly fixed, so the net gain is
+at most $3-2d$. A move of gain at least two therefore preserves every existing
+fixed symbol. In particular, contracting fixed points loses no eligible
+support for the required second and third moves.
+
+On a fixed-point-free input, every transposition of gain at least two is
+supported, up to cyclic writing, on $(x,\omega(x),\omega^2(x))$, in current
+cyclic order. Indeed, for $\tau=(a\ b\ c)$, its changed images fix $a,b,c$
+exactly when $\omega(c)=a$, $\omega(a)=b$, $\omega(b)=c$, respectively.
+Any two of these equalities give the stated cyclic writing, and the converse
+follows from the same image calculation. This test includes even-length cycles.
+First moves are enumerated over every applicable three-symbol support,
+including supports meeting different algebraic cycles. Totally unoriented
 roots, including all-odd roots, still enter gain-zero first-move tests.
 
 \section{Endpoint cover and direct root inventory}
@@ -293,105 +319,112 @@ separate from this census.
 
 Let $U_3,O_3,C_3$ count retained totally unoriented roots, retained oriented roots,
 and the support-cleared subset respectively. Direct obligations total
-$U_3+O_3-C_3$. Every partition appears once; pending entries cannot be used by
-emission or proof verification.
+$U_3+O_3-C_3$. Every partition appears once. All counts must be present and
+valid before emission or proof verification.
 
-All 83 root partitions below have been regenerated structurally. Their new
-Eriksson-route counts are pending; historical joint-2 counts cannot populate
-these rows. Both modules must independently regenerate every count. Sorting
-verification is a separate requirement.
+All 83 root partitions below have complete versioned emitter counts.
+The independent checker regenerates every retained unoriented count $U_3$,
+retained oriented count $O_3$ and support-cleared count $C_3$, comparing
+them with these rows. The aggregate totals are sums of the published rows.
+Counting discharges no sorting obligation or full proof-verification requirement.
+Port validation compares complete class sets against an arbitrary-support
+two-endpoint oracle for every domain $3\leq N\leq8$ in both modules. The
+standalone checker census completed the first 24 root partitions with exact
+agreement before stopping; its remaining reports are incomplete. The planned
+full checker must independently regenerate all 21-symbol obligations and replay
+their required witnesses before the conditional upper bound is established.
 \begin{longtable}{@{}rlrrrr@{}}
 \caption{Active Eriksson-plus-third-move root inventory.}\\
 \toprule No. & Partition & $U_3$ & $O_3$ & $C_3$ & Direct\\\midrule\endfirsthead
 \toprule No. & Partition & $U_3$ & $O_3$ & $C_3$ & Direct\\\midrule\endhead
 \bottomrule\endfoot
 % BEGIN ERIKSSON_ROOT_TOTALS_V1
-\midrule\multicolumn{2}{r}{\textbf{Total}} & \pending & \pending & \pending & \pending\\
+\midrule\multicolumn{2}{r}{\textbf{Total}} & $\mathbf{0}$ & $\mathbf{8}$ & $\mathbf{2}$ & $\mathbf{6}$\\
 \bottomrule\endlastfoot
 % END ERIKSSON_ROOT_TOTALS_V1
-\erikssonpendingrow{1}{21}
-\erikssonpendingrow{2}{17,2,2}
-\erikssonpendingrow{3}{16,3,2}
-\erikssonpendingrow{4}{15,4,2}
-\erikssonpendingrow{5}{15,3,3}
-\erikssonpendingrow{6}{14,5,2}
-\erikssonpendingrow{7}{14,4,3}
-\erikssonpendingrow{8}{13,6,2}
-\erikssonpendingrow{9}{13,5,3}
-\erikssonpendingrow{10}{13,4,4}
-\erikssonpendingrow{11}{13,2,2,2,2}
-\erikssonpendingrow{12}{12,7,2}
-\erikssonpendingrow{13}{12,6,3}
-\erikssonpendingrow{14}{12,5,4}
-\erikssonpendingrow{15}{12,3,2,2,2}
-\erikssonpendingrow{16}{11,8,2}
-\erikssonpendingrow{17}{11,7,3}
-\erikssonpendingrow{18}{11,6,4}
-\erikssonpendingrow{19}{11,5,5}
-\erikssonpendingrow{20}{11,4,2,2,2}
-\erikssonpendingrow{21}{11,3,3,2,2}
-\erikssonpendingrow{22}{10,9,2}
-\erikssonpendingrow{23}{10,8,3}
-\erikssonpendingrow{24}{10,7,4}
-\erikssonpendingrow{25}{10,6,5}
-\erikssonpendingrow{26}{10,5,2,2,2}
-\erikssonpendingrow{27}{10,4,3,2,2}
-\erikssonpendingrow{28}{10,3,3,3,2}
-\erikssonpendingrow{29}{9,9,3}
-\erikssonpendingrow{30}{9,8,4}
-\erikssonpendingrow{31}{9,7,5}
-\erikssonpendingrow{32}{9,6,6}
-\erikssonpendingrow{33}{9,6,2,2,2}
-\erikssonpendingrow{34}{9,5,3,2,2}
-\erikssonpendingrow{35}{9,4,4,2,2}
-\erikssonpendingrow{36}{9,4,3,3,2}
-\erikssonpendingrow{37}{9,3,3,3,3}
-\erikssonpendingrow{38}{9,2,2,2,2,2,2}
-\erikssonpendingrow{39}{8,8,5}
-\erikssonpendingrow{40}{8,7,6}
-\erikssonpendingrow{41}{8,7,2,2,2}
-\erikssonpendingrow{42}{8,6,3,2,2}
-\erikssonpendingrow{43}{8,5,4,2,2}
-\erikssonpendingrow{44}{8,5,3,3,2}
-\erikssonpendingrow{45}{8,4,4,3,2}
-\erikssonpendingrow{46}{8,4,3,3,3}
-\erikssonpendingrow{47}{8,3,2,2,2,2,2}
-\erikssonpendingrow{48}{7,7,7}
-\erikssonpendingrow{49}{7,7,3,2,2}
-\erikssonpendingrow{50}{7,6,4,2,2}
-\erikssonpendingrow{51}{7,6,3,3,2}
-\erikssonpendingrow{52}{7,5,5,2,2}
-\erikssonpendingrow{53}{7,5,4,3,2}
-\erikssonpendingrow{54}{7,5,3,3,3}
-\erikssonpendingrow{55}{7,4,4,4,2}
-\erikssonpendingrow{56}{7,4,4,3,3}
-\erikssonpendingrow{57}{7,4,2,2,2,2,2}
-\erikssonpendingrow{58}{7,3,3,2,2,2,2}
-\erikssonpendingrow{59}{6,6,5,2,2}
-\erikssonpendingrow{60}{6,6,4,3,2}
-\erikssonpendingrow{61}{6,6,3,3,3}
-\erikssonpendingrow{62}{6,5,5,3,2}
-\erikssonpendingrow{63}{6,5,4,4,2}
-\erikssonpendingrow{64}{6,5,4,3,3}
-\erikssonpendingrow{65}{6,5,2,2,2,2,2}
-\erikssonpendingrow{66}{6,4,4,4,3}
-\erikssonpendingrow{67}{6,4,3,2,2,2,2}
-\erikssonpendingrow{68}{6,3,3,3,2,2,2}
-\erikssonpendingrow{69}{5,5,5,4,2}
-\erikssonpendingrow{70}{5,5,5,3,3}
-\erikssonpendingrow{71}{5,5,4,4,3}
-\erikssonpendingrow{72}{5,5,3,2,2,2,2}
-\erikssonpendingrow{73}{5,4,4,4,4}
-\erikssonpendingrow{74}{5,4,4,2,2,2,2}
-\erikssonpendingrow{75}{5,4,3,3,2,2,2}
-\erikssonpendingrow{76}{5,3,3,3,3,2,2}
-\erikssonpendingrow{77}{5,2,2,2,2,2,2,2,2}
-\erikssonpendingrow{78}{4,4,4,3,2,2,2}
-\erikssonpendingrow{79}{4,4,3,3,3,2,2}
-\erikssonpendingrow{80}{4,3,3,3,3,3,2}
-\erikssonpendingrow{81}{4,3,2,2,2,2,2,2,2}
-\erikssonpendingrow{82}{3,3,3,3,3,3,3}
-\erikssonpendingrow{83}{3,3,3,2,2,2,2,2,2}
+\erikssonrow{1}{21}{0}{0}{0}
+\erikssonrow{2}{17,2,2}{0}{0}{0}
+\erikssonrow{3}{16,3,2}{0}{0}{0}
+\erikssonrow{4}{15,4,2}{0}{0}{0}
+\erikssonrow{5}{15,3,3}{0}{0}{0}
+\erikssonrow{6}{14,5,2}{0}{0}{0}
+\erikssonrow{7}{14,4,3}{0}{0}{0}
+\erikssonrow{8}{13,6,2}{0}{0}{0}
+\erikssonrow{9}{13,5,3}{0}{0}{0}
+\erikssonrow{10}{13,4,4}{0}{1}{1}
+\erikssonrow{11}{13,2,2,2,2}{0}{0}{0}
+\erikssonrow{12}{12,7,2}{0}{0}{0}
+\erikssonrow{13}{12,6,3}{0}{0}{0}
+\erikssonrow{14}{12,5,4}{0}{0}{0}
+\erikssonrow{15}{12,3,2,2,2}{0}{0}{0}
+\erikssonrow{16}{11,8,2}{0}{0}{0}
+\erikssonrow{17}{11,7,3}{0}{0}{0}
+\erikssonrow{18}{11,6,4}{0}{0}{0}
+\erikssonrow{19}{11,5,5}{0}{1}{0}
+\erikssonrow{20}{11,4,2,2,2}{0}{0}{0}
+\erikssonrow{21}{11,3,3,2,2}{0}{0}{0}
+\erikssonrow{22}{10,9,2}{0}{0}{0}
+\erikssonrow{23}{10,8,3}{0}{0}{0}
+\erikssonrow{24}{10,7,4}{0}{0}{0}
+\erikssonrow{25}{10,6,5}{0}{0}{0}
+\erikssonrow{26}{10,5,2,2,2}{0}{0}{0}
+\erikssonrow{27}{10,4,3,2,2}{0}{0}{0}
+\erikssonrow{28}{10,3,3,3,2}{0}{0}{0}
+\erikssonrow{29}{9,9,3}{0}{0}{0}
+\erikssonrow{30}{9,8,4}{0}{0}{0}
+\erikssonrow{31}{9,7,5}{0}{0}{0}
+\erikssonrow{32}{9,6,6}{0}{1}{1}
+\erikssonrow{33}{9,6,2,2,2}{0}{0}{0}
+\erikssonrow{34}{9,5,3,2,2}{0}{0}{0}
+\erikssonrow{35}{9,4,4,2,2}{0}{0}{0}
+\erikssonrow{36}{9,4,3,3,2}{0}{0}{0}
+\erikssonrow{37}{9,3,3,3,3}{0}{0}{0}
+\erikssonrow{38}{9,2,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{39}{8,8,5}{0}{0}{0}
+\erikssonrow{40}{8,7,6}{0}{0}{0}
+\erikssonrow{41}{8,7,2,2,2}{0}{0}{0}
+\erikssonrow{42}{8,6,3,2,2}{0}{0}{0}
+\erikssonrow{43}{8,5,4,2,2}{0}{0}{0}
+\erikssonrow{44}{8,5,3,3,2}{0}{0}{0}
+\erikssonrow{45}{8,4,4,3,2}{0}{0}{0}
+\erikssonrow{46}{8,4,3,3,3}{0}{0}{0}
+\erikssonrow{47}{8,3,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{48}{7,7,7}{0}{5}{0}
+\erikssonrow{49}{7,7,3,2,2}{0}{0}{0}
+\erikssonrow{50}{7,6,4,2,2}{0}{0}{0}
+\erikssonrow{51}{7,6,3,3,2}{0}{0}{0}
+\erikssonrow{52}{7,5,5,2,2}{0}{0}{0}
+\erikssonrow{53}{7,5,4,3,2}{0}{0}{0}
+\erikssonrow{54}{7,5,3,3,3}{0}{0}{0}
+\erikssonrow{55}{7,4,4,4,2}{0}{0}{0}
+\erikssonrow{56}{7,4,4,3,3}{0}{0}{0}
+\erikssonrow{57}{7,4,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{58}{7,3,3,2,2,2,2}{0}{0}{0}
+\erikssonrow{59}{6,6,5,2,2}{0}{0}{0}
+\erikssonrow{60}{6,6,4,3,2}{0}{0}{0}
+\erikssonrow{61}{6,6,3,3,3}{0}{0}{0}
+\erikssonrow{62}{6,5,5,3,2}{0}{0}{0}
+\erikssonrow{63}{6,5,4,4,2}{0}{0}{0}
+\erikssonrow{64}{6,5,4,3,3}{0}{0}{0}
+\erikssonrow{65}{6,5,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{66}{6,4,4,4,3}{0}{0}{0}
+\erikssonrow{67}{6,4,3,2,2,2,2}{0}{0}{0}
+\erikssonrow{68}{6,3,3,3,2,2,2}{0}{0}{0}
+\erikssonrow{69}{5,5,5,4,2}{0}{0}{0}
+\erikssonrow{70}{5,5,5,3,3}{0}{0}{0}
+\erikssonrow{71}{5,5,4,4,3}{0}{0}{0}
+\erikssonrow{72}{5,5,3,2,2,2,2}{0}{0}{0}
+\erikssonrow{73}{5,4,4,4,4}{0}{0}{0}
+\erikssonrow{74}{5,4,4,2,2,2,2}{0}{0}{0}
+\erikssonrow{75}{5,4,3,3,2,2,2}{0}{0}{0}
+\erikssonrow{76}{5,3,3,3,3,2,2}{0}{0}{0}
+\erikssonrow{77}{5,2,2,2,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{78}{4,4,4,3,2,2,2}{0}{0}{0}
+\erikssonrow{79}{4,4,3,3,3,2,2}{0}{0}{0}
+\erikssonrow{80}{4,3,3,3,3,3,2}{0}{0}{0}
+\erikssonrow{81}{4,3,2,2,2,2,2,2,2}{0}{0}{0}
+\erikssonrow{82}{3,3,3,3,3,3,3}{0}{0}{0}
+\erikssonrow{83}{3,3,3,2,2,2,2,2,2}{0}{0}{0}
 \end{longtable}
 
 \section{Explicit budget-valid support clearing}
@@ -670,6 +703,12 @@ execution record to complete for TD20; TD18 timings and results are not TD20
 artifacts.
 
 \begin{thebibliography}{9}
+\bibitem{td18-reference}
+TD18 project. \emph{Computer-assisted proof of $\TD(18)=10$}.
+Completed reference emission and independent verification, 16 November 2026.
+Source revision \nolinkurl{22042d8d2274ce05ce1c7868cedab66937eb3ebe}.
+\href{https://github.com/luizaugustogarcia/td18/blob/22042d8d2274ce05ce1c7868cedab66937eb3ebe/docs/REFERENCE_SIMULATION.md}
+{Reference record and completed logs}.
 \bibitem{framework}
 L. A. G. Silva, L. A. B. Kowada, N. R. Rocco, and M. E. M. T. Walter.
 \emph{Twisted Bracelets for Sorting by Transpositions: the Transposition

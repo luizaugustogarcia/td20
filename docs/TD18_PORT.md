@@ -1,10 +1,18 @@
 # Complete TD18 improvement port
 
-Scope: TD20 local HEAD **a5cf357** (13 November 2026, 13:55:55 UTC) through
-TD18 HEAD **7a729c4** (16 November 2026, 08:56:54 UTC). TD18 **6b1585c** is
-the last TD18 commit before the cutoff; all **38 subsequent commits** are
-accounted for below. This ledger records final behavior, including later
-supersession of temporary tuning and deployment choices.
+Scope: TD20 baseline **965b47475b483925db26ef72a0e5199d68225dda**
+(13 November 2026, 08:21:04 UTC) through TD18 HEAD
+**22042d8d2274ce05ce1c7868cedab66937eb3ebe** (16 November 2026,
+11:08:17 UTC). The corresponding TD18 baseline is
+**6b1585c943f4c74b12cc13fbff804be59c2b93f3**, its commit defining the
+Java CPU prefix-depth default at the same timestamp. The repositories have
+distinct commit hashes. All **39 subsequent TD18 commits** are accounted for
+below, including final supersession of temporary tuning and deployment choices.
+
+TD20 commit **84cd4b5eead5adbeea11e5133b4e277af5f8005d** already ports the
+runtime and mathematical changes through `7a729c4`. This follow-up reviews
+all remaining source, test, tool and documentation differences, extends the
+checked comparison to tests and launchers, and incorporates `22042d8`.
 
 The user explicitly authorized porting the Eriksson route on 16 November 2026,
 replacing the former joint-2 instructions. TD20 keeps its own diameter premise,
@@ -52,6 +60,7 @@ counts and TD18 reference artifacts cannot discharge TD20 obligations.
 | `29aedcd` | Align runtime profiles with the local reference hardware | Ported bounded maintained local launchers, affinity/quota-aware CPU detection, architecture overrides, preflight and success-marker checks. Machine-specific CPU worker counts are detected rather than hardcoded. |
 | `47318e0` | Remove obsolete machine deployment presets | Removed obsolete machine deployment presets; maintained local launchers are the supported entry points. |
 | `7a729c4` | Refresh compiled TD18 proof PDF | Regenerated the TD20 reading PDF from the updated TD20 source paper; no TD18 PDF or proof claim copied. |
+| `22042d8` | Record successful independent reference verification | Recorded the completed TD18 emission and separate-machine full-scope check as provenance for the established TD18 premise. Ported the separation of emission, verification, test and census evidence in the TD20 execution checklist. TD18 counts, timings and retained logs describe its own run; TD20 full verification remains pending. |
 
 ## Port boundaries and verification
 
@@ -76,3 +85,45 @@ native checks validate implementation behavior within their executed scopes.
 They do not substitute for full current-route counts, sorting or independent
 end-to-end proof verification. [RESEARCH_PLAN.md](RESEARCH_PLAN.md) retains every
 completion criterion.
+
+## Complete source, test and tool comparison
+
+The audit compares **181 shared files** at the reviewed TD18 revision: 113
+production/build/native/resource files, 60 Java test files, seven maintained
+tools and `.gitignore`. It applies frozen, reviewed production and test/tool
+adapter patches before comparing every file exactly. There are no excluded
+runtime algorithms, tests or upstream launchers. The only additional TD20 tools
+are this port's audit, its regression tests, the isolated root-publication
+regression and the reviewed adapter specifications.
+
+The reviewed test/tool adapter also records a TD20 publication safeguard in
+`CountErikssonRoots.jsh`. Unlike the upstream row-only publisher, it validates
+all 83 versioned reports, partition order and table markers before atomically
+updating the rows, aggregate totals and count-status paragraph. It reparses the
+temporary inventory before replacement, rejects incomplete or incompatible
+data and arithmetic overflow, and preserves the conditional proof status.
+Publishing emitter counts remains separate from independent regeneration and
+full sorting verification. The TD20-only `test_eriksson_root_publication.py`
+fixture checks every synthetic row, all four totals, unchanged proof text,
+idempotent publication, malformed or incomplete reports, displaced rows,
+partition order, overflow and temporary-file cleanup. Its 131 checks and a
+separate checker publication guard pass entirely in temporary directories.
+
+Test adaptations preserve all upstream regressions while covering the TD20
+21-symbol domain, budget eleven, admitted length-17 powers, rejection of the
+superseded joint-2 schema and the general CPU deadline. The certificate backup
+directory is ignored along with all generated TD20 logs and settings. The
+audit rejects missing or extra shared files, changed content, stale reference
+revisions, unaccounted commits and surviving tools retired anywhere in the
+reviewed history. Documentation and the proof paper are reviewed separately
+because their inventories, premises and completion status belong to TD20.
+
+The final upstream commit records a separate-machine checker finishing on
+16 November 2026 at 10:11:21 Lisbon time, in 1 h 45 min 43 s, with exit zero
+and 1,349,910,890 reconstructed TD18 roots verified. Its
+[revision-pinned record](https://github.com/luizaugustogarcia/td18/blob/22042d8d2274ce05ce1c7868cedab66937eb3ebe/docs/REFERENCE_SIMULATION.md)
+retains both execution configurations and logs. Tests were skipped for that
+verification run and standalone census reports were not republished; those
+remain separate checklist items. The TD20 checklist retains every corresponding
+requirement, with generated artifacts untracked. TD(16) = 9 and TD(18) = 10
+are established results using the same computational methodology.

@@ -19,7 +19,9 @@ move must produce at least two more. Moves can change either current or target.
 Swapping endpoints gives `(omega inverse, rho)` and preserves distance, but is
 not added to extended-toric class equivalence. This is a triangle-inequality
 upper-bound route, rather than a fixed-target forward prefix assertion.
-TD(18) = 10 is an explicit established premise; the separately certified TD(16) = 9 and smaller established bounds remain premises.
+TD(16) = 9 and TD(18) = 10 are established using the same computational
+methodology and are explicit completed premises. Smaller established bounds
+are also premises.
 
 Root obligations have 21 symbols and budget 11. Three moves producing
 five fixed symbols leave 16 symbols and budget 8. The endpoint cover contains all 143 even fixed-point-free annotated types on 16 symbols, with budget 8.

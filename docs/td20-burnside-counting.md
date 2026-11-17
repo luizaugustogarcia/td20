@@ -137,20 +137,27 @@ supports are still enumerated; this is not a closed formula for every term.
 ## Active Eriksson route
 
 The full endpoint cover has 143 even fixed-point-free annotated types on
-16 symbols with budget 8, from 28 even partitions. All 143 rows must be
-regenerated independently in the emitter and checker modules. Current-route
-class counts remain pending until those reports agree. The active cover imposes
+16 symbols with budget 8, from 28 even partitions. Both modules have
+independently regenerated all 143 rows and agree on 14,098,353,328 classes
+in total, including 11,523,939,269 outside elementary diameter closures.
+The versioned reports and source table must agree in every row. The active cover imposes
 no stricter 3-norm cutoff. Contract fixed points before using this census.
 
 The root inventory contains all 83 partitions of 21. Root selection is not
 determined by annotated type, so it uses the constrained generator rather than
-Burnside. Its new retained and support-cleared class counts require independent
-regeneration; historical joint-2 counts cannot be substituted.
+Burnside. All 83 emitter count rows are published: U3 = 0 retained unoriented
+roots, O3 = 8 retained oriented roots and C3 = 2 support-cleared roots, leaving
+six direct obligations. The standalone checker census completed the first 24
+matching root reports before an intentional stop, leaving 59 independent rows
+to check. Both modules' complete retained-class unit comparisons passed for
+every domain of three through eight symbols against an arbitrary-support oracle
+on the actual current and target cycles. These small-domain checks do not supply
+the remaining 21-symbol counts. Historical joint-2 counts cannot be substituted.
 
 The three inverse waves cover both `(1,2,2)` and `(0,3,2)` paths on both
 endpoints. Class counts are separate from witnesses within 8 moves at
 endpoints and 11 moves at roots. See [the source paper](td20-reduction-count.tex)
-and [validation](VALIDATION.md) for the checked scope and reference verification record.
+and [validation](VALIDATION.md) for the checked scope and required verification artifacts.
 
 Small-domain tests compare Burnside with direct generation through nine
 symbols, including empty types and both even-domain reflection classes.

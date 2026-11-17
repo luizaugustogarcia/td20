@@ -6,6 +6,7 @@ __pycache__/
 
 # Generated computational artifacts
 certificates/
+certificates.bkp/
 data/
 checkpoints/
 avoidance-work/

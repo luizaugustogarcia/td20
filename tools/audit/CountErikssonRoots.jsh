@@ -49,6 +49,100 @@ class ActiveErikssonRootCensus {
             Files.move(temporary,path,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(temporary); }
     }
+    static int uniqueLine(List<String> lines,String marker,boolean prefix) {
+        int found=-1;
+        for (int i=0;i<lines.size();i++) {
+            String line=lines.get(i).strip();
+            if (!(prefix ? line.startsWith(marker):line.equals(marker))) continue;
+            if (found!=-1) throw new IllegalStateException("Duplicate root publication marker: "+marker);
+            found=i;
+        }
+        if (found==-1) throw new IllegalStateException("Missing root publication marker: "+marker);
+        return found;
+    }
+    static String tableNumber(long value) {
+        return "$\\mathbf{"+String.format(Locale.ROOT,"%,d",value).replace(",","\\,")+"}$";
+    }
+    /**
+     * TD20 starts with pending rows, totals and editorial status. The TD18
+     * row-only publisher leaves those parts inconsistent. Validate the entire
+     * versioned inventory before atomically replacing all three count sections;
+     * publication never asserts completed sorting or a proved TD20 upper bound.
+     */
+    static void publish(Path paper,List<int[]> parts) throws Exception {
+        if (CHECKER) throw new IllegalArgumentException("The checker cannot publish emitter counts");
+        var rows=ErikssonInventory.read(paper);
+        if (parts.size()!=ErikssonRoute.ROOT_PARTITIONS || rows.size()!=parts.size())
+            throw new IllegalStateException("Incomplete active publication inventory");
+        var counts=new ArrayList<ErikssonRootGenerator.Counts>();
+        long totalU=0,totalO=0,totalC=0;
+        for (int i=0;i<parts.size();i++) {
+            if (!Arrays.equals(parts.get(i),rows.get(i).partition()))
+                throw new IllegalStateException("Publication partition differs at row "+(i+1));
+            var count=validate(i+1,parts.get(i),read(OUTPUT.resolve(String.format("partition-%02d.txt",i+1))));
+            counts.add(count);
+            totalU=Math.addExact(totalU,count.unoriented());
+            totalO=Math.addExact(totalO,count.oriented());
+            totalC=Math.addExact(totalC,count.supportCleared());
+        }
+        long totalDirect=Math.subtractExact(Math.addExact(totalU,totalO),totalC);
+        var lines=new ArrayList<>(Files.readAllLines(paper));
+        int status=uniqueLine(lines,"All "+parts.size()+" root partitions below",true);
+        int table=uniqueLine(lines,"\\begin{longtable}{@{}rlrrrr@{}}",false);
+        int begin=uniqueLine(lines,"% BEGIN ERIKSSON_ROOT_TOTALS_V1",false);
+        int end=uniqueLine(lines,"% END ERIKSSON_ROOT_TOTALS_V1",false);
+        int tableEnd=-1;
+        for (int i=table+1;i<lines.size();i++) {
+            String line=lines.get(i).strip();
+            if (line.startsWith("\\begin{longtable}")) throw new IllegalStateException("Nested active root table");
+            if (line.equals("\\end{longtable}")) { tableEnd=i; break; }
+        }
+        if (!(status<table && table<begin && end==begin+3 && end<tableEnd)
+                || !lines.get(begin+1).strip().startsWith("\\midrule\\multicolumn{2}{r}{\\textbf{Total}} & ")
+                || !lines.get(begin+2).strip().equals("\\bottomrule\\endlastfoot"))
+            throw new IllegalStateException("Malformed active root publication sections");
+        var publishedStatus=List.of(
+                "All "+parts.size()+" root partitions below have complete versioned emitter counts.",
+                "The independent checker regenerates every retained unoriented count $U_3$,",
+                "retained oriented count $O_3$ and support-cleared count $C_3$, comparing",
+                "them with these rows. The aggregate totals are sums of the published rows.",
+                "Counting discharges no sorting obligation or full proof-verification requirement.");
+        var previousStatus=lines.get(status).strip().equals(publishedStatus.getFirst()) ? publishedStatus:List.of(
+                "All "+parts.size()+" root partitions below have been regenerated structurally. Their new",
+                "Eriksson-route counts are pending; historical joint-2 counts cannot populate",
+                "these rows. Both modules must independently regenerate every count. Sorting",
+                "verification is a separate requirement.");
+        int statusEnd=status+previousStatus.size();
+        if (statusEnd>table || !lines.subList(status,statusEnd).stream().map(String::strip).toList().equals(previousStatus))
+            throw new IllegalStateException("Incompatible active root count status");
+        int replaced=0;
+        for (int i=0;i<lines.size();i++) {
+            String line=lines.get(i).strip();
+            if (!line.startsWith("\\erikssonrow{") && !line.startsWith("\\erikssonpendingrow{")) continue;
+            if (i<=end || i>=tableEnd) throw new IllegalStateException("Active root row outside its table");
+            int index=++replaced; var count=counts.get(index-1);
+            lines.set(i,"\\erikssonrow{"+index+"}{"+String.join(",",Arrays.stream(parts.get(index-1)).mapToObj(Integer::toString).toList())
+                    +"}{"+count.unoriented()+"}{"+count.oriented()+"}{"+count.supportCleared()+"}");
+        }
+        if (replaced!=parts.size()) throw new IllegalStateException("Incomplete active publication inventory");
+        lines.set(begin+1,"\\midrule\\multicolumn{2}{r}{\\textbf{Total}} & "+tableNumber(totalU)+" & "
+                +tableNumber(totalO)+" & "+tableNumber(totalC)+" & "+tableNumber(totalDirect)+"\\\\");
+        lines.subList(status,statusEnd).clear();
+        lines.addAll(status,publishedStatus);
+        Path temporary=Files.createTempFile(paper.toAbsolutePath().getParent(),".active-counts-",".tmp");
+        try {
+            Files.write(temporary,lines);
+            var published=ErikssonInventory.read(temporary);
+            for (int i=0;i<parts.size();i++) {
+                var row=published.get(i); var count=counts.get(i);
+                row.requireCompleteCounts();
+                if (row.unoriented()!=count.unoriented() || row.oriented()!=count.oriented() || row.supportCleared()!=count.supportCleared())
+                    throw new IllegalStateException("Published count differs at row "+(i+1));
+            }
+            Files.move(temporary,paper,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+        }
+        finally { Files.deleteIfExists(temporary); }
+    }
     static void run() throws Exception {
         Files.createDirectories(OUTPUT);
         var parts=Partitions.generateValidPartitions(ErikssonRoute.ROOT_SYMBOLS);
@@ -78,18 +172,7 @@ class ActiveErikssonRootCensus {
             reporter.shutdownNow();
         }
         Path paper=Path.of("docs/td20-reduction-count.tex");
-        if (Boolean.getBoolean("td20.eriksson.publish")) {
-            if (CHECKER) throw new IllegalArgumentException("The checker cannot publish emitter counts");
-            var rows=ErikssonInventory.read(paper); var lines=Files.readAllLines(paper); int replaced=0;
-            for (int i=0;i<lines.size();i++) if (lines.get(i).startsWith("\\erikssonrow{") || lines.get(i).startsWith("\\erikssonpendingrow{")) {
-                int index=++replaced; var counts=validate(index,parts.get(index-1),read(OUTPUT.resolve(String.format("partition-%02d.txt",index))));
-                lines.set(i,"\\erikssonrow{"+index+"}{"+String.join(",",Arrays.stream(parts.get(index-1)).mapToObj(Integer::toString).toList())+"}{"+counts.unoriented()+"}{"+counts.oriented()+"}{"+counts.supportCleared()+"}");
-            }
-            if (replaced!=parts.size()) throw new IllegalStateException("Incomplete active publication inventory");
-            Path temporary=Files.createTempFile(paper.toAbsolutePath().getParent(),".active-counts-",".tmp");
-            try { Files.write(temporary,lines); Files.move(temporary,paper,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
-            finally { Files.deleteIfExists(temporary); }
-        }
+        if (Boolean.getBoolean("td20.eriksson.publish")) publish(paper,parts);
         if (CHECKER) for (var row:ErikssonInventory.read(paper)) {
             row.requireCompleteCounts(); var counts=validate(row.number(),row.partition(),read(OUTPUT.resolve(String.format("partition-%02d.txt",row.number()))));
             if (row.unoriented()!=counts.unoriented() || row.oriented()!=counts.oriented() || row.supportCleared()!=counts.supportCleared())

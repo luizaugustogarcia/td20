@@ -7,7 +7,8 @@
   proof route in this repository.
 - Prioritize completeness and correctness of the Java/CUDA implementation and
   its checked computational artifacts.
-- Treat TD(18) = 10 as an explicit completed premise requested for this project.
+- Treat TD(16) = 9 and TD(18) = 10 as explicit completed premises, established
+  using the same computational methodology requested for this project.
 - The project objective is TD(20) = 11. Treat the reverse-permutation lower
   bound TD(20) >= 11 as established and the checked computation as the program
   for proving the matching upper bound.

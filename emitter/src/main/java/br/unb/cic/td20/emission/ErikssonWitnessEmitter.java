@@ -19,6 +19,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.StringJoiner;
+import java.util.regex.Pattern;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
@@ -37,6 +41,8 @@ public final class ErikssonWitnessEmitter {
         var options = Options.parse(arguments, ProjectPaths.root(Path.of("")));
         if (options.help) { usage(); return; }
         var inventory = ErikssonInventory.read(options.paper);
+        var endpointWork = options.resumeWork == null && (options.endpoints() || options.avoidance())
+                ? readEndpointWork(options.paper) : List.<EndpointWork>of();
         Files.createDirectories(options.database.getParent());
         Files.createDirectories(options.work.getParent());
         Path work = options.work.getParent().toRealPath().resolve(options.work.getFileName());
@@ -59,8 +65,8 @@ public final class ErikssonWitnessEmitter {
                             result.unoriented+result.oriented-result.supportCleared, result.unresolved);
                     if (result.unresolved != 0) throw new IllegalStateException("Unresolved direct root witnesses: " + result.unresolved);
                 }
-                if (options.resumeWork == null && (options.endpoints() || options.avoidance())) for (var endpoint : ErikssonInventory.endpoints())
-                    if (options.includesEndpoint(endpoint.number())) {
+                if (options.resumeWork == null && (options.endpoints() || options.avoidance())) for (var endpoint : endpointWork)
+                    if (options.includesEndpoint(endpoint.endpoint().number())) {
                         // Avoidance regenerates misses from the witness database. It
                         // never starts from a persisted obstruction list alone.
                         boolean search = !options.phase.equals("avoidance");
@@ -180,14 +186,20 @@ public final class ErikssonWitnessEmitter {
         return new RootResult(counts.unoriented(),counts.oriented(),counts.supportCleared(),unresolved.sum());
     }
 
-    static void emitEndpoint(ErikssonInventory.Endpoint endpoint, PairDischarge discharge,
+    static void emitEndpoint(EndpointWork work, PairDischarge discharge,
                              DiskStateSet residuals, Progress progress) {
+        var endpoint = work.endpoint();
+        if (work.classes() == 0) {
+            log.info("Endpoint emission type {}: skipped generation; published classes=0; independent regeneration required",
+                    endpoint.number());
+            return;
+        }
         if (endpoint.elementaryClosure()) {
             log.info("Endpoint emission type {}: known-diameter endpoint closure", endpoint.number());
             return;
         }
         var generated = new LongAdder(); var misses = new LongAdder();
-        long expected = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(endpoint.partition(), endpoint.orientedByPart());
+        long expected = work.classes();
         progress.phase(() -> null);
         try (var reporting=new ReconstructionProgress("Endpoint emission type "+endpoint.number(),expected,generated::sum,
                 () -> "missingEndpointDischarges="+misses.sum())) {
@@ -201,6 +213,56 @@ public final class ErikssonWitnessEmitter {
         }
         if (generated.sum() != expected) throw new IllegalStateException("Endpoint generation count mismatch: " + endpoint.number());
         log.info("Endpoint emission type {}: generated={}, missingEndpointDischarges={}", endpoint.number(), generated.sum(), misses.sum());
+    }
+
+    /** Published counts schedule emission; checker generation is independent. */
+    record EndpointWork(ErikssonInventory.Endpoint endpoint, long classes, long requiringDischarge) {
+        EndpointWork {
+            if (classes < 0 || requiringDischarge != (endpoint.elementaryClosure() ? 0 : classes))
+                throw new IllegalArgumentException("Invalid published endpoint count: "+endpoint.number());
+        }
+    }
+
+    static List<EndpointWork> readEndpointWork(Path paper) throws IOException {
+        String begin="% BEGIN ERIKSSON_ENDPOINT_TABLE_V1", end="% END ERIKSSON_ENDPOINT_TABLE_V1";
+        var endpoints=ErikssonInventory.endpoints();
+        var work=new ArrayList<EndpointWork>();
+        boolean inside=false, started=false, finished=false, route=false;
+        for (String text : Files.readAllLines(paper)) {
+            String line=text.strip();
+            if (line.equals(begin)) {
+                if (started || finished) throw new IllegalArgumentException("Duplicate endpoint table marker");
+                inside=true; started=true; continue;
+            }
+            if (line.equals(end)) {
+                if (!inside || finished) throw new IllegalArgumentException("Invalid endpoint table end");
+                inside=false; finished=true; continue;
+            }
+            if (inside && line.startsWith("% Route:")) {
+                if (route || !line.equals("% Route: "+ErikssonRoute.ID+"; checked emitter and checker endpoint-inventory-v1 reports."))
+                    throw new IllegalArgumentException("Incompatible endpoint census route");
+                route=true;
+            }
+            if (!line.startsWith("\\censusendpointrow{")) continue;
+            if (!inside || !route || work.size() >= endpoints.size())
+                throw new IllegalArgumentException("Endpoint census row outside complete inventory");
+            var endpoint=endpoints.get(work.size());
+            var type=new StringJoiner(",");
+            int[] parts=endpoint.partition(); boolean[] oriented=endpoint.orientedByPart();
+            for (int i=0;i<parts.length;i++) type.add(parts[i]+"_{\\mathrm "+(oriented[i]?"O":"U")+"}");
+            int norm=Arrays.stream(parts).map(k->k/2).sum();
+            String prefix="\\censusendpointrow{"+endpoint.number()+"}{"+type+"}{"+ErikssonRoute.ENDPOINT_SYMBOLS
+                    +"}{5}{3}{"+ErikssonRoute.ENDPOINT_BUDGET+"}{"+norm+"}";
+            String number="([0-9]+(?:\\\\,[0-9]{3})*)";
+            var matcher=Pattern.compile(Pattern.quote(prefix)+"\\{"+number+"}\\{"+number+"}").matcher(line);
+            if (!matcher.matches()) throw new IllegalArgumentException("Missing, pending or incompatible endpoint census row: "+endpoint.number());
+            long classes=Long.parseLong(matcher.group(1).replace("\\,",""));
+            long required=Long.parseLong(matcher.group(2).replace("\\,",""));
+            work.add(new EndpointWork(endpoint,classes,required));
+        }
+        if (!started || !finished || !route || work.size()!=endpoints.size())
+            throw new IllegalArgumentException("Incomplete published endpoint inventory");
+        return List.copyOf(work);
     }
 
     @FunctionalInterface interface PairDischarge { boolean apply(CyclicTargetPair pair, int budget); }

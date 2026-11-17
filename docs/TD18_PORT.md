@@ -97,7 +97,9 @@ are this port's audit, its regression tests, the isolated root-publication
 regression and the reviewed adapter specifications.
 
 The execution adapter records the separate RTX 4080 Super launcher, SM 89
-build support and the emitter's published-zero root scheduling shortcut.
+build support and the emitter's published-zero root and endpoint scheduling
+shortcuts. The endpoint reader requires the complete versioned paper census
+and retains generated-count checks for every nonempty type.
 Every added launcher is compared byte for byte with its frozen adapter and
 its executable mode is checked. Zero-direct rows remain mandatory independent
 checker generation and count-comparison obligations.

@@ -88,6 +88,15 @@ This is an emitter scheduling decision, not a checked count or proof closure.
 Pending rows still fail. The independent checker regenerates every selected
 root partition, compares all three counts and replays every direct obligation;
 an incorrect published zero cannot omit proof-verification work.
+Endpoint emission reads all 143 rows from the paper's versioned endpoint census
+and skips zero-class types before any generation or counting. It also skips
+elementary diameter closures. The reader rejects missing, duplicate, pending,
+out-of-order or incompatible rows, annotations, domains, budgets and routes.
+Nonempty types use their published class count for generation coverage checks.
+The independent checker still computes its own endpoint census, generates
+all types outside elementary closures and replays every resulting obligation.
+The same scheduling applies when emission regenerates endpoint misses for
+avoidance; missing obstruction markers never suppress an obligation.
 
 Direct root and endpoint emission use `WitnessSearch.searchFresh`: their
 generators already emit one representative per valid-pair class within each

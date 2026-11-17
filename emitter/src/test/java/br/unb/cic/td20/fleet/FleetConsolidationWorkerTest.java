@@ -55,4 +55,11 @@ class FleetConsolidationWorkerTest {
         task.complete(job,0,0,1);
         assertThrows(IllegalArgumentException.class,()->FleetConsolidationBackup.completedInputs(run,RUN,List.of(task)));
     }
+    @Test void finalDatabaseDestinationSurvivesResumeAndRejectsAnotherRun(@TempDir Path directory)throws Exception {
+        Path run=Files.createDirectory(directory.resolve("run"));Path finalDatabase=directory.resolve("certificates");
+        assertEquals(finalDatabase,FleetEmitter.outputDatabase(run,RUN,finalDatabase));
+        assertEquals(finalDatabase,FleetEmitter.outputDatabase(run,RUN,null));
+        assertThrows(IllegalArgumentException.class,()->FleetEmitter.outputDatabase(run,RUN,directory.resolve("other")));
+        assertThrows(IllegalArgumentException.class,()->FleetEmitter.outputDatabase(run,UUID.randomUUID().toString(),finalDatabase));
+    }
 }

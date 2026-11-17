@@ -12,6 +12,7 @@ import java.util.concurrent.*;
 /** SSH orchestration only. Each remote JVM uses every visible CPU and its configured GPU slots. */
 public final class FleetEmitter {
     private final Path root, directory;
+    private Path mergedDatabase;
     private final List<FleetServer> servers;
     private final String run;
     private final int batchSize;
@@ -32,20 +33,22 @@ public final class FleetEmitter {
     FleetEmitter(Path root, Path directory, List<FleetServer> servers, String run, int batchSize,
                  FleetProgress progress, Transport transport, String repository, String token, int endpointTasks) {
         this.root = root; this.directory = directory; this.servers = servers; this.run = run; this.batchSize = batchSize;
+        this.mergedDatabase = directory.resolve("certificates");
         this.progress = progress; this.transport = transport;
         this.repository = repository; this.token = token;
         this.endpointTasks = endpointTasks;
     }
     public static void main(String[] args) throws Exception {
-        Path serversFile = null, directory = null; int batchSize = 64, endpointTasks = 512; boolean planOnly = false, inspectOnly = false;
+        Path serversFile = null, directory = null, database = null; int batchSize = 64, endpointTasks = 512; boolean planOnly = false, inspectOnly = false;
         String repository = "https://github.com/luizaugustogarcia/td20.git";
         for (String arg : args) {
             if (arg.equals("--help")) {
-                System.out.println("fleet --servers=SERVERS.tsv --run=LOCAL_DIRECTORY [--reconstruction-batch-size=64] [--endpoint-tasks=512] [--repository=HTTPS_GITHUB_URL] [--plan-only|--inspect-only]\n"
+                System.out.println("fleet --servers=SERVERS.tsv --run=LOCAL_DIRECTORY [--database=FINAL_DATABASE] [--reconstruction-batch-size=64] [--endpoint-tasks=512] [--repository=HTTPS_GITHUB_URL] [--plan-only|--inspect-only]\n"
                         + "Set TD20_GITHUB_TOKEN for authenticated server preparation. Repeat the identical command to resume.\n"
-                        + "Output: LOCAL_DIRECTORY/certificates. See docs/DISTRIBUTED.md."); return;
+                        + "Output defaults to LOCAL_DIRECTORY/certificates. Keep production data outside Maven target directories. See docs/DISTRIBUTED.md."); return;
             } else if (arg.startsWith("--servers=")) serversFile = Path.of(arg.substring(10));
             else if (arg.startsWith("--run=")) directory = Path.of(arg.substring(6));
+            else if (arg.startsWith("--database=")) database = Path.of(arg.substring(11));
             else if (arg.startsWith("--reconstruction-batch-size=")) batchSize = Integer.parseInt(arg.substring(28));
             else if (arg.startsWith("--endpoint-tasks=")) endpointTasks = Integer.parseInt(arg.substring(17));
             else if (arg.startsWith("--repository=")) repository = arg.substring(13);
@@ -101,12 +104,28 @@ public final class FleetEmitter {
                         (server,command,input,output,log,observer,secret) -> runShell(FleetFiles.command(output != null && command.startsWith("tar -cf -")
                                 ? server.transferRemote(command) : server.remote(command)),root,input,output,log,observer,secret),
                         repository,System.getenv("TD20_GITHUB_TOKEN"),endpointTasks);
+                emitter.mergedDatabase=outputDatabase(directory,run,database);
                 try { emitter.execute(); }
                 catch (Exception | Error error) { progress.event("coordinator","FAILED: " + error); throw error; }
             }
         }
     }
 
+    static Path outputDatabase(Path directory,String run,Path requested) throws IOException {
+        Path record=directory.resolve("merged-database-v1.txt");
+        var scope=List.of("td20-fleet-output-v1","route="+ErikssonRoute.ID,"run="+run);
+        Path output=requested==null?directory.resolve("certificates"):requested;
+        output=output.toAbsolutePath().normalize();
+        if(Files.isRegularFile(record)) {
+            var lines=Files.readAllLines(record);
+            if(lines.size()!=4||!lines.subList(0,3).equals(scope))throw new IllegalArgumentException("Different output scope");
+            Path saved=Path.of(FleetFiles.field(lines,3,"database")).toAbsolutePath().normalize();
+            if(requested!=null&&!saved.equals(output))throw new IllegalArgumentException("Final database destination changed on resume");
+            return saved;
+        }
+        if(directory.toAbsolutePath().normalize().startsWith(output))throw new IllegalArgumentException("Final database overlaps run data");
+        var lines=new ArrayList<>(scope);lines.add("database="+output);FleetFiles.write(record,lines);return output;
+    }
     Path snapshot() throws Exception {
         Path snapshot = directory.resolve("source.tar");
         if (!Files.exists(snapshot)) {
@@ -180,7 +199,7 @@ public final class FleetEmitter {
             inputs.addAll(FleetConsolidationBackup.completedInputs(directory,run,emission));
             inputs.addAll(downloadCertificates(reconstruction).stream().map(path->path.resolve("certificates")).toList());
         } else inputs.addAll(downloadCertificates(allTasks).stream().map(path->path.resolve("certificates")).toList());
-        Path output = directory.resolve("certificates");
+        Path output = mergedDatabase;
         Path report = directory.resolve("complete.txt");
         if (Files.exists(output)) {
             var expected = List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + allTasks.size());
@@ -188,7 +207,7 @@ public final class FleetEmitter {
                     || Files.exists(report) && !Files.readAllLines(report).equals(expected) || !Files.isRegularFile(output.resolve("CURRENT"))
                     || !Files.isRegularFile(output.resolve("merge-v1.txt"))) throw new IllegalStateException("Incomplete published fleet merge");
         } else {
-            Path temporary = directory.resolve("merged-" + UUID.randomUUID() + ".partial");
+            Path temporary = output.resolveSibling("."+output.getFileName()+"-merge-"+UUID.randomUUID()+".partial");
             progress.phase("local certificate merge",0,0);
             progress.event("coordinator","Replaying and merging " + inputs.size() + " downloaded certificate databases.");
             var result = CertificateDatabaseMerger.merge(temporary,inputs,message -> progress.event("merge",message));

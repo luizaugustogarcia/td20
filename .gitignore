@@ -11,6 +11,8 @@ data/
 checkpoints/
 avoidance-work/
 logs/
+/fleet/
+/runs/
 
 # Native/CMake build products
 **/CMakeFiles/

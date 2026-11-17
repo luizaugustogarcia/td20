@@ -28,6 +28,9 @@ The SSH user needs noninteractive sudo access. Configure noninteractive SSH acce
 and accept each host key with your usual SSH connection first. The coordinator
 does not provision Vast instances or install CUDA. Local preparation and merging need JDK 21, Maven, git and tar, with
 enough disk space for the downloaded databases and the merged output.
+Production databases, checkpoints, downloads and fleet configuration belong
+outside Maven target directories. The examples use an ignored project-root
+fleet/ directory; target directories hold disposable build products.
 
 Without `TD20_GITHUB_TOKEN`, the coordinator creates a Git bundle from the local
 checkout, transfers it over SSH, and clones that pinned bundle on each server.
@@ -101,16 +104,16 @@ obligation; a CPU miss still requires the normal CUDA fallback.
 
 ```bash
 bash -ic './tools/td20 build'
-bash -ic 'mkdir -p target/fleet'
-bash -ic 'cp tools/fleet/servers.example.tsv target/fleet/servers.tsv'
-bash -ic 'cp -R tools/fleet/profiles target/fleet/'
+bash -ic 'mkdir -p fleet'
+bash -ic 'cp tools/fleet/servers.example.tsv fleet/servers.tsv'
+bash -ic 'cp -R tools/fleet/profiles fleet/'
 # Set TD20_GITHUB_TOKEN in the launch environment without saving it in these files.
 # Edit the connections, then inspect the actual servers before tuning their profiles:
-bash -ic './tools/td20 fleet --servers=target/fleet/servers.tsv --run=target/fleet/inspection --inspect-only'
+bash -ic './tools/td20 fleet --servers=fleet/servers.tsv --run=fleet/inspection --inspect-only'
 # Edit each profile using its own hardware report and workload measurements.
 # Preview the selected settings without SSH:
-bash -ic './tools/td20 fleet --servers=target/fleet/servers.tsv --run=target/fleet/run-01 --plan-only'
-bash -ic './tools/td20 fleet --servers=target/fleet/servers.tsv --run=target/fleet/run-01 --endpoint-tasks=512 --reconstruction-batch-size=64'
+bash -ic './tools/td20 fleet --servers=fleet/servers.tsv --run=fleet/run-01 --plan-only'
+bash -ic './tools/td20 fleet --servers=fleet/servers.tsv --run=fleet/run-01 --database=certificates --endpoint-tasks=512 --reconstruction-batch-size=64'
 ```
 
 Repeat the command to resume. The persisted plan fixes connections, directories,
@@ -159,7 +162,7 @@ format v2 and the fleet plan uses v2; incompatible old runs are rejected.
 Follow **one consolidated local log**, live:
 
 ```bash
-bash -ic 'tail -F target/fleet/run-01/emission.log'
+bash -ic 'tail -F fleet/run-01/emission.log'
 ```
 
 It records phase changes and errors, with one compact status snapshot every ten
@@ -272,7 +275,10 @@ receipt-only result cannot pass that guard. Downloaded
 reconstruction results contain the certificate DB and receipt, without the large
 intermediate reconstruction sets and search queues.
 
-`RUN/certificates` is published atomically after every expected job completes.
+The final database is published atomically after every expected job completes.
+Its default destination is RUN/certificates; --database=certificates selects
+the project-root directory. The destination is persisted per run and cannot
+silently change on resume.
 Its `merge-v1.txt` records input witnesses, unique witnesses, and advisory marker
 counts. Obstruction markers are validated and omitted from the merged database:
 they have no explicit budget and are not proof inputs. Missing markers cannot
@@ -282,7 +288,7 @@ persistence boundaries are flushed by the existing writer.
 To merge other existing emitter databases independently:
 
 ```bash
-bash -ic './tools/td20 merge --database=target/merged-certificates /path/to/db-a /path/to/db-b'
+bash -ic './tools/td20 merge --database=certificates /path/to/db-a /path/to/db-b'
 ```
 
 The output must be fresh. Missing databases, incompatible schemas, malformed
@@ -295,7 +301,7 @@ Closed emission databases can instead be physically consolidated on their source
 servers before downloading. This reduces thousands of small file transfers:
 
 ```bash
-bash -ic './tools/td20 fleet-consolidate --run=target/fleet/run-01 --servers=target/fleet/servers.tsv'
+bash -ic './tools/td20 fleet-consolidate --run=fleet/run-01 --servers=fleet/servers.tsv'
 ```
 
 Stop all computation and earlier download coordinators first. This command
@@ -331,10 +337,11 @@ They do not establish exhaustive proof coverage. Run the independent checker
 against the merged database, using fresh checker work and the full scope:
 
 ```bash
-bash -ic './tools/td20 verify --phase=all --database=target/fleet/run-01/certificates'
+bash -ic './tools/td20 verify --phase=all --database=certificates --work=avoidance-work/checker'
 ```
 
 The checker remains independent of the emitter and regenerates every obligation
 and all inverse waves. Keep every exit criterion in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
 All generated fleet plans, databases, checkpoints, transfers and ordinary logs
-belong under ignored `target/` directories or outside the repository.
+belong under ignored fleet/data/work directories or outside the repository,
+away from Maven target directories.

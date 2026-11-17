@@ -7,8 +7,11 @@ its archived attempts are not TD20 inputs. TD(16) = 9 and TD(18) = 10 are
 completed premises. TD(20) = 11 remains conditional on every checked criterion
 in docs/RESEARCH_PLAN.md.
 
-Run: target/fleet/production-td20-20261117.
+Run: fleet/production-td20-20261117.
 UUID: b360c418-25af-4100-a62d-40b4b226817d.
+The complete fleet tree was moved out of target at the operator's request.
+Keep computational data/configuration outside Maven build directories.
+All durable fleet artifacts are ignored under project-root fleet/.
 Earlier attempts were deleted. Preserve this run's completed emission during
 the authorized reconstruction restart; never reset or mix in older output.
 
@@ -21,7 +24,7 @@ both endpoints, and both (1,2,2) and (0,3,2) inverse paths.
 
 ## Fleet
 
-Connections: target/fleet/servers.tsv. Individual profiles: target/fleet/profiles/.
+Connections: fleet/servers.tsv. Individual profiles: fleet/profiles/.
 All six active servers have 16 certificate writers.
 
 | Node | SSH destination | GPU | JVM CPUs | Heap GiB | GPU slots | MiB/slot |
@@ -81,7 +84,7 @@ downloads had removed their transfer intents, so recover the complete 1,469-task
 scope from closed remote receipts and match them against local validated results.
 
 The authorized replacement is tools/td20 fleet-consolidate, with --run and --servers
-pointing to this run and target/fleet/servers.tsv. It re-inspects all sources, uses
+pointing to this run and fleet/servers.tsv. It re-inspects all sources, uses
 their individual profiles and automatic NUMA flags, and performs physical KV
 consolidation concurrently on all six servers. Values remain opaque; no witness
 replay occurs. Final native compaction targets 1 GiB ZSTD SSTs. Original closed
@@ -97,6 +100,10 @@ every emission task. Resume can use these six DBs without old emission servers;
 the later replaying merge still includes every completed reconstruction result.
 The project-root certificates/ was an earlier interrupted local run (41 GiB),
 never a fleet input, and was deleted at the operator's request.
+The operator selected project-root certificates/ for the final single merged
+database after reconstruction. fleet/launch.args includes --database=certificates,
+and RUN/merged-database-v1.txt records that destination. The separate verification
+waiter is configured for this database and remains stopped.
 
 Consolidation progress is RUN/consolidation/emission.log and status.txt. Raw setup
 and per-server logs remain separate. Full proof verification remains separate

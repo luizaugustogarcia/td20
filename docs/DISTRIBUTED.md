@@ -1,0 +1,285 @@
+# Distributed emission over SSH
+
+The TD20 fleet covers 83 root partitions on 21 symbols at budget 11 and all
+143 endpoint annotations on 16 symbols at budget 8. Its after-two and after-one
+budgets are 9 and 10. TD(16) = 9 and TD(18) = 10 are completed premises; this
+distributed computation does not establish TD(20) = 11 until every required
+independent verification and evidence criterion succeeds.
+
+`tools/td20 fleet` accepts a list of Vast.ai SSH connections, builds a pinned
+snapshot of the current source on each server, schedules independent emitter
+jobs, downloads closed RocksDB databases, and merges their certificates locally.
+The coordinator and all Java entry points run through JShell. Local and remote
+commands load `~/.bashrc` with `bash -ic`; transfers use plain SSH and tar.
+Batch shells suppress Vast's automatic tmux attachment with `TMUX_STARTED=1`.
+Startup output goes to stderr so shell banners cannot corrupt binary transfers.
+
+On connection the coordinator runs `sudo apt install openjdk-21-jdk maven cmake -y`,
+then enters `/workspace`, clones the repository, applies the pinned local source
+snapshot, and runs the Maven compilation/classpath preparation before any job.
+Cloning uses `--no-checkout`: the complete pinned snapshot supplies the work tree,
+including local changes, without mixing in files from a newer remote checkout.
+The default repository is `https://github.com/luizaugustogarcia/td20.git`; use
+`--repository=HTTPS_GITHUB_URL` to override it. The launcher selects the installed
+JDK 21 explicitly after loading the remote environment.
+
+Servers must already have Bash, sudo, apt, git, tar, flock and the CUDA toolchain.
+The SSH user needs noninteractive sudo access. Configure noninteractive SSH access
+and accept each host key with your usual SSH connection first. The coordinator
+does not provision Vast instances or install CUDA. Local preparation and merging need JDK 21, Maven, git and tar, with
+enough disk space for the downloaded databases and the merged output.
+
+Without `TD20_GITHUB_TOKEN`, the coordinator creates a Git bundle from the local
+checkout, transfers it over SSH, and clones that pinned bundle on each server.
+The source snapshot then overlays current local changes. This supports a fresh
+run from an already available private checkout without recovering credentials
+from another process. The bundle and all generated data remain under `target/`.
+
+Set `TD20_GITHUB_TOKEN` in the local launch environment to clone from GitHub instead. Authentication
+travels over SSH standard input into transient Git configuration, with credential
+helpers disabled. The token is absent from process arguments, repository URLs,
+persisted plans and Git configuration. Credential text is redacted before either
+the per-server log or consolidated log receives it. The coordinator removes the
+token from subprocess environments; compilation and workers do not receive it.
+Never add a token to the TSV file or a tracked script.
+
+Copy [the example](../tools/fleet/servers.example.tsv) into an ignored directory
+and replace its connection details. Each non-comment line has exactly five
+TAB-separated fields:
+
+1. A unique server name.
+2. A plain connection such as `ssh -p 12345 -i /path/to/key root@host`.
+   SSH config aliases, quoted identity paths, `-o`, `-F`, `-J` and `-l` are supported.
+3. An absolute remote work directory under `/workspace`.
+4. The CUDA architecture number, for example `120` for the RTX 5090.
+5. Server-specific JShell JVM options, or `@profiles/server-a.jvm`. Relative
+   profile paths are resolved against the TSV file. Profile files accept one
+   or more options per line and full-line `#` comments. Embedded whitespace in
+   an individual option is rejected.
+
+Each server requires an explicit maximum heap (`-R-Xmx...`), JVM CPU allocation
+(`-R-XX:ActiveProcessorCount=...`) and producer count
+(`-R-Dtd20.twistedBraceletWorkers=...`). GPU servers also require explicit
+`td20.gpuDevices`, `td20.gpuSlots` and `td20.gpuBudgetMB` settings. The fleet
+injects no shared hardware preset. [The two example profiles](../tools/fleet/profiles/)
+have different CPU, heap, CUDA and queue configurations; they are unmeasured
+starting examples, not tuned recommendations for an unknown allocation.
+
+Inspect every server first. Inspection performs the requested installation,
+clone and Java compilation, then records the JVM-visible CPU allocation, physical
+socket and NUMA topology, RAM, and each GPU's name, capability and free/total VRAM.
+It does not start emission or build CUDA. The fifth TSV field may be empty during
+inspection. Use the reported allocation to choose that server's profile, and
+measure utilization with the actual workload before finalizing it.
+
+Every computing connection repeats inspection before applying its profile. A
+CPU allocation beyond the available threads, a heap consuming all RAM, absent
+GPU devices, an incompatible CUDA target or queues consuming the available VRAM
+are rejected. Leave additional RAM for RocksDB, queues and the OS, and VRAM for
+native state/cache overhead. Native CUDA preflight checks the full allocation.
+After building CUDA, each server claims production work directly. There is no
+automatic sorting replay or test run before production.
+
+For **multiple CPU sockets or multiple NUMA nodes**, the launcher automatically
+adds `-R-XX:+UseNUMA`. The `-R-` form passes `-XX:+UseNUMA` to the Java VM that
+executes the emitter through JShell. Disabling NUMA on such a server is rejected.
+Topology respects CPU and memory affinity. A single socket and single NUMA node
+does not receive the flag automatically. Failure to establish topology is an
+error rather than an assumption of a single socket.
+
+Tune CPU producers, inverse workers, GPU callers, persistence workers, heap/GC,
+queue sizes, lookup batches and CPU-prefix deadlines independently per server.
+The runtime clears ambient Java option variables before inspection and worker
+launch, so another machine's flags cannot override the chosen profile. Native
+compilation uses that server's configured CPU allocation. Architecture `cpu`
+skips the native build and suits small jobs whose CPU prefixes close every
+obligation; a CPU miss still requires the normal CUDA fallback.
+
+```bash
+bash -ic './tools/td20 build'
+bash -ic 'mkdir -p target/fleet'
+bash -ic 'cp tools/fleet/servers.example.tsv target/fleet/servers.tsv'
+bash -ic 'cp -R tools/fleet/profiles target/fleet/'
+# Set TD20_GITHUB_TOKEN in the launch environment without saving it in these files.
+# Edit the connections, then inspect the actual servers before tuning their profiles:
+bash -ic './tools/td20 fleet --servers=target/fleet/servers.tsv --run=target/fleet/inspection --inspect-only'
+# Edit each profile using its own hardware report and workload measurements.
+# Preview the selected settings without SSH:
+bash -ic './tools/td20 fleet --servers=target/fleet/servers.tsv --run=target/fleet/run-01 --plan-only'
+bash -ic './tools/td20 fleet --servers=target/fleet/servers.tsv --run=target/fleet/run-01 --endpoint-tasks=512 --reconstruction-batch-size=64'
+```
+
+Repeat the command to resume. The persisted plan fixes connections, directories,
+CUDA architectures, work scope and batch sizes; `source.tar` pins the source including current
+tracked edits and new source files. Source packaging includes only the project
+source/documentation paths, excludes ignored files and the run directory, and
+does not include `.git`, local databases, or SSH identities. Each server has one
+active computation at a time and takes the next queued job when free. A remote lock
+prevents overlapping attempts after a connection interruption. A server claims
+the next queued task as soon as computation completes and its transfer intent is
+persisted. Certificate databases stay remote throughout emission and
+reconstruction. Types have no completion barrier between them, and transfer
+backlogs do not block computation workers. Faster servers consume
+more work. There are no static per-server slices. Jobs use the
+configured CPU allocation and bounded queues within the existing emitter. Scans use
+smaller chunks for small counted checkpoints to keep CPU workers busy. Logs are
+under the run directory, with one setup log per server and one log per job/server.
+Set `td20.reconstructionAdaptiveScan=true` when tuning explicit lookup sizes to
+retain that adaptation: small counted batches expose independent CPU tasks,
+while large uncounted waves retain bulk reads.
+
+The coordinator defaults to two download workers per server and a queue capacity
+of twice the server count. Set `-R-Dtd20.fleetDownloadWorkers=N` and
+`-R-Dtd20.fleetDownloadQueueCapacity=N` in its JShell profile to override them.
+The bounded transfer queue is used only during explicit transfer phases, after
+the corresponding computations have finished. Bulk transfers use independent
+plain SSH connections with compression enabled and multiplexing disabled, so a server's
+data streams do not share one ControlMaster connection. Existing configured
+connections remain available for setup, uploads and computation logs.
+
+After all emission computations, only task receipts and sealed endpoint residual
+sets are downloaded to `RUN/results/TASK/`. These are required for inventory
+validation and local inverse preparation. They contain no certificate database
+and cannot claim certificate coverage. After all reconstruction computations,
+every required certificate database is downloaded to `RUN/downloads/TASK/` and
+validated before merging. Missing metadata, residual sets or certificates fail
+their respective boundaries.
+
+Profiles may be retuned before resuming; completed downloads are retained. Each
+launch writes a versioned profile history, and each job attempt records its
+configured/effective JVM flags and inspected hardware. The consolidated log also
+records the hardware and effective profile per server. Worker output reports the
+actual Java input arguments, CPU allocation and heap. Current task receipts use
+format v2 and the fleet plan uses v2; incompatible old runs are rejected.
+
+Follow **one consolidated local log**, live:
+
+```bash
+bash -ic 'tail -F target/fleet/run-01/emission.log'
+```
+
+It records phase changes and errors, with one compact status snapshot every ten
+seconds. A snapshot identifies one of six production stages: remote emission,
+receipt/residual downloads, local inverse preparation, remote reconstruction,
+final certificate downloads, or certificate merge. It
+reports elapsed time, completed/total tasks, remaining and queued tasks, active
+servers, task throughput and failed attempts. Each active server has one row
+showing its current computation, elapsed time and latest class counter, plus its
+background transfer count and active download/validation stage. The summary
+separately counts computing servers, queued computations and background downloads.
+Task starts and completions do not trigger repeated fleet
+dumps. Computation phases count closed remote jobs; transfer phases count
+validated local results. These percentages count jobs; job sizes differ, and there is no invented
+overall percentage or finish time while later inverse totals are unknown.
+
+`RUN/status.txt` is an atomically replaced, versioned snapshot for an immediate
+read without scrolling the log. All raw command output, including Bash job-control
+warnings and JVM settings, remains in the per-task and setup logs. The consolidated
+view suppresses those known Bash startup warnings and routine worker chatter;
+errors and failed command exits remain visible. Independent proof verification
+is explicitly pending even after production completes.
+Reconstruction task totals become known after the first inverse wave is counted.
+Local first-wave preparation and merge replay counters also appear in this log.
+Resume appends to the same file and preserves previous attempts. Per-job logs
+remain available for focused diagnosis.
+
+The work has these boundaries:
+
+1. The 83 root partitions have separate tasks. Every nonempty non-elementary
+   endpoint annotation is split into a deterministic breadth-first frontier of
+   generation prefixes, targeting `--endpoint-tasks` tasks per type (default 512).
+   Each prefix is an independent subtree and creates local continuations for its
+   server's CPU workers. Terminal classes emitted while constructing the frontier
+   have explicit tasks too; none can disappear between prefix boundaries.
+   Elementary closures and empty annotations retain explicit whole-type tasks.
+   The union covers every annotation, and completed task counts must sum to its
+   full Burnside inventory before reconstruction starts. Missing or duplicate
+   task scopes fail validation. The existing root inventory checks remain active.
+   A prefix descriptor is a sequence of child indices from the generator root.
+   Each expansion replaces one subtree by its child subtrees and its directly
+   emitted terminal classes. This preserves a disjoint complete cover by
+   induction; terminal-output tasks ensure the boundary emits no class twice.
+   The descriptors do not depend on a server's CPU count or scheduling order.
+2. After all emission computations, the coordinator downloads only receipts and
+   sealed residual sets, then validates all receipts
+   and exact residual inventories, and forms their disk-backed union locally.
+   Residuals come from exhaustive endpoint generation, never an obstruction list.
+3. The coordinator generates the first inverse wave on all local CPU cores,
+   restoring two fixed symbols in every allowed gap/support on either endpoint.
+   Its sorted, unique after-two keys are split into disjoint counted batches.
+   `--reconstruction-batch-size` sets the maximum classes per batch (default 64). A smaller
+   size creates more independent tasks, with more repeated downstream work.
+4. Each reconstruction job resumes an `AFTER_TWO` checkpoint at budget 9. It
+   searches every input, reconstructs both `(1,2,2)` and `(0,3,2)` paths on both
+   endpoints, searches after-one states at budget 10, and searches final roots at
+   budget 11. Fixed points are contracted before fixed-point-free state encoding.
+   A job fails if any final root remains unresolved.
+5. After both remote computation phases, all completed witness databases are
+   downloaded for the final merge. Cross-server duplicate classes
+   are allowed; there is no shared remote database or global synchronization
+   during reconstruction. Each job retains the existing disk-backed local
+   deduplication. The final local streaming merge replays **every** input witness,
+   retains the result with the lowest required budget per key, and breaks ties
+   by unsigned encoded-value order. Bounded CPU tasks parallelize replay. Only
+   one input database is open at a time, so thousands of small task results do
+   not require thousands of simultaneously open RocksDB databases.
+
+Remote jobs start with independent databases; certificates found by another job
+are unavailable until merging. This can repeat searches, especially for overlapping
+inverse descendants. Generation prefixes and reconstruction batches are the
+scheduling units; free servers keep taking queued tasks while other machines
+continue their current tasks. Tasks already running finish on their current
+server. Increase `--endpoint-tasks` and decrease reconstruction batch size to
+reduce the final tail, balancing smaller tasks against JShell/transfer overhead.
+Tune task granularity using
+observed job durations and utilization. The coordinator's first inverse wave is
+local; the much larger remaining reconstruction waves run on the servers.
+
+Each job has a versioned scope, deterministic identifier, exact input count, and
+completion receipt published only after the emitter closes its databases. A
+download is staged and atomically published after validation. Each closed remote
+result has a versioned transfer intent under `RUN/transfers/PHASE/TASK.txt`, scoped
+to this TD20 route, run, task, server and attempt. A transfer retries up to three
+times without rerunning its computation. Resume retries persisted transfers from
+their closed remote databases; missing transfer intents leave the corresponding
+tasks as computation obligations. Missing or invalid completion receipts cannot
+be accepted. An unfinished computation is regenerated in a fresh remote directory.
+No partial output is merged. Remote work, failed attempts and local downloads are
+retained for inspection; the coordinator does not remove server data. Downloaded
+metadata under `RUN/results` is kept separate from full certificate downloads.
+Full certificate acceptance still requires the actual RocksDB database; a
+receipt-only result cannot pass that guard. Downloaded
+reconstruction results contain the certificate DB and receipt, without the large
+intermediate reconstruction sets and search queues.
+
+`RUN/certificates` is published atomically after every expected job completes.
+Its `merge-v1.txt` records input witnesses, unique witnesses, and advisory marker
+counts. Obstruction markers are validated and omitted from the merged database:
+they have no explicit budget and are not proof inputs. Missing markers cannot
+suppress any checker obligation. WAL is disabled for writes, and completed
+persistence boundaries are flushed by the existing writer.
+
+To merge other existing emitter databases independently:
+
+```bash
+bash -ic './tools/td20 merge --database=target/merged-certificates /path/to/db-a /path/to/db-b'
+```
+
+The output must be fresh. Missing databases, incompatible schemas, malformed
+keys, invalid witnesses and corrupt duplicate records all fail the merge.
+Certificates use normalized cyclic-target pairs and their existing deterministic
+keys; cross-server deduplication keeps the strongest intrinsic witness, which is
+necessary when an earlier inverse wave has already relied on a smaller budget.
+
+Fleet receipts and checkpoints are operational records, never proof inputs.
+They do not establish exhaustive proof coverage. Run the independent checker
+against the merged database, using fresh checker work and the full scope:
+
+```bash
+bash -ic './tools/td20 verify --phase=all --database=target/fleet/run-01/certificates'
+```
+
+The checker remains independent of the emitter and regenerates every obligation
+and all inverse waves. Keep every exit criterion in [RESEARCH_PLAN.md](RESEARCH_PLAN.md).
+All generated fleet plans, databases, checkpoints, transfers and ordinary logs
+belong under ignored `target/` directories or outside the repository.

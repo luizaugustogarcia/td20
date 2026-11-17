@@ -102,6 +102,17 @@ public final class CertificateCodec {
         return CyclicTargetPair.ofOwned(omega, Cycle.of(betaSymbols));
     }
 
+    /** A permutation contains every symbol: its largest packed image determines its domain. */
+    public static CyclicTargetPair pairForKey(final byte[] encoded) {
+        if (encoded == null || encoded.length == 0 || encoded.length > byteLength(21L * SYMBOL_BITS))
+            throw new IllegalArgumentException("Invalid emitter certificate key length");
+        int largest = 0;
+        for (int bit = 0; bit + SYMBOL_BITS <= encoded.length * Byte.SIZE; bit += SYMBOL_BITS)
+            largest = Math.max(largest, readSymbol(encoded, bit));
+        if (largest >= 21) throw new IllegalArgumentException("Certificate domain exceeds the active root domain");
+        return pairForKey(encoded, largest + 1);
+    }
+
     /**
      * Encodes the ordered move triples as consecutive fifteen-bit fields.
      * Each field stores its three symbols in their given order.

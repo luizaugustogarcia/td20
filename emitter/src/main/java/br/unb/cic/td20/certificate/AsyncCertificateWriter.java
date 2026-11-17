@@ -30,9 +30,9 @@ import org.rocksdb.*;
 
 /** Bounded asynchronous persistence of replayed witnesses and unresolved keys. */
 public final class AsyncCertificateWriter implements AutoCloseable {
-    private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] SCHEMA_KEY = "td20-schema".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] SCHEMA_VALUE = "eriksson-three-v1".getBytes(StandardCharsets.UTF_8);
+    static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
+    static final byte[] SCHEMA_KEY = "td20-schema".getBytes(StandardCharsets.UTF_8);
+    static final byte[] SCHEMA_VALUE = "eriksson-three-v1".getBytes(StandardCharsets.UTF_8);
     private static final byte[] EMPTY = {};
     static { RocksDB.loadLibrary(); }
     private final DBOptions options;
@@ -303,7 +303,8 @@ public final class AsyncCertificateWriter implements AutoCloseable {
         for (Entry entry : entries) if (entry.value != null) {
             var key = ByteBuffer.wrap(entry.key);
             var previous = best.get(key);
-            if (previous == null || entry.budget <= previous.budget) best.put(key,entry);
+            if (previous == null || entry.budget < previous.budget
+                    || entry.budget == previous.budget && Arrays.compareUnsigned(entry.value,previous.value) < 0) best.put(key,entry);
         }
         var certificates = new ArrayList<>(best.values());
         if (!certificates.isEmpty()) {
@@ -325,7 +326,7 @@ public final class AsyncCertificateWriter implements AutoCloseable {
                     int required = CertificateValidator.requiredBudget(pair,CertificateCodec.decodeResult(previous));
                     if (required > obligationBudget(entry.domain))
                         throw new IllegalArgumentException("Stored sorting result exceeds the maximum move budget");
-                    if (required <= entry.budget) {
+                    if (required < entry.budget || required == entry.budget && Arrays.compareUnsigned(previous,entry.value) <= 0) {
                         if (marker == null) continue;
                         entry = new Entry(entry.key,previous,entry.domain,required);
                     }

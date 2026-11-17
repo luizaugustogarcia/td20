@@ -19,6 +19,8 @@ CPU validation:
 Computation:
   emit         Emit sorting results via JShell (build native CUDA first)
   avoidance    Reconstruct endpoint failures via JShell
+  fleet        Distribute emission and reconstruction over SSH; download and merge
+  merge        Replay and merge certificate DBs into a fresh local database
   verify       Independently replay obligations via checker JShell
 
 Build and help:
@@ -40,7 +42,7 @@ The checker regenerates obligations and replays the certificate database directl
 Both direct arguments and -Dexec.args / -Dtd20.args syntax are supported.
 See docs/WORKFLOW.md, docs/OPERATIONS.md, and docs/RESEARCH_PLAN.md.
 Generated databases, reports, checkpoints, and ordinary logs remain untracked.
-Completed execution logs and settings also remain untracked.
+All generated execution logs and settings remain untracked.
 USAGE
 }
 dry_run=false
@@ -75,6 +77,10 @@ case "$command" in
     count|census) entry=br.unb.cic.td20.CountEriksson ;;
     emit) entry=br.unb.cic.td20.WitnessEmitter ;;
     avoidance) entry=br.unb.cic.td20.WitnessEmitter; set -- --phase=avoidance "$@" ;;
+    fleet) entry=br.unb.cic.td20.fleet.FleetEmitter ;;
+    fleet-worker) entry=br.unb.cic.td20.fleet.FleetWorker ;;
+    fleet-hardware) entry=br.unb.cic.td20.fleet.FleetHardware ;;
+    merge) entry=br.unb.cic.td20.certificate.CertificateDatabaseMerger ;;
     *) printf 'Unknown command: %s\n' "$command" >&2; exit 2 ;;
 esac
 if [[ ! -f $module/target/jshell-classpath ]]; then
@@ -97,34 +103,8 @@ if [[ -n $script ]]; then
     exec "${invocation[@]}" "$script"
 fi
 mkdir -p "$module/target"
-driver=$(mktemp "$module/target/jshell-driver-XXXXXX.jsh")
+driver=$(mktemp "$module/target/jshell-arguments-XXXXXX")
 trap 'rm -f -- "$driver"' EXIT
-python3 - "$entry" "$command" "$@" > "$driver" <<'PY'
-import json, shlex, sys
-entry, command = sys.argv[1:3]
-arguments, properties = [], []
-seen_args = False
-for option in sys.argv[3:]:
-    if option.startswith(('-Dexec.args=', '-Dtd20.args=')):
-        if seen_args: raise SystemExit('Supply the Java argument property only once.')
-        seen_args = True
-        arguments.extend(shlex.split(option.split('=',1)[1]))
-    elif option.startswith('-Dexec.mainClass='):
-        entry = option.split('=',1)[1]
-    elif option.startswith('-D'):
-        key, sep, value = option[2:].partition('=')
-        properties.append((key, value if sep else 'true'))
-    elif option in ('-B','-q','-e','-X','-Pgpu'):
-        continue
-    else:
-        arguments.append(option)
-if command == 'avoidance' and any(a.startswith('--phase=') and a != '--phase=avoidance' for a in arguments):
-    raise SystemExit('The avoidance command requires --phase=avoidance.')
-print('int status=1;')
-for key,value in properties:
-    print('System.setProperty('+json.dumps(key)+','+json.dumps(value)+');')
-args=','.join(json.dumps(arg,ensure_ascii=True) for arg in arguments)
-print('try { '+entry+'.main(new String[]{'+args+'}); status=0; } catch(Throwable error) { error.printStackTrace(); status=1; }')
-print('/exit status')
-PY
-"${invocation[@]}" "$driver"
+printf '%s\0' "$entry" "$command" "$@" > "$driver"
+export TD20_LAUNCH_ARGS="$driver"
+"${invocation[@]}" tools/Launch.jsh

@@ -84,6 +84,11 @@ public final class DiskStateSet implements AutoCloseable {
         return new DiskStateSet(directory, true, expectedCount, null, false);
     }
 
+    /** Inventory an emitter output before assigning its counted reconstruction work. */
+    public static DiskStateSet openForInventory(Path directory) {
+        return new DiskStateSet(directory, true, -1, null, false);
+    }
+
     private DiskStateSet(Path directory, boolean readOnly, long expectedCount,
                          Consumer<List<byte[]>> generatedObserver) {
         this(directory, readOnly, expectedCount, generatedObserver, true);
@@ -358,6 +363,14 @@ public final class DiskStateSet implements AutoCloseable {
         if (workers < 1) throw new IllegalArgumentException("Positive scan worker count required");
         int batchKeys = Math.min(lookupBatchSize(), positiveProperty("td20.reconstructionScanBatchKeys", 4096));
         int parallelism = Math.min(workers, Runtime.getRuntime().availableProcessors());
+        // Small distributed checkpoints also need enough independent tasks.
+        // Explicit batch settings take precedence; retain large bulk reads for
+        // the much larger, possibly uncounted waves.
+        boolean adaptive = Boolean.parseBoolean(System.getProperty("td20.reconstructionAdaptiveScan",
+                System.getProperty("td20.reconstructionScanBatchKeys") == null
+                        && System.getProperty("td20.certificateLookupBatchSize") == null ? "true" : "false"));
+        if (expected >= 0 && adaptive) batchKeys = (int) Math.min(batchKeys,
+                Math.max(1L, Math.ceilDiv(expected, (long) parallelism * 16)));
         long scanned = 0;
         var completed = new LongAdder();
         try (var progress = new ReconstructionProgress("State inventory " + stagingDirectory.getParent().getFileName() + " " + phase,

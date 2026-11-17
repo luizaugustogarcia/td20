@@ -1,0 +1,27 @@
+# Unmeasured example for an allocated 128-thread EPYC / RTX 5090 server.
+# Inspect the actual allocation and measure utilization before choosing these values.
+# Multiple sockets or NUMA nodes add -R-XX:+UseNUMA automatically after inspection.
+-R-Xms4g
+-R-Xmx64g
+-R-XX:ActiveProcessorCount=128
+-R-XX:+UseG1GC
+-R-XX:+ParallelRefProcEnabled
+-R-XX:ParallelGCThreads=16
+-R-XX:ConcGCThreads=4
+-R-Dtd20.twistedBraceletWorkers=160
+-R-Dtd20.gpuDevices=0
+-R-Dtd20.gpuSlots=32
+-R-Dtd20.gpuBudgetMB=896
+-R-Dtd20.gpuQueueCapacity=64
+-R-Dtd20.reconstructionGpuWorkers=128
+-R-Dtd20.reconstructionInverseWorkers=128
+-R-Dtd20.certificateWriters=16
+-R-Dtd20.reconstructionWriters=8
+-R-Dtd20.reconstructionBufferKeys=4194304
+-R-Dtd20.reconstructionQueueBatches=512
+-R-Dtd20.certificateQueueCapacity=262144
+-R-Dtd20.certificateLookupBatchSize=32768
+-R-Dtd20.reconstructionAdaptiveScan=true
+-R-Dtd20.cpuPrefixMaxTriples=8192
+-R-Dtd20.reconstructionCpuPrefixMillis=10
+-R-Dtd20.reconstructionGpuMillis=0

@@ -135,3 +135,40 @@ verification run and standalone census reports were not republished; those
 remain separate checklist items. The TD20 checklist retains every corresponding
 requirement, with generated artifacts untracked. TD(16) = 9 and TD(18) = 10
 are established results using the same computational methodology.
+
+## Distributed extension moved to TD20 (17 November 2026)
+
+The distributed SSH implementation developed at TD18 revision
+`ad247baafb9af2666b01148db0455305d90f0264`, including subsequent local logging
+and source-preparation improvements, now belongs to TD20. The TD18 main branch
+was explicitly restored and force-pushed to
+`701dce95bd225e3ea5d0bbcb937ddd826f18b55a`; both local TD18 checkouts are clean.
+
+The extension preserves TD20’s 83-root/143-endpoint scope and budgets 8/9/10/11,
+its existing certificate schema and independent checker. It includes prefix
+scheduling, reconstructed-state batches, SSH transport, per-server profiles,
+NUMA flags, versioned task receipts, staged downloads, deterministic strongest
+witness merging and compact status logging. No TD18 count or run output is reused.
+
+The Java build passed after migration; the operator requested no startup tests
+or replay. The frozen comparison described above predates these added files and
+shared helper changes. Its existing adapters and test/tool ledger have not been
+updated or rerun for this extension, so no new exact-comparison success is claimed.
+See [SESSION_HANDOFF.md](SESSION_HANDOFF.md) for configuration, the stopped state,
+and the fresh TD20 production continuation.
+
+The operator subsequently authorized a TD20 scheduling extension: completed
+remote results download and validate through a bounded background queue while
+servers claim their next computation. Transfer intents support retries and
+resume without recomputing a closed result, and phase barriers still require
+every accepted receipt. This explicitly differs from the migrated synchronous
+download scheduler; the closed TD18 checkout is not modified. The frozen audit
+does not certify this extension. Independent proof verification remains separate.
+
+The operator then authorized deferring all certificate downloads until the final
+merge, with only receipts and sealed endpoint residual sets transferred before
+inverse preparation. Computation queues no longer depend on transfer queue
+capacity. Completion metadata is validated separately and cannot satisfy the
+existing guard requiring an actual certificate database. Bulk transfers use
+dedicated parallel compressed SSH connections. Both Maven CPU suites passed for
+this change; no frozen port-audit or full TD20 proof-check success is claimed.

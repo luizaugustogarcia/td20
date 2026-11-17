@@ -252,6 +252,79 @@ public final class DirectTwistedBraceletGenerator {
         return new ArrayList<>(frontier);
     }
 
+    /** A disjoint generation subtree, or only the terminal outputs of one expanded node. */
+    public record GenerationWork(List<Integer> path, boolean leavesOnly, long expectedLeaves) {
+        public GenerationWork {
+            path = List.copyOf(path);
+            if (path.stream().anyMatch(index -> index < 0) || (leavesOnly ? expectedLeaves < 1 : expectedLeaves != -1))
+                throw new IllegalArgumentException("Invalid generation work descriptor");
+        }
+    }
+
+    /** CPU-independent breadth-first partition. Early terminal outputs are explicit obligations. */
+    public static List<GenerationWork> planWork(int[] partition, boolean[] oriented, int targetTasks) {
+        validate(partition,oriented);
+        if (targetTasks < 1) throw new IllegalArgumentException("Positive generation task count required");
+        long[] emitted = {0};
+        var generator = new Generator(normalizedSpecs(partition,oriented),pair -> emitted[0]++,null,null,NO_CANCELLATION_CHECK);
+        var initial = generator.initialTask();
+        if (initial == null) return List.of();
+        record Branch(GenerationTask task, List<Integer> path) { }
+        var frontier = new ArrayDeque<Branch>(); frontier.add(new Branch(initial,List.of()));
+        var work = new ArrayList<GenerationWork>();
+        long limit = (long)targetTasks * (Arrays.stream(partition).sum() + 1);
+        for (long expanded = 0; !frontier.isEmpty() && frontier.size() < targetTasks && expanded < limit; expanded++) {
+            var branch = frontier.removeFirst(); long before = emitted[0]; int[] child = {0};
+            branch.task.expand(next -> {
+                var path = new ArrayList<>(branch.path); path.add(child[0]++);
+                frontier.addLast(new Branch(next,List.copyOf(path)));
+            });
+            long leaves = emitted[0] - before;
+            if (leaves != 0) work.add(new GenerationWork(branch.path,true,leaves));
+        }
+        for (var branch : frontier) work.add(new GenerationWork(branch.path,false,-1));
+        return List.copyOf(work);
+    }
+
+    /** Rebuild only the named path, then expose enough local continuations for this server's CPUs. */
+    public static void generateWork(int[] partition, boolean[] oriented, GenerationWork work,
+                                    Runnable cancellationCheck, Consumer<CyclicTargetPair> consumer) {
+        validate(partition,oriented);
+        var active = new java.util.concurrent.atomic.AtomicBoolean();
+        var emitted = new java.util.concurrent.atomic.LongAdder();
+        var expanding = new java.util.concurrent.atomic.AtomicBoolean(true);
+        try (var outputs = new br.unb.cic.td20.runtime.BoundedTasks(WORKER_COUNT,"endpoint-early-output-")) {
+        var generator = new Generator(normalizedSpecs(partition,oriented),pair -> {
+            if (active.get()) {
+                Runnable accept = () -> { consumer.accept(pair); emitted.increment(); };
+                if (expanding.get()) outputs.submit(accept); else accept.run();
+            }
+        },null,null,() -> { cancellationCheck.run(); outputs.check(); });
+        var task = generator.initialTask();
+        if (task == null) throw new IllegalArgumentException("Generation work has no root");
+        for (int index : work.path) {
+            var children = new ArrayList<GenerationTask>(); task.expand(children::add);
+            if (index >= children.size()) throw new IllegalArgumentException("Invalid generation prefix path");
+            task = children.get(index);
+        }
+        active.set(true);
+        if (work.leavesOnly) {
+            task.expand(ignored -> { });
+        } else {
+        var frontier = new ArrayDeque<GenerationTask>(); frontier.add(task);
+        int target = Math.toIntExact(Math.min(Integer.MAX_VALUE,(long)WORKER_COUNT * FRONTIER_TASKS_PER_WORKER));
+        long limit = (long)target * (Arrays.stream(partition).sum() + 1);
+        for (long expanded = 0; !frontier.isEmpty() && frontier.size() < target && expanded < limit; expanded++)
+            frontier.removeFirst().expand(frontier::addLast);
+        expanding.set(false);
+        try (var tasks = new br.unb.cic.td20.runtime.BoundedTasks(WORKER_COUNT,"endpoint-prefix-")) {
+            for (var branch : frontier) tasks.submit(branch::runToCompletion);
+        }
+        }
+        }
+        if (work.leavesOnly && emitted.sum() != work.expectedLeaves) throw new IllegalStateException("Terminal generation inventory mismatch");
+    }
+
     /** Test hook that emits raw orbit-minimal words before target realizability. */
     static void generateWords(final int[] partition,
                               final boolean[] orientedByPart,

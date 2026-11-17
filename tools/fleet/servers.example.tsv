@@ -1,0 +1,4 @@
+# Five TAB-separated fields: name, SSH connection, remote work root, CUDA architecture, JVM options or @profile file.
+# These different profiles are unmeasured starting examples. Inspect and tune each actual server before emission.
+vast-a	ssh -p 12345 -i /home/luiz/.ssh/id_ed25519 root@SERVER_A	/workspace/td20-fleet	120	@profiles/rtx5090-epyc.jvm
+vast-b	ssh -p 23456 -i /home/luiz/.ssh/id_ed25519 root@SERVER_B	/workspace/td20-fleet	89	@profiles/rtx4090-32cpu.jvm

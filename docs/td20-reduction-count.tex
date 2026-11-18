@@ -522,7 +522,37 @@ distribution and reversing every support containing both restored symbols and
 one original symbol. Do this on the current and the target endpoint. The
 result has 18 symbols and budget 9.
 
-Every unclosed result branches into both possible first-two-move patterns:
+Let $E$ be the independently regenerated set of residual 16-symbol classes,
+and let $A$ be the complete set of their gain-two preimages on both endpoints.
+Let $H\subseteq A$ consist of classes with an intrinsic certificate or diameter
+prefix replayed within nine moves, and define $B=A\setminus H$.
+The classes in $B$ are the \emph{second-level residuals}: they have 18 symbols
+and budget nine. This definition uses actual certificate replay, not stored
+obstruction markers. A replayed result in $H$ closes every root represented by
+its two-move reduction within $2+9=11$.
+
+Intrinsic results from the completed TD18 computation may be copied into the
+TD20 certificate database after checking their versioned key/value encoding
+and replaying their actual bound within nine moves. The TD18 source database
+is then unnecessary for the TD20 proof checker. No TD18 receipt, count, fleet
+plan or reconstruction checkpoint substitutes for a TD20 obligation.
+The completed read-only reuse probe of 17 November 2026 checked all
+$|E|=2\,036$ endpoint residuals and $|A|=5\,032\,950$ after-two classes.
+It found $|H|=4\,062\,619$ replayable current-endpoint diameter prefixes and
+$|B|=970\,331$ missing results. The import into the project-root TD20
+certificate database is complete. An independent checker audit replayed
+all $5\,032\,950$ persisted after-two classes, obtained exactly these
+$|H|$ and $|B|$ counts, and checked exact equality of the persisted residual
+set with the missing classes and the presence of every residual marker.
+This audit covers the persisted import inventory only; full endpoint
+regeneration and the independent final-root coverage report remain required.
+
+Active emission starts from the sealed set $B$. The 16-symbol obstruction
+markers remain informational and are not reconstruction inputs. The checker
+still regenerates the complete endpoint cover, derives $E$ from missing
+eight-move results, regenerates $A$, and replays TD20 results to derive $B$
+independently. Missing markers or import reports cannot omit a class.
+Every second-level residual branches into both possible first-two-move patterns:
 \begin{enumerate}
 \item Reverse a gain-two second move by restoring two fixed points, producing
 20 symbols with budget 10. Reverse the first gain-one move by
@@ -537,6 +567,10 @@ identity by swapping back after a target-side inverse. Actual forward replay
 must recover the restored child and exact fixed-point gain. No qualifying
 odd-length-cycle condition is imposed on gain-zero or gain-one first moves.
 Every remaining root needs a budget-11 result.
+The budget-ten after-one states are generated and deduplicated, but no sorting
+search or certificate lookup at that stage suppresses a final inverse branch.
+Thus every class in $B$ is expanded through both remaining inverse waves to
+its final 21-symbol root obligations. Their total is unknown until generation.
 
 Completeness follows by restoring the actual removed fixed symbols in their
 actual gaps. A transposition changes only three images, so its created fixed
@@ -545,14 +579,13 @@ Permuting only restored labels transports supports and does not change the
 represented class. Repeating this argument in the relevant branch reaches
 every compatible root. Moves on either endpoint give the same distance upper
 bound by the triangle inequality, and quotient representatives transport all
-supports and gaps bijectively. Intermediate checked results close their paths
-within the stated budgets. Missing obstruction markers cannot omit a branch.
-An intermediate sorting search may stop at an exploration-depth limit or a
-time allowance without finding a result. By default, intermediate CUDA searches
-explore their full obligation budgets, nine or ten moves, with no time
-allowance. Either limit leaves the class
-unresolved and therefore retains every
-applicable inverse branch. Final roots still require checked budget-11 results;
+supports and gaps bijectively. Replayed budget-nine results close their paths
+within the stated budget. All other after-two classes retain every compatible
+second and first inverse branch, including classes lacking obstruction markers.
+The active residual-expansion mode performs no budget-nine or budget-ten
+sorting searches. Historical full-search checkpoints remain distinguishable
+from residual-expansion checkpoints by their versioned mode and input counts;
+they cannot be used interchangeably. Final roots still require checked budget-11 results;
 their searches use full exploration depth eleven with no time cutoff. The actual obligation budget continues to
 govern every diameter closure.
 
@@ -619,12 +652,15 @@ omits any required inverse reconstruction.
 Every persisted set has a version, deterministic keys, explicit budgets,
 domains and counts, and rejects missing data. Large inverse sets are disk-backed;
 asynchronous certificate persistence uses bounded queues. A witness proves an
-upper bound only for its represented class. During emission, separate CPU and
-GPU worker pools communicate through a versioned disk queue. A second queue
-transfers every GPU miss to an independent CPU inverse pool. Every source
-class is accounted for, every GPU result is classified, and every transferred
-inverse case is processed before the next wave is sealed. All three pools
-are joined; interrupted queues are regenerated from the sealed source wave.
+upper bound only for its represented class. Sorting uses separate CPU and
+GPU worker pools communicating through a versioned disk queue. Full-search
+emission transfers GPU misses to a CPU inverse pool through a second queue;
+every transferred case is processed before sealing the next wave. Active
+residual-expansion emission instead generates both remaining inverse waves
+directly on CPU, without budget-nine or budget-ten sorting queues. Every source
+class is accounted for and all generation and persistence workers join before
+the next wave is sealed. Interrupted queues are regenerated from their sealed
+source wave. Final-root sorting retains the CPU/GPU pools and witness replay.
 Inverse outputs use deterministic writer shards with bounded queues. Shards
 sort distinct keys in unsigned byte order, build SST files independently,
 and ingest them with global sequence numbers enabled. Every repeated key
@@ -649,8 +685,10 @@ restriction. Neither exhaustion of this restricted CUDA tree nor a depth limit
 or timeout certifies a distance lower bound. All these outcomes preserve the unresolved
 obligation; only a replayed witness or diameter closure discharges it.
 The CPU checker regenerates every
-root obligation, every endpoint class and every inverse wave, and replays
-witnesses from the certificate database. Emitter checkpoints are performance
+root obligation, every endpoint class and every inverse wave, replays the
+budget-nine results to derive the second-level residuals, and checks every
+final root at budget eleven without budget-ten certificate pruning.
+Stored obstruction lists are not proof inputs. Emitter checkpoints are performance
 state, not proof inputs. Checkpoint versions identify the exact route and state layout; checksums and sidecar manifests are not proof inputs.
 
 Canonical key construction need not decode a canonical pair first. In the

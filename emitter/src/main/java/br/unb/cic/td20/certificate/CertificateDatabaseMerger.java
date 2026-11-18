@@ -28,10 +28,20 @@ public final class CertificateDatabaseMerger {
         return merge(output,inputs,message -> { });
     }
     public static Result merge(Path output, List<Path> inputs, java.util.function.Consumer<String> progress) throws IOException {
+        return merge(output,inputs,progress,false);
+    }
+
+    /** Replays new inputs into a prepared TD20 database; existing witnesses and advisory markers are retained. */
+    public static Result append(Path output,List<Path> inputs,java.util.function.Consumer<String> progress) throws IOException {
+        return merge(output,inputs,progress,true);
+    }
+
+    private static Result merge(Path output,List<Path> inputs,java.util.function.Consumer<String> progress,boolean append) throws IOException {
         RocksDB.loadLibrary();
         output = output.toAbsolutePath().normalize();
-        if (inputs.isEmpty() || Files.exists(output))
-            throw new IllegalArgumentException("Merge requires inputs and a fresh output path");
+        if (!append && inputs.isEmpty() || append && !Files.isRegularFile(output.resolve("CURRENT")) || !append && Files.exists(output))
+            throw new IllegalArgumentException(append?"Append requires an existing certificate database":"Merge requires inputs and a fresh output path");
+        if(append) output=output.toRealPath();
         var paths = new ArrayList<Path>(); var seen = new HashSet<Path>();
         for (Path path : inputs) {
             Path real = path.toRealPath();
@@ -67,9 +77,16 @@ public final class CertificateDatabaseMerger {
         var result = new Result(read.sum(), unique.sum(), markers);
         progress.accept("Merge replay complete: inputWitnesses=" + result.inputWitnesses + " uniqueWitnesses=" + result.uniqueWitnesses
                 + " duplicates=" + (result.inputWitnesses - result.uniqueWitnesses));
-        Files.write(output.resolve("merge-v1.txt"), List.of("td20-certificate-merge-v1",
+        List<String> report=List.of(append?"td20-certificate-append-v1":"td20-certificate-merge-v1",
                 "inputWitnesses=" + result.inputWitnesses, "uniqueWitnesses=" + result.uniqueWitnesses,
-                "advisoryMarkersOmitted=" + result.advisoryMarkers), StandardOpenOption.CREATE_NEW);
+                "advisoryMarkersOmitted=" + result.advisoryMarkers);
+        if(append) {
+            Path temporary=Files.createTempFile(output,".append-",".tmp");
+            try {
+                Files.write(temporary,report);
+                Files.move(temporary,output.resolve("append-v1.txt"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+            } finally { Files.deleteIfExists(temporary); }
+        } else Files.write(output.resolve("merge-v1.txt"),report,StandardOpenOption.CREATE_NEW);
         return result;
     }
 

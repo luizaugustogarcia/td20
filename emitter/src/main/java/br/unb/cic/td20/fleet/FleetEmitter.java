@@ -1,6 +1,8 @@
 package br.unb.cic.td20.fleet;
 
 import br.unb.cic.td20.certificate.CertificateDatabaseMerger;
+import br.unb.cic.td20.avoidance.ErikssonCheckpoint;
+import br.unb.cic.td20.avoidance.ImportTd18AfterTwo;
 import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.runtime.ProjectPaths;
 import java.io.*;
@@ -13,6 +15,7 @@ import java.util.concurrent.*;
 public final class FleetEmitter {
     private final Path root, directory;
     private Path mergedDatabase;
+    private Path reconstructionInput;
     private final List<FleetServer> servers;
     private final String run;
     private final int batchSize;
@@ -39,16 +42,17 @@ public final class FleetEmitter {
         this.endpointTasks = endpointTasks;
     }
     public static void main(String[] args) throws Exception {
-        Path serversFile = null, directory = null, database = null; int batchSize = 64, endpointTasks = 512; boolean planOnly = false, inspectOnly = false;
+        Path serversFile = null, directory = null, database = null,reconstructionInput=null; int batchSize = 64, endpointTasks = 512; boolean planOnly = false, inspectOnly = false;
         String repository = "https://github.com/luizaugustogarcia/td20.git";
         for (String arg : args) {
             if (arg.equals("--help")) {
-                System.out.println("fleet --servers=SERVERS.tsv --run=LOCAL_DIRECTORY [--database=FINAL_DATABASE] [--reconstruction-batch-size=64] [--endpoint-tasks=512] [--repository=HTTPS_GITHUB_URL] [--plan-only|--inspect-only]\n"
+                System.out.println("fleet --servers=SERVERS.tsv --run=LOCAL_DIRECTORY [--database=FINAL_DATABASE] [--reconstruction-input=SEALED_RESIDUAL_CHECKPOINT] [--reconstruction-batch-size=64] [--endpoint-tasks=512] [--repository=HTTPS_GITHUB_URL] [--plan-only|--inspect-only]\n"
                         + "Set TD20_GITHUB_TOKEN for authenticated server preparation. Repeat the identical command to resume.\n"
                         + "Output defaults to LOCAL_DIRECTORY/certificates. Keep production data outside Maven target directories. See docs/DISTRIBUTED.md."); return;
             } else if (arg.startsWith("--servers=")) serversFile = Path.of(arg.substring(10));
             else if (arg.startsWith("--run=")) directory = Path.of(arg.substring(6));
             else if (arg.startsWith("--database=")) database = Path.of(arg.substring(11));
+            else if (arg.startsWith("--reconstruction-input=")) reconstructionInput=Path.of(arg.substring(23));
             else if (arg.startsWith("--reconstruction-batch-size=")) batchSize = Integer.parseInt(arg.substring(28));
             else if (arg.startsWith("--endpoint-tasks=")) endpointTasks = Integer.parseInt(arg.substring(17));
             else if (arg.startsWith("--repository=")) repository = arg.substring(13);
@@ -105,10 +109,33 @@ public final class FleetEmitter {
                                 ? server.transferRemote(command) : server.remote(command)),root,input,output,log,observer,secret),
                         repository,System.getenv("TD20_GITHUB_TOKEN"),endpointTasks);
                 emitter.mergedDatabase=outputDatabase(directory,run,database);
+                emitter.reconstructionInput=reconstructionInput(directory,run,reconstructionInput);
                 try { emitter.execute(); }
                 catch (Exception | Error error) { progress.event("coordinator","FAILED: " + error); throw error; }
             }
         }
+    }
+
+    static Path reconstructionInput(Path directory,String run,Path requested) throws IOException {
+        Path record=directory.resolve("reconstruction-input-v1.txt");
+        var scope=List.of("td20-fleet-reconstruction-input-v1","route="+ErikssonRoute.ID,"run="+run);
+        if(Files.isRegularFile(record)) {
+            var lines=Files.readAllLines(record);
+            if(lines.size()!=7 || !lines.subList(0,3).equals(scope)) throw new IllegalArgumentException("Different reconstruction input scope");
+            Path saved=Path.of(FleetFiles.field(lines,3,"source")).toRealPath();
+            if(requested!=null && !saved.equals(requested.toRealPath())) throw new IllegalArgumentException("Reconstruction input changed on resume");
+            var wave=ReconstructionBatches.prepareResidualWave(saved);
+            if(!lines.get(4).equals("endpoints="+wave.endpoints()) || !lines.get(5).equals("afterTwo="+wave.afterTwo())
+                    || !lines.get(6).equals("mode="+wave.mode())) throw new IllegalArgumentException("Reconstruction input inventory changed on resume");
+            return saved;
+        }
+        Path conventional=directory.resolve("td18-after-two-reuse-v1/residuals");
+        Path source=requested==null && Files.isRegularFile(conventional.resolve("eriksson-reconstruction-v1.txt"))?conventional:requested;
+        if(source==null) return null;
+        source=source.toRealPath();var wave=ReconstructionBatches.prepareResidualWave(source);
+        var lines=new ArrayList<>(scope);lines.add("source="+source);lines.add("endpoints="+wave.endpoints());
+        lines.add("afterTwo="+wave.afterTwo());lines.add("mode="+wave.mode());FleetFiles.write(record,lines);
+        return source;
     }
 
     static Path outputDatabase(Path directory,String run,Path requested) throws IOException {
@@ -127,7 +154,7 @@ public final class FleetEmitter {
         var lines=new ArrayList<>(scope);lines.add("database="+output);FleetFiles.write(record,lines);return output;
     }
     Path snapshot() throws Exception {
-        Path snapshot = directory.resolve("source.tar");
+        Path snapshot = directory.resolve(reconstructionInput==null?"source.tar":"source-residuals-v1.tar");
         if (!Files.exists(snapshot)) {
             Path temporary = directory.resolve("source-" + UUID.randomUUID() + ".partial");
             // Include current tracked edits and new source files, excluding ignored run/build artifacts.
@@ -180,50 +207,129 @@ public final class FleetEmitter {
         var completed = downloadMetadata(emission);
         EmissionBatches.validateCompleted(run,emissionPlan,completed);
         progress.event("coordinator","All 143 endpoint annotation counts match their complete generation task unions.");
-        Path prepared = directory.resolve("reconstruction");
+        Path prepared = directory.resolve(reconstructionInput==null?"reconstruction":"reconstruction-residuals-v1");
+        var mode=reconstructionInput==null?br.unb.cic.td20.avoidance.ErikssonCheckpoint.Mode.FULL_SEARCH
+                :br.unb.cic.td20.avoidance.ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION;
         List<FleetTask> reconstruction;
         if (Files.isRegularFile(prepared.resolve("batches.txt"))) {
-            reconstruction = ReconstructionBatches.read(run,prepared);
+            reconstruction = ReconstructionBatches.read(run,prepared,mode);
+            if(reconstructionInput!=null && reconstruction.stream().mapToLong(FleetTask::inputCount).sum()
+                    !=ReconstructionBatches.prepareResidualWave(reconstructionInput).afterTwo())
+                throw new IllegalArgumentException("Prepared residual task inventory differs from the imported source");
             dispatch(reconstruction,prepared,snapshot);
         } else {
-            progress.phase("local first inverse wave and batch preparation",0,0);
-            var wave = ReconstructionBatches.prepareWave(prepared,completed,message -> progress.event("preparation",message));
-            reconstruction = ReconstructionBatches.describe(run,wave.afterTwo(),batchSize);
+            Files.createDirectories(prepared);
+            progress.phase(reconstructionInput==null?"local first inverse wave and batch preparation":"sealed second-level residual batch preparation",0,0);
+            var wave = reconstructionInput==null?ReconstructionBatches.prepareWave(prepared,completed,message -> progress.event("preparation",message))
+                    :ReconstructionBatches.prepareResidualWave(reconstructionInput);
+            reconstruction = ReconstructionBatches.describe(run,wave.afterTwo(),batchSize,wave.mode());
             dispatchPublished(reconstruction,prepared,snapshot,ready -> ReconstructionBatches.publish(run,prepared,wave,batchSize,ready));
-            if (!reconstruction.equals(ReconstructionBatches.read(run,prepared))) throw new IllegalStateException("Published reconstruction inventory differs");
+            if (!reconstruction.equals(ReconstructionBatches.read(run,prepared,mode))) throw new IllegalStateException("Published reconstruction inventory differs");
         }
         progress.event("coordinator","Reconstruction tasks: " + reconstruction.size());
         var allTasks = new ArrayList<>(emission); allTasks.addAll(reconstruction);
         var inputs = new ArrayList<Path>();
         if (Files.isRegularFile(directory.resolve("consolidation/complete-v1.txt"))) {
-            inputs.addAll(FleetConsolidationBackup.completedInputs(directory,run,emission));
+            var validated=FleetConsolidationBackup.completedInputs(directory,run,emission);
+            var replayInputs=emissionMergeInputs(directory,mergedDatabase,run,emission,validated,mode);
+            inputs.addAll(replayInputs);
+            if(replayInputs.isEmpty()) progress.event("coordinator","Prepared emission union matches this run and destination; "
+                    +validated.size()+" validated source databases need no duplicate witness replay.");
             inputs.addAll(downloadCertificates(reconstruction).stream().map(path->path.resolve("certificates")).toList());
         } else inputs.addAll(downloadCertificates(allTasks).stream().map(path->path.resolve("certificates")).toList());
-        Path output = mergedDatabase;
-        Path report = directory.resolve("complete.txt");
-        if (Files.exists(output)) {
-            var expected = List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + allTasks.size());
-            if (!Files.readAllLines(output.resolve("fleet-complete.txt")).equals(expected)
-                    || Files.exists(report) && !Files.readAllLines(report).equals(expected) || !Files.isRegularFile(output.resolve("CURRENT"))
-                    || !Files.isRegularFile(output.resolve("merge-v1.txt"))) throw new IllegalStateException("Incomplete published fleet merge");
-        } else {
-            Path temporary = output.resolveSibling("."+output.getFileName()+"-merge-"+UUID.randomUUID()+".partial");
-            progress.phase("local certificate merge",0,0);
-            progress.event("coordinator","Replaying and merging " + inputs.size() + " downloaded certificate databases.");
-            var result = CertificateDatabaseMerger.merge(temporary,inputs,message -> progress.event("merge",message));
-            // The receipt and merge record also travel with the atomic database publication.
-            FleetFiles.write(temporary.resolve("fleet-complete.txt"),List.of("td20-fleet-merged-v1", "run=" + run, "tasks=" + allTasks.size()));
-            Files.move(temporary,output,StandardCopyOption.ATOMIC_MOVE);
-            progress.event("coordinator","Merged certificates: " + result);
-        }
-        if (!Files.exists(report)) FleetFiles.write(report,Files.readAllLines(output.resolve("fleet-complete.txt")));
+        inputs=certificateInputs(mergedDatabase,reconstructionInput,inputs);
+        progress.phase("local certificate merge",0,0);
+        progress.event("coordinator","Replaying and merging "+inputs.size()+" certificate inputs; existing prepared certificates are retained.");
+        publishCertificates(mergedDatabase,directory.resolve("complete.txt"),run,allTasks.size(),mode,inputs,
+                message -> progress.event("merge",message));
         progress.finished(allTasks.size());
-        progress.event("coordinator","Fleet emission completed: " + output + ". Run the independent full checker against this database.");
+        progress.event("coordinator","Fleet emission completed: " + mergedDatabase + ". Run the independent full checker against this database.");
+    }
+    /** Operational selection only; the caller has validated every original consolidated input and task receipt. */
+    static List<Path> emissionMergeInputs(Path directory,Path output,String run,List<FleetTask> tasks,
+                                         List<Path> validatedInputs,ErikssonCheckpoint.Mode mode) throws IOException {
+        var fallback=List.copyOf(validatedInputs);
+        Path completion=directory.resolve("local-certificate-consolidation/complete-v1.txt");
+        if(mode!=ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION || !Files.exists(completion))return fallback;
+        var lines=Files.readAllLines(completion);
+        if(lines.size()!=9 || !lines.getFirst().equals("td20-local-emission-union-v1")
+                || !lines.get(1).equals("run="+run) || !lines.get(2).equals("tasks="+tasks.size())
+                || !lines.get(3).equals("inputs="+validatedInputs.size()) || !lines.get(6).equals("replay=none"))
+            throw new IllegalArgumentException("Prepared emission union differs from this run or input scope");
+        if(tasks.isEmpty() || validatedInputs.isEmpty() || tasks.stream().anyMatch(task -> !task.run().equals(run) || task.phase().equals("avoidance"))
+                || tasks.stream().map(FleetTask::id).distinct().count()!=tasks.size())
+            throw new IllegalArgumentException("Invalid prepared emission task scope");
+        long witnesses=Long.parseLong(FleetFiles.field(lines,4,"witnesses")),markers=Long.parseLong(FleetFiles.field(lines,5,"markers"));
+        if(witnesses<0 || markers<0)throw new IllegalArgumentException("Negative prepared emission counts");
+        java.time.Instant.parse(FleetFiles.field(lines,8,"completed"));
+        Path recorded=Path.of(FleetFiles.field(lines,7,"output"));
+        if(!recorded.isAbsolute() || !Files.isRegularFile(output.resolve("CURRENT"))
+                || !recorded.toRealPath().equals(output.toRealPath()))
+            throw new IllegalArgumentException("Prepared emission union destination is missing or changed");
+        var paths=new HashSet<Path>();
+        for(Path input:validatedInputs) {
+            Path real=input.toRealPath();
+            if(real.equals(output.toRealPath()) || !paths.add(real))throw new IllegalArgumentException("Repeated or overlapping prepared emission inputs");
+        }
+        var report=Files.readAllLines(output.resolve("consolidation-v1.txt"));
+        if(report.size()!=6 || !report.getFirst().equals("td20-raw-certificate-consolidation-v1")
+                || !report.get(1).equals("witnesses="+witnesses) || !report.get(2).equals("markers="+markers)
+                || !report.get(3).equals("inputs="+validatedInputs.size()) || !report.get(5).equals("replay=none")
+                || Long.parseLong(FleetFiles.field(report,4,"targetSstBytes"))<1)
+            throw new IllegalArgumentException("Prepared emission consolidation report differs from its completion receipt");
+        // Imported witnesses and markers legitimately increase current totals; compare the historical base reports only.
+        return List.of();
+    }
+    static ArrayList<Path> certificateInputs(Path output,Path residualInput,List<Path> inputs) throws IOException {
+        var result=new ArrayList<Path>();var seen=new HashSet<Path>();
+        Path destination=Files.exists(output)?output.toRealPath():output.toAbsolutePath().normalize();
+        for(Path input:inputs) {Path real=input.toRealPath();if(seen.add(real))result.add(real);}
+        if(residualInput!=null) {
+            Path report=residualInput.resolve(ImportTd18AfterTwo.REPORT);
+            if(Files.isRegularFile(report)) {
+                var lines=Files.readAllLines(report);
+                if(lines.size()!=19 || !lines.getFirst().equals("td20-td18-after-two-import-v1")
+                        || !lines.get(1).equals("route="+ErikssonRoute.ID) || !lines.get(2).equals("mode=RESIDUAL_EXPANSION")
+                        || !lines.getLast().equals("status=complete")) throw new IllegalArgumentException("Incomplete residual import record");
+                Path imported=Path.of(FleetFiles.field(lines,15,"database")).toRealPath();
+                if(!imported.equals(destination) && seen.add(imported))result.add(imported);
+            }
+        }
+        return result;
+    }
+    static void publishCertificates(Path output,Path report,String run,int taskCount,ErikssonCheckpoint.Mode mode,
+                                    List<Path> inputs,java.util.function.Consumer<String> progress) throws IOException {
+        var expected=mode==ErikssonCheckpoint.Mode.FULL_SEARCH
+                ?List.of("td20-fleet-merged-v1","run="+run,"tasks="+taskCount)
+                :List.of("td20-fleet-merged-v2","run="+run,"tasks="+taskCount,"mode="+mode);
+        if(Files.exists(report) && !Files.readAllLines(report).equals(expected))
+            throw new IllegalStateException("Different published fleet merge scope");
+        if(Files.exists(output)) {
+            Path complete=output.resolve("fleet-complete.txt");
+            if(Files.exists(complete)) {
+                if(!Files.readAllLines(complete).equals(expected) || !Files.isRegularFile(output.resolve("CURRENT"))
+                        || !Files.isRegularFile(output.resolve("merge-v1.txt")) && !Files.isRegularFile(output.resolve("append-v1.txt")))
+                    throw new IllegalStateException("Incomplete published fleet merge");
+            } else {
+                if(mode!=ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) throw new IllegalStateException("Incomplete published fleet merge");
+                var result=CertificateDatabaseMerger.append(output,inputs,progress);
+                progress.accept("Prepared database retained; appended results: "+result);
+                // An interrupted append is replayed from every input before this receipt is published.
+                FleetFiles.write(complete,expected);
+            }
+        } else {
+            Path temporary=output.resolveSibling("."+output.getFileName()+"-merge-"+UUID.randomUUID()+".partial");
+            var result=CertificateDatabaseMerger.merge(temporary,inputs,progress);
+            FleetFiles.write(temporary.resolve("fleet-complete.txt"),expected);
+            Files.move(temporary,output,StandardCopyOption.ATOMIC_MOVE);progress.accept("Merged certificates: "+result);
+        }
+        if(!Files.exists(report)) FleetFiles.write(report,expected);
     }
     @FunctionalInterface interface PublishedTasks { void produce(java.util.function.Consumer<FleetTask> ready) throws Exception; }
 
     void dispatchPublished(List<FleetTask> tasks,Path jobs,Path snapshot,PublishedTasks producer) throws Exception {
-        Path transfers = directory.resolve("transfers/reconstruction"); Files.createDirectories(transfers);
+        String transferPhase=tasks.isEmpty()?(reconstructionInput==null?"reconstruction":"reconstruction-residuals-v1"):transferPhase(tasks.getFirst());
+        Path transfers = directory.resolve("transfers").resolve(transferPhase); Files.createDirectories(transfers);
         var expected = new HashMap<String,FleetTask>(); tasks.forEach(task -> expected.put(task.id(),task));
         var nodes = new HashSet<String>(); servers.forEach(server -> nodes.add(server.name()));
         var reused = new HashSet<String>();
@@ -305,7 +411,7 @@ public final class FleetEmitter {
     void dispatch(List<FleetTask> tasks, Path jobs, Path snapshot) throws Exception {
         var pending = new ConcurrentLinkedQueue<FleetTask>();
         String phase = tasks.isEmpty() || !tasks.getFirst().phase().equals("avoidance") ? "emission" : "reconstruction";
-        Path transfersDirectory = directory.resolve("transfers").resolve(phase);
+        Path transfersDirectory = directory.resolve("transfers").resolve(tasks.isEmpty()?phase:transferPhase(tasks.getFirst()));
         Files.createDirectories(transfersDirectory);
         var byTask = new HashMap<String,FleetTask>();
         for (var task : tasks) byTask.put(task.id(),task);
@@ -366,7 +472,11 @@ public final class FleetEmitter {
     List<Path> downloadMetadata(List<FleetTask> tasks) throws Exception { return transferTasks(tasks,false); }
     List<Path> downloadCertificates(List<FleetTask> tasks) throws Exception { return transferTasks(tasks,true); }
     private Path transferIntent(FleetTask task) {
-        return directory.resolve("transfers").resolve(task.phase().equals("avoidance") ? "reconstruction" : "emission").resolve(task.id() + ".txt");
+        return directory.resolve("transfers").resolve(transferPhase(task)).resolve(task.id() + ".txt");
+    }
+    static String transferPhase(FleetTask task) {
+        return !task.phase().equals("avoidance")?"emission":task.reconstructionMode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION
+                ?"reconstruction-residuals-v1":"reconstruction";
     }
     private List<Path> transferTasks(List<FleetTask> tasks, boolean certificates) throws Exception {
         Path destination = directory.resolve(certificates ? "downloads" : "results");

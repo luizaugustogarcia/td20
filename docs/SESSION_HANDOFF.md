@@ -2,6 +2,48 @@
 
 ## Active production
 
+The operator now requests a single physical emission database at project-root
+certificates/, before reconstruction. Local consolidation uses exactly the ten
+accepted inputs in RUN/consolidation/complete-v1.txt (all 1,469 emission tasks),
+including the five recovered vast-06 inputs. The incomplete crashed-server DB
+is excluded. fleet/MergeEmissionCertificates.jsh runs the existing opaque-KV
+CertificateDatabaseConsolidator with the coordinator profile and 1 GiB SST
+target. Progress is RUN/local-certificate-consolidation/emission.log; its
+complete-v1.txt is published only after final physical integrity validation.
+No witnesses are replayed; replay belongs to the independent checker. Preserve
+all ten source DBs. This emission union is not the completed proof certificate:
+reconstruction remains stopped and its later results must still be incorporated.
+
+The physical emission union completed at 21:28:20 UTC on 17 November 2026,
+with 11,523,937,239 witnesses and 2,036 informational endpoint markers.
+The TD18 import subsequently copied 4,062,619 replayed budget-nine
+diameter-prefix certificates directly into this project-root database and
+persisted 970,331 18-symbol second-level obstruction markers.
+RUN/td18-after-two-reuse-v1/residuals contains the sealed active after-two
+state set, its RESIDUAL_EXPANSION checkpoint, and td18-after-two-import-v1.txt.
+The independent checker audit of all 5,032,950 source states completed:
+4,062,619 replayed hits, 970,331 missing classes, exact residual-set equality,
+and every residual marker present. Its report is
+RUN/td18-after-two-reuse-v1/independent-import-scope-v1.txt. This checks the
+persisted import scope; full endpoint regeneration and TD20 proof checking
+remain pending. Import and audit logs are under logs/td18-after-two-reuse-v1/.
+The separate marker-inventory-v1.txt audit confirms exactly 2,036
+informational 16-symbol markers and 970,331 second-level 18-symbol markers.
+The importer published its complete artifacts before its shell wrapper
+encountered an error caused by editing the running launcher. Launcher syntax
+and both subsequent independent audits passed; the audit processes exited zero.
+Final CPU suites passed: emitter 242 tests, zero failures/errors and 15
+configured CUDA skips; checker 105 tests, zero failures/errors/skips.
+The updated paper also compiled successfully.
+
+Active reconstruction uses only these 970,331 second-level residuals,
+expands both remaining inverse waves without budget-nine or budget-ten
+sorting, and searches final 21-symbol roots at budget eleven.
+The 2,036 original endpoint markers remain informational. fleet/launch.args
+now explicitly selects this residual input. At batch size 256 the active
+scope is 3,791 batches, with 91 states in the last batch; their preparation
+and execution have not started. Final inverse totals remain unknown.
+
 Work belongs to /home/luiz/Projects/others/td20. TD18 is closed and restored;
 its archived attempts are not TD20 inputs. TD(16) = 9 and TD(18) = 10 are
 completed premises. TD(20) = 11 remains conditional on every checked criterion
@@ -18,7 +60,8 @@ the authorized reconstruction restart; never reset or mix in older output.
 All 1,469 emission computations completed. Receipts and sealed residual sets
 were downloaded and all 143 annotation inventories validated. The residual
 union has 2,036 classes; the first inverse wave has 5,032,950 after-two states.
-There are 19,660 reconstruction batches of at most 256 states (last batch 246).
+The archived full-search input has 19,660 reconstruction batches of at most
+256 states (last batch 246). These cannot substitute for the residual mode.
 Keep 83 root partitions, 143 full endpoint annotations, budgets 8/9/10/11,
 both endpoints, and both (1,2,2) and (0,3,2) inverse paths.
 

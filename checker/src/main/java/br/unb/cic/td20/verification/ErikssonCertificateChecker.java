@@ -13,6 +13,7 @@ import br.unb.cic.td20.runtime.CheckerParallelism;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.atomic.AtomicLong;
@@ -86,9 +87,12 @@ public final class ErikssonCertificateChecker {
         residuals.add(new SearchState(ErikssonRoute.ENDPOINT_BUDGET,pair));
         return true;
     }
-    static void verifyAvoidance(final CertificateStore certificates,final CheckerStateSet endpoints,final Path work,final VerificationProgress progress) {
+    record AfterTwoInventory(long closed,long residual) { }
+    record InverseCoverage(long endpoints,long afterTwo,long afterTwoClosed,long afterTwoResiduals,long afterOne,long roots) { }
+    static InverseCoverage verifyAvoidance(final CertificateStore certificates,final CheckerStateSet endpoints,final Path work,final VerificationProgress progress) {
         int workers=CheckerParallelism.workers(),budget=ErikssonRoute.ROOT_BUDGET;
         try (var afterTwo=new CheckerStateSet(work.resolve("after-two"));
+             var secondLevel=new CheckerStateSet(work.resolve("after-two-residuals"));
              var afterOne=new CheckerStateSet(work.resolve("after-one"));
              var roots=new CheckerStateSet(work.resolve("roots"))) {
             long endpointCount=endpoints.seal().count();
@@ -98,31 +102,71 @@ public final class ErikssonCertificateChecker {
                 ErikssonInverseReconstruction.preimages(state.pair(),2,parent->afterTwo.add(new SearchState(budget-2,parent)));
             });
             long twoCount=afterTwo.seal().count();
-            progress.phase("checking after-two states and both second-move inverse branches");
-            afterTwo.forEachConcurrently(workers,batch->{
-                batch.forEach(state->requireStage(state,1));
-                return certificates.findAll(batch.stream().map(SearchState::pair).toList(),budget-2);
-            },state->{},state->{
-                for (int gain:new int[]{2,3}) ErikssonInverseReconstruction.preimages(state.pair(),gain,
-                        parent->afterOne.add(new SearchState(budget-1,parent)));
-            });
+            progress.phase("replaying budget-nine results and independently deriving second-level residuals");
+            var retained=retainAfterTwoResiduals(certificates,afterTwo,secondLevel);
+            if(Math.addExact(retained.closed(),retained.residual())!=twoCount)
+                throw new IllegalStateException("After-two result accounting differs from the regenerated inventory");
+            progress.phase("expanding second-level residuals through both second-move inverse branches");
+            expandSecondMovePreimages(secondLevel,afterOne);
             long oneCount=afterOne.seal().count();
-            progress.phase("checking after-one states and reversing gains zero and one");
-            afterOne.forEachConcurrently(workers,batch->{
-                batch.forEach(state->requireStage(state,2));
-                return certificates.findAll(batch.stream().map(SearchState::pair).toList(),budget-1);
-            },state->{},state->{
-                int gain=state.pair().getBeta().size()==ErikssonRoute.ROOT_SYMBOLS-1 ? 1:0;
-                ErikssonInverseReconstruction.preimages(state.pair(),gain,parent->roots.add(new SearchState(budget,parent)));
-            });
+            progress.phase("reversing every gain-zero/one first move without budget-ten certificate lookup");
+            expandFirstMovePreimages(afterOne,roots);
             long rootCount=roots.seal().count();
             progress.phase("verifying reconstructed roots");
-            roots.forEachConcurrently(workers,batch->{
-                batch.forEach(state->requireStage(state,3));
-                return certificates.findAll(batch.stream().map(SearchState::pair).toList(),budget);
-            },state->{},state->{throw missing(state.pair(),budget);});
-            System.out.printf("Eriksson inverse coverage verified: endpoints=%d afterTwo=%d afterOne=%d roots=%d%n",endpointCount,twoCount,oneCount,rootCount);
+            verifyFinalRoots(certificates,roots);
+            var coverage=new InverseCoverage(endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount);
+            publishInverseCoverage(work,coverage);
+            System.out.printf("Eriksson inverse coverage verified: endpoints=%d afterTwo=%d afterTwoClosed=%d afterTwoResiduals=%d afterOne=%d roots=%d budgetTenLookup=false%n",
+                    endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount);
+            return coverage;
         }
+    }
+    /** Derive every residual from actual replay; stored obstruction markers are never consulted. */
+    static AfterTwoInventory retainAfterTwoResiduals(final CertificateStore certificates,final CheckerStateSet afterTwo,final CheckerStateSet residuals) {
+        var closed=new LongAdder();var missing=new LongAdder();
+        afterTwo.forEachConcurrently(CheckerParallelism.workers(),batch->{
+            batch.forEach(state->requireStage(state,1));
+            return certificates.findAll(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET-2);
+        },state->closed.increment(),state->{residuals.add(state);missing.increment();});
+        long count=residuals.seal().count();
+        if(count!=missing.sum()) throw new IllegalStateException("Duplicate or missing independently regenerated second-level residual");
+        return new AfterTwoInventory(closed.sum(),count);
+    }
+    static void expandSecondMovePreimages(final CheckerStateSet residuals,final CheckerStateSet afterOne) {
+        residuals.forEachConcurrently(CheckerParallelism.workers(),state->{
+            requireStage(state,1);
+            for(int gain:new int[]{2,3}) ErikssonInverseReconstruction.preimages(state.pair(),gain,
+                    parent->afterOne.add(new SearchState(ErikssonRoute.ROOT_BUDGET-1,parent)));
+        });
+    }
+    /** Budget-ten states are generation obligations; none is suppressed by a certificate lookup. */
+    static void expandFirstMovePreimages(final CheckerStateSet afterOne,final CheckerStateSet roots) {
+        afterOne.forEachConcurrently(CheckerParallelism.workers(),state->{
+            requireStage(state,2);
+            int gain=state.pair().getBeta().size()==ErikssonRoute.ROOT_SYMBOLS-1?1:0;
+            ErikssonInverseReconstruction.preimages(state.pair(),gain,
+                    parent->roots.add(new SearchState(ErikssonRoute.ROOT_BUDGET,parent)));
+        });
+    }
+    static void verifyFinalRoots(final CertificateStore certificates,final CheckerStateSet roots) {
+        roots.forEachConcurrently(CheckerParallelism.workers(),batch->{
+            batch.forEach(state->requireStage(state,3));
+            return certificates.findAll(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET);
+        },state->{},state->{throw missing(state.pair(),ErikssonRoute.ROOT_BUDGET);});
+    }
+    private static void publishInverseCoverage(final Path work,final InverseCoverage result) {
+        Path temporary=null;
+        try {
+            temporary=Files.createTempFile(work,".inverse-coverage-",".tmp");
+            Files.write(temporary,List.of("td20-independent-inverse-coverage-v2","route="+ErikssonRoute.ID,
+                    "rootSymbols="+ErikssonRoute.ROOT_SYMBOLS,"rootBudget="+ErikssonRoute.ROOT_BUDGET,
+                    "status=complete","mode=residual-expansion","endpointBudget=8","afterTwoBudget=9",
+                    "afterOneBudget=10","budgetTenLookup=false","endpoints="+result.endpoints(),
+                    "afterTwo="+result.afterTwo(),"afterTwoClosed="+result.afterTwoClosed(),
+                    "afterTwoResiduals="+result.afterTwoResiduals(),"afterOne="+result.afterOne(),"roots="+result.roots(),"unresolved=0"));
+            Files.move(temporary,work.resolve("inverse-coverage-v2.txt"),StandardCopyOption.ATOMIC_MOVE);
+        } catch(Exception error) { throw new IllegalStateException("Cannot publish independent inverse coverage",error); }
+        finally { if(temporary!=null) try { Files.deleteIfExists(temporary); } catch(Exception ignored) { } }
     }
     private static void requireStage(SearchState state,int stage) {
         int n=state.pair().getBeta().size(),budget=ErikssonRoute.ROOT_BUDGET;

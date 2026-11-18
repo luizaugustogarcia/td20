@@ -85,11 +85,57 @@ through the prepared JShell launcher. The full success marker is
 and the process must exit zero. JShell exit alone is insufficient.
 
 Direct roots require budget 11; endpoints require 8. Endpoint misses independently
-regenerate both `(1,2,2)` and `(0,3,2)` paths on both endpoints through budgets 9,
-10 and 11. Every class count and result must be regenerated/replayed; no predicted
-obstruction list or extra 3-norm cutoff may reduce this scope. Missing final
-certificates fail verification. Emitter checkpoints, manifests and checksums are
-not proof inputs.
+regenerate the complete first inverse wave on 18 symbols with budget nine.
+The checker replays the copied TD18 results from the TD20 database to derive
+every second-level residual. Stored 16-symbol and 18-symbol obstruction markers
+are informational; neither markers nor probe/import reports may omit work.
+The completed reuse probe found 4,062,619 valid budget-nine results among
+5,032,950 classes, leaving 970,331 residuals; the full checker must independently
+regenerate its actual inventories and replay all required TD20 records.
+The import into project-root `certificates/` is complete.
+`tools/td20 audit-import --check-markers` independently replayed all
+5,032,950 persisted source states, checked the exact 4,062,619/970,331
+partition and residual-set equality, and required all residual markers.
+Its completed report is
+`fleet/production-td20-20261117/td18-after-two-reuse-v1/independent-import-scope-v1.txt`.
+This audit covers the persisted import scope; full endpoint regeneration
+and full TD20 verification remain pending. The active residual checkpoint
+and importer report are in the sibling `residuals/` directory.
+
+To repeat the import audit with a fresh report path, use the checker JShell
+classpath:
+
+```bash
+bash -ic 'tools/td20 audit-import --check-markers --report=/tmp/td20-independent-import-scope-v1.txt'
+```
+
+The default inputs are the production run's complete persisted after-two wave,
+the project `certificates/` database, and its imported second-level residual
+wave. Override them with `--source=PATH`, `--certificates=PATH`,
+`--residuals=PATH` and a fresh `--report=PATH`. The audit replays all results
+within budget nine, validates every canonical fixed-point-free v3 state key and
+empty value, and checks that the residual set equals every missing class.
+It requires exactly 5,032,950 source classes, 4,062,619 budget-nine hits and
+970,331 residuals. The optional marker check verifies installation without
+selecting obligations. Its `td20-independent-imported-td18-scope-v1` report
+explicitly excludes whole-endpoint regeneration and full TD20 proof
+verification, and cannot replace `tools/td20 verify --phase=all`. The maintained
+`tools/audit/VerifyImportedTd18.jsh` driver also accepts explicit paths through
+`TD20_IMPORT_VERIFY_{SOURCE,CERTIFICATES,RESIDUALS,REPORT}` environment variables.
+
+Every second-level residual regenerates both `(1,2,2)` and `(0,3,2)` paths
+on both endpoints through budgets ten and eleven. Budget-ten states are
+generation obligations: no sorting search or certificate lookup there prunes
+their final roots. The checker must replay every final root at budget eleven
+and reject missing results. Its completed `inverse-coverage-v2.txt` records
+the full after-two count, budget-nine closures, second-level residuals,
+after-one states, final roots and zero unresolved roots. This report is an
+output of verification, not an input that grants coverage.
+
+No predicted obstruction list or extra 3-norm cutoff may reduce the scope.
+Emitter checkpoints, manifests and checksums are not proof inputs.
+Residual-expansion checkpoints carry an explicit mode and exact active input
+counts; historical full-search batches cannot be substituted for them.
 
 Keep databases, scratch work, count reports, logs and settings untracked. Record
 the completed scope, configurations, measured timings and artifact locations in

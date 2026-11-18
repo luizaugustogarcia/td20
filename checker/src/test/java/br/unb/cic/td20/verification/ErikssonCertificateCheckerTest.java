@@ -1,6 +1,11 @@
 package br.unb.cic.td20.verification;
 
 import br.unb.cic.td20.certificate.CertificateStore;
+import br.unb.cic.td20.certificate.CertificateCodec;
+import br.unb.cic.td20.certificate.CertificateValidator;
+import br.unb.cic.td20.certificate.SortingCertificate;
+import br.unb.cic.td20.joint.ErikssonInverseReconstruction;
+import br.unb.cic.td20.model.ExtendedToricClassKey;
 import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
@@ -10,7 +15,12 @@ import org.rocksdb.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.nio.file.Files;
+import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ErikssonCertificateCheckerTest {
@@ -40,6 +50,92 @@ class ErikssonCertificateCheckerTest {
         var row=new br.unb.cic.td20.joint.ErikssonInventory.Root(1,partition,counts.unoriented(),counts.oriented(),counts.supportCleared());
         try(var store=new CertificateStore(directory);var progress=new VerificationProgress()) {
             assertThrows(IllegalStateException.class,()->ErikssonCertificateChecker.verifyRoot(row,store,progress));
+        }
+    }
+    @Test void budgetNineResidualsDependOnReplayedWitnessesNeverMarkers(@TempDir Path path) throws Exception {
+        var pair=pairWithOrientedThreeCycles(18);
+        var result=threeCycleClosure(pair,1);
+        assertEquals(9,CertificateValidator.requiredBudget(pair,result));
+        for(boolean witness:new boolean[]{false,true}) for(boolean marker:new boolean[]{false,true}) {
+            Path scope=Files.createDirectory(path.resolve("witness-"+witness+"-marker-"+marker));
+            Path database=scope.resolve("certificates");
+            emptyDatabase(database);
+            put(database,pair,witness?CertificateCodec.resultFor(result):null,marker);
+            try(var certificates=new CertificateStore(database);
+                var afterTwo=new CheckerStateSet(scope.resolve("after-two"));
+                var residuals=new CheckerStateSet(scope.resolve("residuals"))) {
+                var state=new SearchState(9,pair);afterTwo.add(state);assertEquals(1,afterTwo.seal().count());
+                assertEquals(marker,certificates.hasObstruction(pair));
+                var inventory=ErikssonCertificateChecker.retainAfterTwoResiduals(certificates,afterTwo,residuals);
+                assertEquals(witness?1:0,inventory.closed());
+                assertEquals(witness?0:1,inventory.residual());
+                assertEquals(!witness,residuals.contains(state));
+            }
+        }
+    }
+    @Test void invalidImportedWitnessIsAnErrorNotAResidual(@TempDir Path path) throws Exception {
+        var pair=pairWithOrientedThreeCycles(18);Path database=path.resolve("certificates");
+        emptyDatabase(database);
+        put(database,pair,CertificateCodec.resultFor(SortingCertificate.complete(List.of())),false);
+        try(var certificates=new CertificateStore(database);
+            var afterTwo=new CheckerStateSet(path.resolve("after-two"));
+            var residuals=new CheckerStateSet(path.resolve("residuals"))) {
+            afterTwo.add(new SearchState(9,pair));afterTwo.seal();
+            var failure=assertThrows(IllegalStateException.class,()->ErikssonCertificateChecker.retainAfterTwoResiduals(certificates,afterTwo,residuals));
+            Throwable cause=failure;while(cause.getCause()!=null) cause=cause.getCause();
+            assertInstanceOf(IllegalArgumentException.class,cause);
+            assertTrue(cause.getMessage().contains("does not sort"));
+        }
+    }
+    @Test void budgetTenWitnessesDoNotSuppressEitherFinalInverseBranch(@TempDir Path path) throws Exception {
+        var twenty=pairWithOrientedThreeCycles(20);var twentyOne=pairWithOrientedThreeCycles(21);
+        var twentyResult=threeCycleClosure(twenty,1);var twentyOneResult=threeCycleClosure(twentyOne,2);
+        assertEquals(10,CertificateValidator.requiredBudget(twenty,twentyResult));
+        assertEquals(10,CertificateValidator.requiredBudget(twentyOne,twentyOneResult));
+        Path database=path.resolve("certificates");emptyDatabase(database);
+        put(database,twenty,CertificateCodec.resultFor(twentyResult),false);
+        put(database,twentyOne,CertificateCodec.resultFor(twentyOneResult),false);
+        Set<ExtendedToricClassKey> expected=ConcurrentHashMap.newKeySet(),actual=ConcurrentHashMap.newKeySet();
+        ErikssonInverseReconstruction.preimages(twenty,1,parent->expected.add(parent.extendedToricClassKey()));
+        ErikssonInverseReconstruction.preimages(twentyOne,0,parent->expected.add(parent.extendedToricClassKey()));
+        assertFalse(expected.isEmpty());
+        try(var certificates=new CertificateStore(database);
+            var afterOne=new CheckerStateSet(path.resolve("after-one"));
+            var roots=new CheckerStateSet(path.resolve("roots"))) {
+            assertTrue(certificates.find(twenty,10).isPresent());assertTrue(certificates.find(twentyOne,10).isPresent());
+            afterOne.add(new SearchState(10,twenty));afterOne.add(new SearchState(10,twentyOne));assertEquals(2,afterOne.seal().count());
+            ErikssonCertificateChecker.expandFirstMovePreimages(afterOne,roots);
+            assertEquals(expected.size(),roots.seal().count());
+            roots.forEachConcurrently(2,state->{assertEquals(21,state.pair().getBeta().size());assertEquals(11,state.maximumMoves());actual.add(state.pair().extendedToricClassKey());});
+            assertEquals(expected,actual);
+            assertThrows(IllegalStateException.class,()->ErikssonCertificateChecker.verifyFinalRoots(certificates,roots));
+        }
+    }
+    private static CyclicTargetPair pairWithOrientedThreeCycles(int symbols) {
+        var omega=new MulticyclePermutation();int cursor=0;
+        int shortCycles=symbols==21?2:1;
+        for(int i=0;i<shortCycles;i++) { omega.add(Cycle.of(cursor,cursor+1,cursor+2));cursor+=3; }
+        omega.add(Cycle.of(IntStream.range(cursor,symbols).toArray()));
+        return CyclicTargetPair.ofOwned(omega,Cycle.of(IntStream.range(0,symbols).toArray())).canonicalRepresentative();
+    }
+    private static SortingCertificate threeCycleClosure(CyclicTargetPair pair,int cycles) {
+        var moves=pair.getOmega().stream().filter(cycle->cycle.size()==3).limit(cycles)
+                .map(cycle->Cycle.of(Arrays.stream(cycle.getSymbols()).sorted().toArray())).toList();
+        assertEquals(cycles,moves.size());
+        return SortingCertificate.closure(moves);
+    }
+    private static void put(Path directory,CyclicTargetPair pair,byte[] result,boolean marker) throws Exception {
+        try(var options=new DBOptions();var first=new ColumnFamilyOptions();var second=new ColumnFamilyOptions()) {
+            var handles=new ArrayList<ColumnFamilyHandle>();
+            var database=RocksDB.open(options,directory.toString(),List.of(
+                    new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY,first),
+                    new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles);
+            try(var writes=new WriteOptions().setDisableWAL(true);var flush=new FlushOptions().setWaitForFlush(true)) {
+                byte[] key=CertificateCodec.canonicalKeyFor(pair);
+                if(result!=null) database.put(handles.get(0),writes,key,result);
+                if(marker) database.put(handles.get(1),writes,key,new byte[0]);
+                database.flush(flush,handles);
+            } finally { handles.forEach(ColumnFamilyHandle::close);database.close(); }
         }
     }
     private static void emptyDatabase(Path directory) throws Exception {

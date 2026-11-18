@@ -12,6 +12,14 @@ The user authorized replacement of joint-2 on 16 November 2026. Its completed
 U/J/C/O/R counts and 214-annotation endpoint census describe a superseded route;
 they cannot supply counts or sorting coverage for the active route.
 
+On 17 November 2026 the user authorized reuse of the completed TD18
+budget-nine results and reconstruction directly from the remaining 18-symbol
+second-level residuals. The two-sided mathematical route and all inventories
+remain unchanged. Runtime reconstruction no longer starts from the stored
+16-symbol obstruction markers and performs no budget-nine or budget-ten
+sorting searches. Independent proof checking still derives every obligation
+from complete endpoint generation and actual witness replay.
+
 ## 1. Check mathematical coverage and small domains
 
 Validate cyclic-target conventions, fixed-point contraction, fixed-content
@@ -85,25 +93,52 @@ or count is a premise.
 
 ## 4. Complete inverse coverage
 
-For each residual 16-symbol endpoint, reverse the third gain-two move by restoring
-two fixed symbols in all gaps and testing every compatible support on both
-endpoints. The resulting 18-symbol after-two states have budget nine.
+Independently regenerate each residual 16-symbol endpoint from missing
+eight-move witnesses. Reverse its third gain-two move by restoring two fixed
+symbols in all gaps and testing every compatible support on both endpoints.
+The resulting complete 18-symbol after-two inventory has budget nine.
 
-For every unclosed state, reverse a gain-two second move to obtain 20 symbols
-with budget ten, or a gain-three second move to obtain 21 symbols with budget
-ten. Reverse respectively the gain-one first move by restoring one fixed symbol,
-or every gain-zero first support without restoring a symbol. Every accepted
-parent must pass actual forward-gain and pair replay. No odd-cycle qualifying
-restriction may remove a gain-zero/one first move.
+The completed read-only TD18 reuse probe checked 5,032,950 after-two classes:
+4,062,619 have replayable current-endpoint diameter-prefix certificates within
+nine moves, and 970,331 have no matching result under either endpoint key.
+The matching versioned records have now been copied into project-root
+`certificates/`, and every residual has been persisted with its 18-symbol
+domain, budget nine and exact count under
+`fleet/production-td20-20261117/td18-after-two-reuse-v1/residuals`.
+The completed `td18-after-two-import-v1.txt` records source and destination
+replay. The checker-only `independent-import-scope-v1.txt` additionally
+replayed every copied result and checked that the persisted residual set
+equals exactly the missing classes, including all residual markers.
+The independent checker must replay the TD20 results and derive the complete
+residual set itself; neither a stored obstruction list nor a probe/import
+report is a proof input. The probe is completed lookup evidence, not a
+completed TD20 proof-verification report. The independent import audit also
+does not regenerate the endpoint inventory or replace full proof checking.
+
+Active emitter reconstruction starts from these second-level residuals.
+The 2,036 stored 16-symbol obstruction markers are informational and are not
+runtime reconstruction inputs. Every unclosed 18-symbol state reverses a
+gain-two second move to obtain 20 symbols with budget ten, or a gain-three
+second move to obtain 21 symbols with budget ten. Expand every such state
+without budget-ten sorting or certificate lookup. Reverse respectively the
+gain-one first move by restoring one fixed symbol, or every gain-zero first
+support without restoring a symbol. Both inverse operations include both
+endpoints. Every accepted parent must pass actual forward-gain and pair replay.
+No odd-cycle qualifying restriction may remove a gain-zero/one first move.
 
 Deduplicate valid-pair classes on disk with bounded persistence. Every final
 21-symbol root requires budget-eleven closure or a complete witness. Missing
 obstruction markers, interrupted queues, advisory prefetch misses and evicted
 cache entries cannot omit a class.
 
-Exit criterion: an independently regenerated complete three-wave report with
-counts and no unresolved final root, covering both branches and both endpoints.
-If a wave is empty, the full checker must still report that scope.
+Exit criterion: a complete versioned import report and persisted TD20 results
+for every imported class, plus an independently regenerated complete
+three-wave report with full after-two, closed and second-level residual counts,
+both inverse branches and endpoints, and no unresolved final root. The checker
+report explicitly records that no budget-ten certificate lookup pruned the
+final roots. If a wave is empty, the full checker must still report that scope.
+Historical full-search checkpoints and residual-expansion checkpoints are
+distinct modes; no incompatible checkpoint or batch inventory may be reused.
 
 ## 5. Independently verify the entire proof
 

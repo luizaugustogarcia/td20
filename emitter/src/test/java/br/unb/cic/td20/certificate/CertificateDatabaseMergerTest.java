@@ -52,6 +52,42 @@ class CertificateDatabaseMergerTest {
         assertThrows(IllegalStateException.class,() -> CertificateDatabaseMerger.merge(root.resolve("output"),List.of(root.resolve("good"),root.resolve("bad"))));
         assertFalse(Files.exists(root.resolve("output/merge-v1.txt")));
     }
+    @Test void appendPreservesPreparedWitnessesAndMarkersAndReplaysEveryNewWitness(@TempDir Path root) throws Exception {
+        var marker=CyclicTargetPair.of(new MulticyclePermutation("(0 1 2)(3 4 5)"),Cycle.of(0,1,2,3,4,5));
+        var identity=CyclicTargetPair.of(new MulticyclePermutation("(0)(1)(2)(3)"),Cycle.of(0,1,2,3));
+        Path output=root.resolve("prepared"),input=root.resolve("roots");
+        try(var writer=new AsyncCertificateWriter(output,60)) {
+            writer.enqueue(pair(),List.of(Cycle.of(0,1,2)));writer.enqueueObstruction(marker,2);
+        }
+        try(var writer=new AsyncCertificateWriter(input,60)) {writer.enqueue(identity,List.of());}
+        assertEquals(new CertificateDatabaseMerger.Result(1,1,0),CertificateDatabaseMerger.append(output,List.of(input),line -> {}));
+        try(var writer=new AsyncCertificateWriter(output,60)) {
+            assertTrue(writer.find(pair(),1).isPresent());assertTrue(writer.find(identity,0).isPresent());
+            var markers=new ArrayList<byte[]>();writer.forEachObstruction(markers::add);
+            assertEquals(1,markers.size());assertArrayEquals(CertificateCodec.keyFor(marker),markers.getFirst());
+        }
+        assertEquals(new CertificateDatabaseMerger.Result(1,0,0),CertificateDatabaseMerger.append(output,List.of(input),line -> {}),
+                "Replaying an interrupted append must be idempotent");
+        assertTrue(Files.readString(output.resolve("append-v1.txt")).startsWith("td20-certificate-append-v1\n"));
+        assertThrows(IllegalArgumentException.class,() -> CertificateDatabaseMerger.append(output,List.of(output),line -> {}));
+        assertThrows(IllegalArgumentException.class,() -> CertificateDatabaseMerger.append(root.resolve("missing"),List.of(input),line -> {}));
+    }
+    @Test void emptyAppendClosesAnEmptyResidualWaveAndPreservesThePreparedBase(@TempDir Path root) throws Exception {
+        Path output=root.resolve("prepared");
+        var marker=CyclicTargetPair.of(new MulticyclePermutation("(0 1 2)(3 4 5)"),Cycle.of(0,1,2,3,4,5));
+        try(var writer=new AsyncCertificateWriter(output,60)) {
+            writer.enqueue(pair(),List.of(Cycle.of(0,1,2)));writer.enqueueObstruction(marker,2);
+        }
+        assertEquals(new CertificateDatabaseMerger.Result(0,0,0),CertificateDatabaseMerger.append(output,List.of(),line -> {}));
+        try(var reader=new AsyncCertificateWriter(output,60)) {
+            assertTrue(reader.find(pair(),1).isPresent());
+            var markers=new ArrayList<byte[]>();reader.forEachObstruction(markers::add);
+            assertEquals(1,markers.size());assertArrayEquals(CertificateCodec.keyFor(marker),markers.getFirst());
+        }
+        assertTrue(Files.readString(output.resolve("append-v1.txt")).contains("inputWitnesses=0"));
+        assertThrows(IllegalArgumentException.class,() -> CertificateDatabaseMerger.append(root.resolve("absent"),List.of(),line -> {}));
+        assertThrows(IllegalArgumentException.class,() -> CertificateDatabaseMerger.merge(root.resolve("fresh"),List.of()));
+    }
     @Test void inferredDomainsDistinguishEqualByteLengths() {
         var random = new Random(414);
         for (int n = 1; n <= 21; n++) {

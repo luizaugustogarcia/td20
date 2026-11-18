@@ -23,7 +23,7 @@ public final class FleetWorker {
                 + ", jvmArguments=" + java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments());
         if (Files.exists(job.resolve("certificates")) || Files.exists(job.resolve("work")) || Files.exists(job.resolve("complete.txt")))
             throw new IllegalArgumentException("Remote task requires fresh output directories");
-        if (!task.generation().equals("whole")) {
+        if (task.phase().equals("endpoints") && !task.generation().equals("whole")) {
             var endpoint = ErikssonInventory.endpoints().get(task.first() - 1);
             if (endpoint.elementaryClosure()) throw new IllegalArgumentException("Elementary endpoints must use whole-annotation closure tasks");
             var result = ErikssonWitnessEmitter.emitEndpointBatch(endpoint,task.generationWork(),job.resolve("certificates"),job.resolve("work"));
@@ -34,7 +34,8 @@ public final class FleetWorker {
                 "--work=" + job.resolve("work")));
         if (task.phase().equals("avoidance")) {
             var checkpoint = ErikssonCheckpoint.read(job.resolve("input"));
-            if (checkpoint.stage() != ErikssonCheckpoint.Stage.AFTER_TWO || checkpoint.afterTwo() != task.inputCount())
+            if (checkpoint.stage() != ErikssonCheckpoint.Stage.AFTER_TWO || checkpoint.afterTwo() != task.inputCount()
+                    || checkpoint.mode()!=task.reconstructionMode())
                 throw new IllegalArgumentException("Reconstruction task count or stage mismatch");
             arguments.add("--resume-work=" + job.resolve("input"));
         } else arguments.add((task.phase().equals("roots") ? "--partitions=" : "--endpoints=") + task.first() + "-" + task.last());
@@ -48,7 +49,8 @@ public final class FleetWorker {
         }
         if (task.phase().equals("avoidance")) {
             var checkpoint = ErikssonCheckpoint.read(job.resolve("work"));
-            if (checkpoint.stage() != ErikssonCheckpoint.Stage.ROOTS) throw new IllegalStateException("Missing final reconstructed root inventory");
+            if (checkpoint.stage() != ErikssonCheckpoint.Stage.ROOTS || checkpoint.mode()!=task.reconstructionMode())
+                throw new IllegalStateException("Missing or incompatible final reconstructed root inventory");
             roots = checkpoint.roots();
         }
         task.complete(job, endpoints, roots, generated);

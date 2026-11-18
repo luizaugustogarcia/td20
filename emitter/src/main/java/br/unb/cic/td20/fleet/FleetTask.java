@@ -15,10 +15,16 @@ record FleetTask(String run, String id, String phase, int first, int last, long 
             throw new IllegalArgumentException("Invalid fleet task identity");
         int limit = phase.equals("roots") ? ErikssonRoute.ROOT_PARTITIONS : phase.equals("endpoints") ? ErikssonRoute.ENDPOINT_TYPES : 1;
         boolean leaves = generation.startsWith("leaves/");
+        boolean residual = phase.equals("avoidance") && generation.equals("residual-expansion");
         if (first < 1 || last < first || last > limit || (phase.equals("avoidance") || leaves ? inputCount < 1 : inputCount != 0)
-                || !generation.equals("whole") && (!phase.equals("endpoints") || first != last
+                || !generation.equals("whole") && !residual && (!phase.equals("endpoints") || first != last
                     || !generation.matches("(prefix|leaves)/([0-9]+(\\.[0-9]+)*)?")))
             throw new IllegalArgumentException("Invalid fleet task scope");
+    }
+    br.unb.cic.td20.avoidance.ErikssonCheckpoint.Mode reconstructionMode() {
+        if(!phase.equals("avoidance")) throw new IllegalStateException("Only reconstruction tasks have an inverse execution mode");
+        return generation.equals("residual-expansion")?br.unb.cic.td20.avoidance.ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION
+                :br.unb.cic.td20.avoidance.ErikssonCheckpoint.Mode.FULL_SEARCH;
     }
     List<String> lines() {
         return List.of("td20-fleet-task-v2", "route=" + ErikssonRoute.ID, "run=" + run, "id=" + id,

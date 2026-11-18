@@ -6,6 +6,18 @@ budgets are 9 and 10. TD(16) = 9 and TD(18) = 10 are completed premises; this
 distributed computation does not establish TD(20) = 11 until every required
 independent verification and evidence criterion succeeds.
 
+The active reconstruction input is the sealed set of 970,331 fixed-point-free
+18-symbol classes still lacking a budget-nine result after replaying and copying
+4,062,619 TD18 results into TD20. Supply
+`--reconstruction-input=RUN/td18-after-two-reuse-v1/residuals`; the coordinator
+also detects this conventional location automatically. The 2,036 endpoint
+misses remain informational and do not seed production reconstruction.
+Residual checkpoints select `RESIDUAL_EXPANSION`: expand every input through
+both inverse branches, omit budget-nine and budget-ten searches, and search only
+the final 21-symbol roots at budget 11. The checker regenerates the obligations
+independently from endpoint generation and the copied TD20 results; neither
+the TD18 source database nor persisted obstruction markers select checker work.
+
 `tools/td20 fleet` accepts a list of Vast.ai SSH connections, builds a pinned
 snapshot of the current source on each server, schedules independent emitter
 jobs, downloads closed RocksDB databases, and merges their certificates locally.
@@ -41,6 +53,9 @@ Existing bundle-backed clones fetch the pinned bundle's HEAD and reset their
 Git index to that revision before the snapshot overlay. An ordinary resume
 retains its original source archive; an authorized source upgrade archives and
 replaces source.tar and source.bundle while all workers are stopped.
+Residual reconstruction uses a separate `source-residuals-v1.tar` snapshot and
+separate task/transfer identities, so archived full-search tasks cannot resume
+under the new mode.
 
 Set `TD20_GITHUB_TOKEN` in the local launch environment to clone from GitHub instead. Authentication
 travels over SSH standard input into transient Git configuration, with credential
@@ -232,10 +247,18 @@ The work has these boundaries:
    counts pending preparation separately from ready work.
    `--reconstruction-batch-size` sets the maximum classes per batch (default 64). A smaller
    size creates more independent tasks, with more repeated downstream work.
-4. Each reconstruction job resumes an `AFTER_TWO` checkpoint at budget 9. It
-   searches every input, reconstructs both `(1,2,2)` and `(0,3,2)` paths on both
-   endpoints, searches after-one states at budget 10, and searches final roots at
-   budget 11. Fixed points are contracted before fixed-point-free state encoding.
+   This first-wave preparation is the legacy `FULL_SEARCH` route. With the
+   active sealed residual input, the coordinator instead splits its 970,331
+   after-two keys directly into counted batches under
+   `RUN/reconstruction-residuals-v1`, without reconstructing the endpoint misses.
+   The input path, count and mode are pinned in `reconstruction-input-v1.txt`.
+4. Each active reconstruction job resumes a `RESIDUAL_EXPANSION` `AFTER_TWO`
+   checkpoint. It restores either two or three fixed symbols, then one or zero,
+   reconstructing both `(1,2,2)` and `(0,3,2)` paths on both endpoints. It
+   expands every budget-ten intermediate state without lookup or search and
+   searches the final roots at budget 11. The legacy `FULL_SEARCH` mode also
+   searches inputs at budget 9 and intermediate states at budget 10. Fixed
+   points are contracted before fixed-point-free state encoding.
    A job fails if any final root remains unresolved.
 5. After both remote computation phases, all completed witness databases are
    downloaded for the final merge. Cross-server duplicate classes
@@ -275,12 +298,29 @@ receipt-only result cannot pass that guard. Downloaded
 reconstruction results contain the certificate DB and receipt, without the large
 intermediate reconstruction sets and search queues.
 
-The final database is published atomically after every expected job completes.
+After every expected job completes, a fresh final database is published atomically.
 Its default destination is RUN/certificates; --database=certificates selects
 the project-root directory. The destination is persisted per run and cannot
 silently change on resume.
+The residual route also accepts the already prepared project-root database:
+it retains its emission/imported witnesses and obstruction markers, replays
+the new results into it, flushes, and only then publishes fleet completion.
+When `RUN/local-certificate-consolidation/complete-v1.txt` matches the run,
+complete emission task/input scope and destination, and the destination's
+original `consolidation-v1.txt` matches its historical counts, the coordinator
+validates every original consolidated source but omits their duplicate witness
+replay. It appends only the final reconstruction outputs and any separate
+imported database. Added TD18 results and markers do not change the historical
+emission counts used for this check. Missing preparation keeps every emission
+input in the replay union; incompatible claimed completion fails selection.
+These receipts are emitter resume records and cannot reduce independent checker
+coverage or replace witness replay during proof verification.
+An interrupted append is replayed from every input; the writer retains the
+strongest existing result. `append-v1.txt` records witnesses replayed and newly
+added during that append. When the imported reuse database remains separate,
+the import record's database path is included in a fresh merge's input union.
 Its `merge-v1.txt` records input witnesses, unique witnesses, and advisory marker
-counts. Obstruction markers are validated and omitted from the merged database:
+counts. In a fresh generic merge, obstruction markers are validated and omitted:
 they have no explicit budget and are not proof inputs. Missing markers cannot
 suppress any checker obligation. WAL is disabled for writes, and completed
 persistence boundaries are flushed by the existing writer.

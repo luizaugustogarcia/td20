@@ -1,6 +1,9 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
+import br.unb.cic.td20.compat.LegacyCertificates;
 import br.unb.cic.td20.avoidance.ReconstructionProgress;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.runtime.DatabaseWriteBatching;
@@ -116,14 +119,31 @@ public final class AsyncCertificateWriter implements AutoCloseable {
     }
 
     public void enqueue(CyclicTargetPair pair, List<Cycle> moves) {
-        CertificateValidator.validate(pair, moves, obligationBudget(pair.getBeta().size()));
-        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(SortingCertificate.complete(moves)), pair.getBeta().size(), moves.size()));
+        enqueue(LegacyPairs.fromLegacy(pair), PrimitiveCertificate.complete(LegacyCertificates.pack(moves)));
+    }
+
+    /** Replays and queues an intrinsic result without materializing permutation objects. */
+    public void enqueue(PrimitivePair pair, PrimitiveCertificate result) {
+        enqueue(pair, result, obligationBudget(pair.size()));
+    }
+
+    public void enqueue(PrimitivePair pair, PrimitiveCertificate result, int maximumMoves) {
+        if (maximumMoves < 0 || maximumMoves > obligationBudget(pair.size()))
+            throw new IllegalArgumentException("Invalid explicit certificate budget");
+        int required = CertificateValidator.requiredBudget(pair, result);
+        if (required > maximumMoves)
+            throw new IllegalArgumentException("Sorting result does not close the requested move budget");
+        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(result), pair.size(), required));
     }
 
     public void enqueueObstruction(CyclicTargetPair pair, int maximumMoves) {
-        if (maximumMoves < 1 || maximumMoves > obligationBudget(pair.getBeta().size()))
+        enqueueObstruction(LegacyPairs.fromLegacy(pair), maximumMoves);
+    }
+
+    public void enqueueObstruction(PrimitivePair pair, int maximumMoves) {
+        if (maximumMoves < 1 || maximumMoves > obligationBudget(pair.size()))
             throw new IllegalArgumentException("Invalid explicit obstruction budget");
-        offer(new Entry(CertificateCodec.keyFor(pair), null, pair.getBeta().size(), maximumMoves));
+        offer(new Entry(CertificateCodec.keyFor(pair), null, pair.size(), maximumMoves));
     }
 
     private static int obligationBudget(int domain) {
@@ -133,11 +153,14 @@ public final class AsyncCertificateWriter implements AutoCloseable {
     }
 
     public void enqueueClosure(CyclicTargetPair pair, List<Cycle> moves, int maximumMoves) {
-        var result = SortingCertificate.closure(moves);
-        int required = CertificateValidator.requiredBudget(pair, result);
-        if (required > Math.min(maximumMoves, obligationBudget(pair.getBeta().size())))
-            throw new IllegalArgumentException("Sorting result does not close the requested move budget");
-        offer(new Entry(CertificateCodec.keyFor(pair), CertificateCodec.resultFor(result), pair.getBeta().size(), required));
+        enqueue(LegacyPairs.fromLegacy(pair), PrimitiveCertificate.closure(LegacyCertificates.pack(moves)),
+                Math.min(maximumMoves, obligationBudget(pair.getBeta().size())));
+    }
+
+    public void enqueueClosure(PrimitivePair pair, PrimitiveCertificate result, int maximumMoves) {
+        if (result.kind() != PrimitiveCertificate.Kind.DIAMETER_CLOSURE)
+            throw new IllegalArgumentException("A diameter closure result is required");
+        enqueue(pair, result, maximumMoves);
     }
 
     public Optional<List<Cycle>> find(CyclicTargetPair pair, int maximumMoves) {
@@ -145,6 +168,10 @@ public final class AsyncCertificateWriter implements AutoCloseable {
     }
 
     public Optional<SortingCertificate> findResult(CyclicTargetPair pair, int maximumMoves) {
+        return findPrimitiveResult(LegacyPairs.fromLegacy(pair), maximumMoves).map(LegacyCertificates::toLegacy);
+    }
+
+    public Optional<PrimitiveCertificate> findPrimitiveResult(PrimitivePair pair, int maximumMoves) {
         throwIfFailed();
         if (closed) throw new IllegalStateException("Certificate writer is closed");
         if (maximumMoves < 0 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 0..11");
@@ -155,6 +182,12 @@ public final class AsyncCertificateWriter implements AutoCloseable {
 
     /** Position-preserving bulk lookup; every hit is replayed against its actual obligation budget. */
     public List<Optional<SortingCertificate>> findResults(List<CyclicTargetPair> pairs, int maximumMoves) {
+        return findPrimitiveResults(pairs.stream().map(LegacyPairs::fromLegacy).toList(), maximumMoves)
+                .stream().map(result -> result.map(LegacyCertificates::toLegacy)).toList();
+    }
+
+    /** One native multiGet retains missing, duplicate and over-budget request positions. */
+    public List<Optional<PrimitiveCertificate>> findPrimitiveResults(List<PrimitivePair> pairs, int maximumMoves) {
         throwIfFailed();
         if (closed) throw new IllegalStateException("Certificate writer is closed");
         if (maximumMoves < 0 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 0..11");
@@ -163,18 +196,18 @@ public final class AsyncCertificateWriter implements AutoCloseable {
         try {
             var encoded = database.multiGetAsList(Collections.nCopies(keys.size(), witnesses), keys);
             if (encoded.size() != pairs.size()) throw new IllegalStateException("Incomplete certificate multiGet response");
-            var results = new ArrayList<Optional<SortingCertificate>>(pairs.size());
+            var results = new ArrayList<Optional<PrimitiveCertificate>>(pairs.size());
             for (int i = 0; i < pairs.size(); i++)
                 results.add(checkedResult(pairs.get(i), maximumMoves, encoded.get(i)));
             return List.copyOf(results);
         } catch (RocksDBException error) { throw new IllegalStateException("Cannot bulk-read sorting results", error); }
     }
 
-    private static Optional<SortingCertificate> checkedResult(CyclicTargetPair pair, int maximumMoves, byte[] encoded) {
+    private static Optional<PrimitiveCertificate> checkedResult(PrimitivePair pair, int maximumMoves, byte[] encoded) {
         if (encoded == null) return Optional.empty();
-        var result = CertificateCodec.decodeResult(encoded);
+        var result = CertificateCodec.decodePrimitiveResult(encoded);
         int required = CertificateValidator.requiredBudget(pair, result);
-        if (required > obligationBudget(pair.getBeta().size()))
+        if (required > obligationBudget(pair.size()))
             throw new IllegalArgumentException("Sorting result does not close its obligation budget");
         return required <= maximumMoves ? Optional.of(result) : Optional.empty();
     }
@@ -322,8 +355,8 @@ public final class AsyncCertificateWriter implements AutoCloseable {
                 certifiedKeys.add(ByteBuffer.wrap(entry.key));
                 byte[] previous = stored.get(i), marker = stored.get(i+keys.size());
                 if (previous != null) {
-                    var pair = CertificateCodec.pairForKey(entry.key,entry.domain);
-                    int required = CertificateValidator.requiredBudget(pair,CertificateCodec.decodeResult(previous));
+                    var pair = CertificateCodec.primitivePairForKey(entry.key,entry.domain);
+                    int required = CertificateValidator.requiredBudget(pair,CertificateCodec.decodePrimitiveResult(previous));
                     if (required > obligationBudget(entry.domain))
                         throw new IllegalArgumentException("Stored sorting result exceeds the maximum move budget");
                     if (required < entry.budget || required == entry.budget && Arrays.compareUnsigned(previous,entry.value) <= 0) {
@@ -344,19 +377,29 @@ public final class AsyncCertificateWriter implements AutoCloseable {
         }
         var certified = new HashSet<ByteBuffer>();
         for (Entry entry : entries) if (entry.value != null) certified.add(ByteBuffer.wrap(entry.key));
+        var markerKeys = new ArrayList<byte[]>();
+        for (Entry entry : entries)
+            if (entry.value == null && !certified.contains(ByteBuffer.wrap(entry.key))) markerKeys.add(entry.key);
+        var markerWitnesses = markerKeys.isEmpty() ? List.<byte[]>of()
+                : database.multiGetAsList(Collections.nCopies(markerKeys.size(), witnesses), markerKeys);
+        if (markerWitnesses.size() != markerKeys.size())
+            throw new IllegalStateException("Incomplete obstruction coverage lookup");
         try (var batch = new WriteBatch(); var writes = new WriteOptions().setDisableWAL(true)) {
+            int markerIndex = 0;
             for (Entry entry : entries) {
                 if (entry.value != null) {
                     batch.put(witnesses, entry.key, entry.value);
                     batch.delete(obstructions, entry.key);
                 } else if (!certified.contains(ByteBuffer.wrap(entry.key))) {
-                    byte[] value = database.get(witnesses, entry.key);
+                    byte[] value = markerWitnesses.get(markerIndex++);
                     boolean covered = false;
                     if (value != null) {
-                        var pair = CertificateCodec.pairForKey(entry.key, entry.domain);
-                        var result = CertificateCodec.decodeResult(value);
-                        CertificateValidator.validate(pair, result, obligationBudget(entry.domain));
-                        covered = CertificateValidator.requiredBudget(pair, result) <= entry.budget;
+                        var pair = CertificateCodec.primitivePairForKey(entry.key, entry.domain);
+                        var result = CertificateCodec.decodePrimitiveResult(value);
+                        int required = CertificateValidator.requiredBudget(pair, result);
+                        if (required > obligationBudget(entry.domain))
+                            throw new IllegalArgumentException("Stored sorting result exceeds the maximum move budget");
+                        covered = required <= entry.budget;
                     }
                     if (!covered) batch.put(obstructions, entry.key, EMPTY);
                 }

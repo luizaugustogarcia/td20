@@ -4,29 +4,30 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import br.unb.cic.td20.joint.*;
 import br.unb.cic.td20.model.*;
-import br.unb.cic.td20.permutation.*;
 import br.unb.cic.td20.search.*;
 import br.unb.cic.td20.certificate.*;
 
 class ErikssonCpuRootDischarge {
     static final int WORKERS=Runtime.getRuntime().availableProcessors();
-    static Optional<SortingCertificate> search(CyclicTargetPair root) throws Exception {
+    static Optional<PrimitiveCertificate> search(PrimitivePair root) throws Exception {
         var direct=CpuPrefixSearch.search(root,ErikssonRoute.ROOT_BUDGET,3,8192);
         if (direct.isPresent()) return direct;
-        AtomicReference<SortingCertificate> found=new AtomicReference<>();
+        AtomicReference<PrimitiveCertificate> found=new AtomicReference<>();
         try (var pool=Executors.newFixedThreadPool(WORKERS)) {
-            List<Future<?>> jobs=new ArrayList<>(); int[] beta=root.getBeta().getSymbols();
+            List<Future<?>> jobs=new ArrayList<>(); int[] beta=root.betaSymbols(), images=root.omegaImages();
             for (int a=0;a<beta.length-2;a++) for (int b=a+1;b<beta.length-1;b++) for (int c=b+1;c<beta.length;c++) {
-                Cycle first=Cycle.of(beta[a],beta[b],beta[c]);
+                var first=new CyclicTargetMoves.Move(beta[a],beta[b],beta[c]);
                 jobs.add(pool.submit(()->{
                     if (found.get()!=null) return;
-                    var omega=PermutationGroups.computeProduct(root.getOmega(),first.getInverse());
-                    var current=CommonOperations.applyTranspositionOptimized(root.getBeta(),first);
-                    var child=CyclicTargetPair.ofOwned(omega,current);
+                    var omega=CyclicTargetMoves.applyToOmega(images,first);
+                    var current=CyclicTargetMoves.applyToBeta(beta,first);
+                    var child=PrimitivePair.of(omega,current);
                     var result=CpuPrefixSearch.search(child,ErikssonRoute.ROOT_BUDGET-1,4,500000);
                     if (result.isPresent()) {
-                        List<Cycle> moves=new ArrayList<>(); moves.add(first); moves.addAll(result.orElseThrow().moves());
-                        var certificate=new SortingCertificate(result.orElseThrow().kind(),moves);
+                        var tail=result.orElseThrow(); int[] moves=new int[1+tail.moveCount()];
+                        moves[0]=first.a() | (first.b()<<5) | (first.c()<<10);
+                        System.arraycopy(tail.packedMoves(),0,moves,1,tail.moveCount());
+                        var certificate=new PrimitiveCertificate(tail.kind(),moves);
                         CertificateValidator.validate(root,certificate,ErikssonRoute.ROOT_BUDGET);
                         found.compareAndSet(null,certificate);
                     }
@@ -48,25 +49,26 @@ class ErikssonCpuRootDischarge {
             for (var row:inventory) {
                 row.requireCompleteCounts(); if (row.directClasses()==0) continue;
                 obligations=Math.addExact(obligations,row.directClasses());
-                List<CyclicTargetPair> roots=Collections.synchronizedList(new ArrayList<>());
-                var counts=ErikssonRootGenerator.generate(row.partition(),WORKERS,()->{},pair->{
+                List<PrimitivePair> roots=Collections.synchronizedList(new ArrayList<>());
+                var counts=ErikssonRootGenerator.generatePrimitive(row.partition(),WORKERS,()->{},pair->{
                     if (!SupportClearing.closes(pair)) roots.add(pair.canonicalRepresentative());
                 });
                 if (counts.unoriented()!=row.unoriented() || counts.oriented()!=row.oriented() || counts.supportCleared()!=row.supportCleared()
                         || roots.size()!=row.directClasses()) throw new IllegalStateException("Incomplete direct-root generation");
-                roots.sort(Comparator.comparing(pair->pair.extendedToricClassKey().toString()));
-                for (var pair:roots) {
-                    var certificate=writer.findResult(pair,ErikssonRoute.ROOT_BUDGET);
+                roots.sort(Comparator.comparing(pair->HexFormat.of().formatHex(pair.canonicalKey())));
+                var prior=writer.findPrimitiveResults(roots,ErikssonRoute.ROOT_BUDGET);
+                for (int index=0;index<roots.size();index++) {
+                    var pair=roots.get(index); var certificate=prior.get(index);
                     if (certificate.isEmpty()) certificate=search(pair);
-                    if (certificate.isEmpty()) throw new IllegalStateException("CPU search did not discharge a required root: "+pair.extendedToricClassKey());
+                    if (certificate.isEmpty()) throw new IllegalStateException("CPU search did not discharge a required root: "+HexFormat.of().formatHex(pair.canonicalKey()));
                     var result=certificate.orElseThrow(); CertificateValidator.validate(pair,result,ErikssonRoute.ROOT_BUDGET);
-                    if (result.kind()==SortingCertificate.Kind.COMPLETE) writer.enqueue(pair,result.moves());
-                    else writer.enqueueClosure(pair,result.moves(),ErikssonRoute.ROOT_BUDGET);
+                    writer.enqueue(pair,result,ErikssonRoute.ROOT_BUDGET);
                     writer.flush();
-                    if (writer.findResult(pair,ErikssonRoute.ROOT_BUDGET).isEmpty()) throw new IllegalStateException("Missing persisted root certificate");
                     closed++;
-                    System.out.println("DISCHARGED partition="+row.number()+" classKey="+pair.extendedToricClassKey()+" kind="+result.kind()+" prefixMoves="+result.moves().size()+" requiredBudget="+CertificateValidator.requiredBudget(pair,result));
+                    System.out.println("DISCHARGED partition="+row.number()+" classKey="+HexFormat.of().formatHex(pair.canonicalKey())+" kind="+result.kind()+" prefixMoves="+result.moveCount()+" requiredBudget="+CertificateValidator.requiredBudget(pair,result));
                 }
+                if (writer.findPrimitiveResults(roots,ErikssonRoute.ROOT_BUDGET).stream().anyMatch(Optional::isEmpty))
+                    throw new IllegalStateException("Missing persisted root certificate");
             }
         }
         if (closed!=obligations) throw new IllegalStateException("Incomplete CPU root discharge");

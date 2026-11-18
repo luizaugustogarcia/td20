@@ -1,6 +1,9 @@
 package br.unb.cic.td20.base;
 
 import br.unb.cic.td20.permutation.OneLinePermutation;
+import br.unb.cic.td20.certificate.CertificateValidator;
+import br.unb.cic.td20.certificate.PrimitiveCertificate;
+import br.unb.cic.td20.model.PrimitivePair;
 
 import java.util.ArrayList;
 import java.util.concurrent.Executors;
@@ -14,6 +17,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @EnabledIfSystemProperty(named = "td20.gpuSmoke", matches = "true")
 class GPUSortingSearchSmokeTest {
+    @Test
+    void primitiveBridgeReplaysProductionLengthStateWithAnArbitraryAnchor() {
+        GPUSortingSearch.init(new int[]{0}, 2, 32L * 1024L * 1024L);
+        int[] omega = java.util.stream.IntStream.range(0, 21).toArray();
+        omega[0] = 1; omega[1] = 2; omega[2] = 0;
+        int[] beta = java.util.stream.IntStream.range(0, 21).map(i -> (i + 1) % 21).toArray();
+        var pair = PrimitivePair.of(omega, beta);
+        var beforeOmega = pair.omegaBytes(); var beforeBeta = pair.betaBytes();
+        var result = GPUSortingSearch.getInstance().search(beforeBeta, beforeOmega, 1, false);
+        assertEquals(GPUSortingSearch.Disposition.COMPLETE, result.disposition());
+        assertEquals(1, result.moveCount());
+        CertificateValidator.validate(pair, PrimitiveCertificate.complete(result.packedMoves()), 1);
+        assertArrayEquals(beforeOmega, pair.omegaBytes()); assertArrayEquals(beforeBeta, pair.betaBytes());
+    }
+
     @Test
     void sortsConcurrentThreeCyclesThroughTheBoundedDispatcher()
             throws Exception {

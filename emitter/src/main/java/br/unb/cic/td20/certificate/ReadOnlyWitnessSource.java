@@ -1,10 +1,14 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
+import br.unb.cic.td20.compat.LegacyCertificates;
 import br.unb.cic.td20.permutation.Cycle;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.rocksdb.*;
@@ -44,14 +48,36 @@ public final class ReadOnlyWitnessSource implements AutoCloseable {
     }
 
     public Optional<List<Cycle>> find(CyclicTargetPair pair, int maximumMoves) {
+        return findPrimitive(LegacyPairs.fromLegacy(pair), maximumMoves)
+                .map(result -> LegacyCertificates.toLegacy(result).moves());
+    }
+
+    public Optional<PrimitiveCertificate> findPrimitive(PrimitivePair pair, int maximumMoves) {
         if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
         try {
-            byte[] encoded = database.get(witnesses, CertificateCodec.keyFor(pair));
-            if (encoded == null) return Optional.empty();
-            var moves = CertificateCodec.decodeValue(encoded);
-            CertificateValidator.validate(pair, moves, moves.size());
-            return moves.size() <= maximumMoves ? Optional.of(moves) : Optional.empty();
+            return checkedResult(pair, maximumMoves, database.get(witnesses, CertificateCodec.keyFor(pair)));
         } catch (RocksDBException failure) { throw new IllegalStateException("Cannot read witness source", failure); }
+    }
+
+    /** Position-preserving native bulk lookup of independently supplied complete witnesses. */
+    public List<Optional<PrimitiveCertificate>> findPrimitives(List<PrimitivePair> pairs, int maximumMoves) {
+        if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+        if (pairs.isEmpty()) return List.of();
+        var keys = pairs.stream().map(CertificateCodec::keyFor).toList();
+        try {
+            var encoded = database.multiGetAsList(Collections.nCopies(keys.size(), witnesses), keys);
+            if (encoded.size() != pairs.size()) throw new IllegalStateException("Incomplete witness-source multiGet response");
+            var results = new ArrayList<Optional<PrimitiveCertificate>>(pairs.size());
+            for (int i = 0; i < pairs.size(); i++) results.add(checkedResult(pairs.get(i), maximumMoves, encoded.get(i)));
+            return List.copyOf(results);
+        } catch (RocksDBException failure) { throw new IllegalStateException("Cannot bulk-read witness source", failure); }
+    }
+
+    private static Optional<PrimitiveCertificate> checkedResult(PrimitivePair pair, int maximumMoves, byte[] encoded) {
+        if (encoded == null) return Optional.empty();
+        var result = CertificateCodec.decodePrimitiveValue(encoded);
+        CertificateValidator.validate(pair, result, result.moveCount());
+        return result.moveCount() <= maximumMoves ? Optional.of(result) : Optional.empty();
     }
 
     @Override public void close() {

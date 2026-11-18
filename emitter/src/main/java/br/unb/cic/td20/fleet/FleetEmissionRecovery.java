@@ -75,8 +75,8 @@ public final class FleetEmissionRecovery {
         FleetFiles.write(directory.resolve("emission-complete-v1.txt"),scope);
         backup(tasks,all);
     }
-    private static Set<String> residualKeys(Path path,long count){
-        var keys=new HashSet<String>();try(var states=DiskStateSet.openSealed(path,count)){states.forEach(s->keys.add(Base64.getEncoder().encodeToString(CertificateCodec.keyFor(s.pair()))+":"+s.maximumMoves()));}return keys;
+    static Set<String> residualKeys(Path path,long count){
+        var keys=new HashSet<String>();try(var states=DiskStateSet.openSealed(path,count)){states.forEach(s->keys.add(Base64.getEncoder().encodeToString(CertificateCodec.keyFor(s.primitivePair()))+":"+s.maximumMoves()));}return keys;
     }
     private String base(FleetServer s){return s.directory()+"/"+uuid+"/"+s.name();}
     private String label(FleetServer s){return "recovered-"+lost+"-"+s.name();}

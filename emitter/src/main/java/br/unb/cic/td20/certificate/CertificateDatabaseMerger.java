@@ -2,6 +2,7 @@ package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.joint.ErikssonRoute;
+import br.unb.cic.td20.model.PrimitivePair;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
@@ -94,15 +95,20 @@ public final class CertificateDatabaseMerger {
                                LongAdder read, LongAdder unique) {
         var batch = List.copyOf(groups);
         tasks.submit(() -> {
+            var pairs = new ArrayList<PrimitivePair>(batch.size());
+            var results = new ArrayList<PrimitiveCertificate>(batch.size());
             for (var entry : batch) {
-                var pair = CertificateCodec.pairForKey(entry.key);
-                    var result = CertificateCodec.decodeResult(entry.value);
-                    int budget = CertificateValidator.requiredBudget(pair, result);
-                    if (budget > ErikssonRoute.ROOT_BUDGET) throw new IllegalArgumentException("Input witness exceeds the root budget");
-                    if (writer.findResult(pair,ErikssonRoute.ROOT_BUDGET).isEmpty()) unique.increment();
-                    read.increment();
-                if (result.kind() == SortingCertificate.Kind.COMPLETE) writer.enqueue(pair, result.moves());
-                else writer.enqueueClosure(pair, result.moves(), budget);
+                var pair = CertificateCodec.primitivePairForKey(entry.key);
+                var result = CertificateCodec.decodePrimitiveResult(entry.value);
+                int budget = CertificateValidator.requiredBudget(pair, result);
+                if (budget > ErikssonRoute.ROOT_BUDGET) throw new IllegalArgumentException("Input witness exceeds the root budget");
+                pairs.add(pair); results.add(result);
+            }
+            var existing = writer.findPrimitiveResults(pairs, ErikssonRoute.ROOT_BUDGET);
+            for (int i = 0; i < batch.size(); i++) {
+                if (existing.get(i).isEmpty()) unique.increment();
+                read.increment();
+                writer.enqueue(pairs.get(i), results.get(i), ErikssonRoute.ROOT_BUDGET);
             }
         });
     }
@@ -135,7 +141,7 @@ public final class CertificateDatabaseMerger {
             try (var markers = database.newIterator(handles.get(1), reads)) {
                 for (markers.seekToFirst(); markers.isValid(); markers.next()) {
                     if (markers.value().length != 0) throw new IllegalArgumentException("Malformed advisory marker");
-                    CertificateCodec.pairForKey(markers.key()); count = Math.addExact(count, 1);
+                    CertificateCodec.primitivePairForKey(markers.key()); count = Math.addExact(count, 1);
                 }
                 markers.status();
             }

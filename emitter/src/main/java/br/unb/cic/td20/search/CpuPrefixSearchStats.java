@@ -1,6 +1,7 @@
 package br.unb.cic.td20.search;
 
 import br.unb.cic.td20.certificate.SortingCertificate;
+import br.unb.cic.td20.certificate.PrimitiveCertificate;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Executors;
@@ -42,6 +43,16 @@ final class CpuPrefixSearchStats {
             closed++;
             prefixDepth += result.orElseThrow().moves().size();
             if (result.orElseThrow().kind() == SortingCertificate.Kind.COMPLETE) completeWitnesses++;
+        }
+    }
+
+    synchronized void completedPrimitive(Optional<PrimitiveCertificate> result, long duration) {
+        completed++;
+        elapsedNanos += duration;
+        if (result.isPresent()) {
+            closed++;
+            prefixDepth += result.orElseThrow().moveCount();
+            if (result.orElseThrow().kind() == PrimitiveCertificate.Kind.COMPLETE) completeWitnesses++;
         }
     }
 

@@ -2,6 +2,7 @@ package br.unb.cic.td20.avoidance;
 
 import br.unb.cic.td20.certificate.*;
 import br.unb.cic.td20.joint.ErikssonRoute;
+import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.permutation.*;
 import br.unb.cic.td20.search.CpuPrefixSearch;
@@ -72,6 +73,47 @@ class ImportTd18AfterTwoTest {
         try(var writer=new AsyncCertificateWriter(settings.database(),60)) {
             assertTrue(writer.findResult(longer,11).isEmpty());
             var markers=new ArrayList<byte[]>(); writer.forEachObstruction(markers::add); assertEquals(2,markers.size());
+        }
+    }
+
+    @Test void primitiveImportPreservesLegacyWitnessBytesAndPartitionsTheFinalPartialBatch(@TempDir Path root) throws Exception {
+        var covered = covered(); var longer = power(18,4); var missing = power(18,16);
+        var primitiveCovered = LegacyPairs.fromLegacy(covered);
+        var witness = CpuPrefixSearch.search(primitiveCovered,9,5,1000000).orElseThrow();
+        byte[] expectedValue = CertificateCodec.resultFor(witness);
+        var overBudget = PrimitiveCertificate.closure(new int[0]);
+        sourceDatabase(root.resolve("td18"), Map.of(covered,expectedValue,
+                longer,CertificateCodec.resultFor(overBudget)), "joint-selection-v3");
+        sourceStates(root.resolve("source"),List.of(covered,longer,missing));
+        String previousLookup = System.getProperty("td20.certificateLookupBatchSize");
+        String previousScan = System.getProperty("td20.reconstructionScanBatchKeys");
+        System.setProperty("td20.certificateLookupBatchSize","2");
+        System.setProperty("td20.reconstructionScanBatchKeys","2");
+        try {
+            var settings = settings(root,3,1,2);
+            assertEquals(new ImportTd18AfterTwo.Result(3,1,1,1,2),ImportTd18AfterTwo.run(settings,line -> { }));
+            try (var writer = new AsyncCertificateWriter(settings.database(),60)) {
+                var actual = writer.findPrimitiveResult(primitiveCovered,9).orElseThrow();
+                assertEquals(witness,actual);
+                assertArrayEquals(expectedValue,CertificateCodec.resultFor(actual));
+                assertEquals(List.of(true,false,false),writer.findPrimitiveResults(
+                        List.of(primitiveCovered,LegacyPairs.fromLegacy(longer),LegacyPairs.fromLegacy(missing)),9)
+                        .stream().map(Optional::isPresent).toList());
+            }
+            var residualKeys = new HashSet<String>();
+            try (var states = DiskStateSet.openSealed(settings.residualWork().resolve("after-two"),2)) {
+                states.forEach(state -> {
+                    assertEquals(18,state.primitivePair().size()); assertEquals(9,state.maximumMoves());
+                    residualKeys.add(HexFormat.of().formatHex(CertificateCodec.keyFor(state.primitivePair())));
+                });
+            }
+            assertEquals(Set.of(HexFormat.of().formatHex(CertificateCodec.keyFor(longer)),
+                    HexFormat.of().formatHex(CertificateCodec.keyFor(missing))),residualKeys);
+        } finally {
+            if (previousLookup == null) System.clearProperty("td20.certificateLookupBatchSize");
+            else System.setProperty("td20.certificateLookupBatchSize",previousLookup);
+            if (previousScan == null) System.clearProperty("td20.reconstructionScanBatchKeys");
+            else System.setProperty("td20.reconstructionScanBatchKeys",previousScan);
         }
     }
 

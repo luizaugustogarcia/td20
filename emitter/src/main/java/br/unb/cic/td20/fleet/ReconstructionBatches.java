@@ -40,15 +40,15 @@ final class ReconstructionBatches {
                 if (!task.phase().equals("endpoints")) continue;
                 try (var input = DiskStateSet.openSealedForScan(job.resolve("work/endpoint-residuals"),expected)) {
                     input.forEachConcurrently(Runtime.getRuntime().availableProcessors(),state -> {
-                        requireEndpoint(state); endpoints.add(state.pair(),state.maximumMoves());
+                        requireEndpoint(state); endpoints.add(state.primitivePair(),state.maximumMoves());
                     });
                 }
             }
             endpointCount = endpoints.seal();
             progress.accept("Validated residual endpoint union: " + endpointCount + " classes");
             try (var afterTwo = new DiskStateSet(staging.resolve("after-two"))) {
-                endpoints.forEachConcurrently(Runtime.getRuntime().availableProcessors(),state -> afterTwo.addGenerated(
-                        ErikssonRoute.ROOT_BUDGET - 2,output -> ErikssonInverseReconstruction.preimages(state.pair(),2,output)));
+                endpoints.forEachConcurrently(Runtime.getRuntime().availableProcessors(),state -> afterTwo.addInverseGenerated(
+                        state.primitivePair(), ErikssonRoute.ROOT_BUDGET - 2, 2));
                 total = afterTwo.seal();
             }
         }
@@ -95,7 +95,7 @@ final class ReconstructionBatches {
                 if (!task.phase().equals("endpoints")) continue;
                 try (var input = DiskStateSet.openSealedForScan(job.resolve("work/endpoint-residuals"), expected)) {
                     input.forEachConcurrently(Runtime.getRuntime().availableProcessors(), state -> {
-                        requireEndpoint(state); endpoints.add(state.pair(), state.maximumMoves());
+                        requireEndpoint(state); endpoints.add(state.primitivePair(), state.maximumMoves());
                     });
                 }
             }
@@ -103,11 +103,10 @@ final class ReconstructionBatches {
             progress.accept("Validated residual endpoint union: " + endpointCount + " classes");
             try (var afterTwo = new DiskStateSet(directory.resolve("after-two"))) {
                 var completed = new java.util.concurrent.atomic.AtomicLong();
-                endpoints.forEachConcurrently(Runtime.getRuntime().availableProcessors(), state -> afterTwo.addGenerated(
-                        ErikssonRoute.ROOT_BUDGET - 2, output -> {
-                            ErikssonInverseReconstruction.preimages(state.pair(), 2, output);
-                            progress.accept("First inverse wave endpoint seeds processed=" + completed.incrementAndGet() + "/" + endpointCount);
-                        }));
+                endpoints.forEachConcurrently(Runtime.getRuntime().availableProcessors(), state -> {
+                    afterTwo.addInverseGenerated(state.primitivePair(), ErikssonRoute.ROOT_BUDGET - 2, 2);
+                    progress.accept("First inverse wave endpoint seeds processed=" + completed.incrementAndGet() + "/" + endpointCount);
+                });
                 long total = afterTwo.seal();
                 progress.accept("First inverse wave unique after-two classes=" + total + "; splitting batches");
                 var tasks = split(run, directory, afterTwo, endpointCount, batchSize);
@@ -171,7 +170,7 @@ final class ReconstructionBatches {
         class Sink {
             ArrayList<DiskStateSet.State> states = new ArrayList<>();
             void accept(DiskStateSet.State state) {
-                if (state.pair().getBeta().size() != ErikssonRoute.ROOT_SYMBOLS - 3 || state.maximumMoves() != ErikssonRoute.ROOT_BUDGET - 2)
+                if (state.primitivePair().size() != ErikssonRoute.ROOT_SYMBOLS - 3 || state.maximumMoves() != ErikssonRoute.ROOT_BUDGET - 2)
                     throw new IllegalArgumentException("Wrong domain or budget in reconstruction batch");
                 workers.check(); states.add(state); if (states.size() == batchSize) finish();
             }
@@ -201,7 +200,7 @@ final class ReconstructionBatches {
                 input.forEach(state -> {
                     int i = index.getAndIncrement();
                     if (i >= states.size() || state.maximumMoves() != states.get(i).maximumMoves()
-                            || !Arrays.equals(CertificateCodec.keyFor(state.pair()),CertificateCodec.keyFor(states.get(i).pair())))
+                            || !Arrays.equals(CertificateCodec.keyFor(state.primitivePair()),CertificateCodec.keyFor(states.get(i).primitivePair())))
                         throw new IllegalStateException("Existing batch differs from its regenerated sorted slice");
                 });
             }
@@ -216,7 +215,7 @@ final class ReconstructionBatches {
         Files.move(staging,job,StandardCopyOption.ATOMIC_MOVE);
     }
     private static void requireEndpoint(DiskStateSet.State state) {
-        if (state.pair().getBeta().size() != ErikssonRoute.ENDPOINT_SYMBOLS || state.maximumMoves() != ErikssonRoute.ENDPOINT_BUDGET)
+        if (state.primitivePair().size() != ErikssonRoute.ENDPOINT_SYMBOLS || state.maximumMoves() != ErikssonRoute.ENDPOINT_BUDGET)
             throw new IllegalArgumentException("Wrong endpoint residual domain or budget");
     }
     private static String id(int index) { return String.format(Locale.ROOT, "reconstruction-%06d", index); }

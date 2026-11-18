@@ -1,6 +1,7 @@
 package br.unb.cic.td20.joint;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 
 import java.util.Objects;
 
@@ -10,6 +11,21 @@ public final class SupportClearing {
 
     public static boolean closes(final CyclicTargetPair pair) {
         return closingLength(pair) != 0;
+    }
+
+    public static boolean closes(final PrimitivePair pair) { return closingLength(pair) != 0; }
+
+    /** Primitive production path, using beta positions as the cyclic support order. */
+    public static int closingLength(final PrimitivePair pair) {
+        Objects.requireNonNull(pair);
+        final int n=pair.size();
+        if (n!=KnownDiameters.ROOT_SYMBOLS) return 0;
+        if (!pair.isFixedPointFree()) throw new IllegalArgumentException(
+                "Contract algebraic fixed points before testing root support clearing");
+        final int[] position=new int[n],omega=new int[n];
+        for (int i=0;i<n;i++) position[pair.betaAt(i)]=i;
+        for (int i=0;i<n;i++) omega[i]=position[pair.omegaImage(pair.betaAt(i))];
+        return closingLengthCanonicalUnchecked(omega);
     }
 
     /**

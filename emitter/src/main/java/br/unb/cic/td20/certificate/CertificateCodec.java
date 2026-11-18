@@ -1,6 +1,7 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
@@ -12,8 +13,90 @@ public final class CertificateCodec {
     private static final int SYMBOL_BITS = 5;
     private static final int SYMBOL_LIMIT = 1 << SYMBOL_BITS;
     private static final int TRIPLE_BITS = 3 * SYMBOL_BITS;
+    private static final PrimitiveCertificate.Kind[] PRIMITIVE_KINDS = PrimitiveCertificate.Kind.values();
 
     private CertificateCodec() {
+    }
+
+    /** Packs a normalized primitive pair; no permutation or encoding objects are created. */
+    public static byte[] keyFor(final PrimitivePair pair) {
+        int n = pair.size();
+        byte[] encoded = new byte[byteLength((long) SYMBOL_BITS * n)];
+        for (int symbol = 0; symbol < n; symbol++) {
+            if (pair.betaAt(symbol) != symbol)
+                throw new IllegalArgumentException("Certificate keys require beta=(0,...,N-1)");
+            writeSymbol(encoded, symbol * SYMBOL_BITS, pair.omegaImage(symbol));
+        }
+        return encoded;
+    }
+
+    /** Decodes and validates a persisted normalized pair into compact primitive tables. */
+    public static PrimitivePair primitivePairForKey(final byte[] encoded, final int domainSize) {
+        return PrimitivePair.fromCanonicalKey(encoded, domainSize);
+    }
+
+    public static PrimitivePair primitivePairForKey(final byte[] encoded) {
+        if (encoded == null || encoded.length == 0 || encoded.length > byteLength(21L * SYMBOL_BITS))
+            throw new IllegalArgumentException("Invalid emitter certificate key length");
+        int largest = 0;
+        for (int bit = 0; bit + SYMBOL_BITS <= encoded.length * Byte.SIZE; bit += SYMBOL_BITS)
+            largest = Math.max(largest, readSymbol(encoded, bit));
+        if (largest >= 21) throw new IllegalArgumentException("Certificate domain exceeds the active root domain");
+        return primitivePairForKey(encoded, largest + 1);
+    }
+
+    /** Encodes the packed triples in the unchanged legacy raw-witness payload format. */
+    public static byte[] valueFor(final PrimitiveCertificate result) {
+        if (result.moveCount() == 0) throw new IllegalArgumentException("A certificate must contain at least one move");
+        byte[] encoded = new byte[byteLength((long) TRIPLE_BITS * result.moveCount())];
+        writeMoves(encoded, 0, result);
+        return encoded;
+    }
+
+    /** Reads a raw complete-witness payload without materializing algebraic 3-cycles. */
+    public static PrimitiveCertificate decodePrimitiveValue(final byte[] encoded) {
+        if (encoded == null || encoded.length == 0) throw new IllegalArgumentException("Truncated certificate value");
+        int count = Math.toIntExact((long) encoded.length * Byte.SIZE / TRIPLE_BITS);
+        if (count == 0 || count > 11) throw new IllegalArgumentException("Invalid raw certificate move count");
+        requirePayload(encoded, (long) count * TRIPLE_BITS, "value");
+        return PrimitiveCertificate.ofOwned(PrimitiveCertificate.Kind.COMPLETE, readMoves(encoded, 0, count));
+    }
+
+    /** Version-2 kind/count bytes and fifteen-bit triples are byte-for-byte unchanged. */
+    public static byte[] resultFor(final PrimitiveCertificate result) {
+        byte[] encoded = new byte[2 + byteLength((long) TRIPLE_BITS * result.moveCount())];
+        encoded[0] = (byte) result.kind().ordinal();
+        encoded[1] = (byte) result.moveCount();
+        writeMoves(encoded, 2 * Byte.SIZE, result);
+        return encoded;
+    }
+
+    public static PrimitiveCertificate decodePrimitiveResult(final byte[] encoded) {
+        if (encoded == null || encoded.length < 2) throw new IllegalArgumentException("Truncated sorting result");
+        int kind = Byte.toUnsignedInt(encoded[0]), count = Byte.toUnsignedInt(encoded[1]);
+        if (kind >= PRIMITIVE_KINDS.length || count > 11)
+            throw new IllegalArgumentException("Unsupported sorting result kind or move count");
+        requirePayload(encoded, 2L * Byte.SIZE + (long) TRIPLE_BITS * count, "result");
+        return PrimitiveCertificate.ofOwned(PRIMITIVE_KINDS[kind], readMoves(encoded, 2 * Byte.SIZE, count));
+    }
+
+    private static void writeMoves(byte[] encoded, int bitOffset, PrimitiveCertificate result) {
+        for (int i = 0; i < result.moveCount(); i++) {
+            int move = result.moveAt(i);
+            bitOffset = writeSymbol(encoded, bitOffset, move & 31);
+            bitOffset = writeSymbol(encoded, bitOffset, (move >>> 5) & 31);
+            bitOffset = writeSymbol(encoded, bitOffset, (move >>> 10) & 31);
+        }
+    }
+
+    private static int[] readMoves(byte[] encoded, int bitOffset, int count) {
+        int[] moves = new int[count];
+        for (int i = 0; i < count; i++) {
+            moves[i] = readSymbol(encoded, bitOffset) | (readSymbol(encoded, bitOffset + 5) << 5)
+                    | (readSymbol(encoded, bitOffset + 10) << 10);
+            bitOffset += TRIPLE_BITS;
+        }
+        return moves;
     }
 
     /**
@@ -186,23 +269,20 @@ public final class CertificateCodec {
 
     private static int writeSymbol(final byte[] encoded, final int bitOffset, final int symbol) {
         requireSymbol(symbol);
-        for (var bit = 0; bit < SYMBOL_BITS; bit++) {
-            final int valueBit = (symbol >>> (SYMBOL_BITS - 1 - bit)) & 1;
-            final int outputBit = bitOffset + bit;
-            encoded[outputBit / Byte.SIZE] |= (byte) (valueBit << (Byte.SIZE - 1 - outputBit % Byte.SIZE));
+        int index = bitOffset >>> 3, remainder = bitOffset & 7;
+        if (remainder <= 3) encoded[index] |= (byte) (symbol << (3 - remainder));
+        else {
+            encoded[index] |= (byte) (symbol >>> (remainder - 3));
+            encoded[index + 1] |= (byte) (symbol << (11 - remainder));
         }
         return bitOffset + SYMBOL_BITS;
     }
 
     private static int readSymbol(final byte[] encoded, final int bitOffset) {
-        var symbol = 0;
-        for (var bit = 0; bit < SYMBOL_BITS; bit++) {
-            final int inputBit = bitOffset + bit;
-            symbol = (symbol << 1)
-                    | ((Byte.toUnsignedInt(encoded[inputBit / Byte.SIZE])
-                    >>> (Byte.SIZE - 1 - inputBit % Byte.SIZE)) & 1);
-        }
-        return symbol;
+        int index = bitOffset >>> 3, remainder = bitOffset & 7;
+        if (remainder <= 3) return (Byte.toUnsignedInt(encoded[index]) >>> (3 - remainder)) & 31;
+        return ((Byte.toUnsignedInt(encoded[index]) << (remainder - 3))
+                | (Byte.toUnsignedInt(encoded[index + 1]) >>> (11 - remainder))) & 31;
     }
 
     private static void requirePayload(final byte[] encoded, final long payloadBits, final String kind) {

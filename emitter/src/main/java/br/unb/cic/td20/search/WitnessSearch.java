@@ -4,8 +4,10 @@ import br.unb.cic.td20.base.GPUSortingSearch;
 import br.unb.cic.td20.base.GpuDeviceLayout;
 import br.unb.cic.td20.certificate.AsyncCertificateWriter;
 import br.unb.cic.td20.certificate.CertificateValidator;
+import br.unb.cic.td20.certificate.PrimitiveCertificate;
 import br.unb.cic.td20.certificate.SortingCertificate;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.OneLinePermutation;
 import br.unb.cic.td20.joint.KnownDiameters;
@@ -49,6 +51,187 @@ public final class WitnessSearch {
         GPUSortingSearch.init(devices, slots, Math.multiplyExact(budget, 1024L * 1024L));
         gpuInitialized = true;
         return GPUSortingSearch.getInstance();
+    }
+
+    /** Production search: owned primitive state through lookup, CPU, CUDA, replay, and persistence. */
+    public static PrimitiveSearchResult search(PrimitivePair input, int maximumMoves) {
+        return search(input, maximumMoves, WitnessSearch::dispatchPrimitiveGpu);
+    }
+
+    static PrimitiveSearchResult search(PrimitivePair input, int maximumMoves, PrimitiveGpuSearch dispatcher) {
+        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, Long.MAX_VALUE, dispatcher);
+    }
+
+    /** Direct generation already emits unique classes, so no redundant database lookup is needed. */
+    public static PrimitiveSearchResult searchFresh(PrimitivePair input, int maximumMoves) {
+        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, Long.MAX_VALUE,
+                WitnessSearch::dispatchPrimitiveGpu, false);
+    }
+
+    /** GPU stage after the reconstruction CPU stage; reuses checked stored results. */
+    public static PrimitiveSearchResult searchGpu(PrimitivePair input, int maximumMoves) {
+        return searchReconstructedGpu(input, maximumMoves, WitnessSearch::dispatchPrimitiveGpu);
+    }
+
+    /** GPU stage for a bulk-lookup and CPU-prefix miss, preserving the full obligation budget. */
+    public static PrimitiveSearchResult searchGpuMiss(PrimitivePair input, int maximumMoves) {
+        return searchReconstructedGpu(input, maximumMoves, WitnessSearch::dispatchPrimitiveGpu, false);
+    }
+
+    public static PrimitiveSearchResult searchGpuPrefetch(PrimitivePair input, int maximumMoves) {
+        return searchGpuPrefetch(input, maximumMoves, WitnessSearch::dispatchPrimitiveGpu);
+    }
+
+    public static PrimitiveSearchResult searchGpuPrefetchMiss(PrimitivePair input, int maximumMoves) {
+        return searchGpuPrefetch(input, maximumMoves, WitnessSearch::dispatchPrimitiveGpu, false);
+    }
+
+    public static PrimitiveSearchResult searchWithCpuPrefixTimeout(PrimitivePair input, int maximumMoves,
+                                                                  long maximumMillis) {
+        return searchWithCpuPrefixTimeout(input, maximumMoves, maximumMillis, WitnessSearch::dispatchPrimitiveGpu);
+    }
+
+    public static PrimitiveSearchResult searchCpu(PrimitivePair input, int maximumMoves, long maximumMillis) {
+        if (maximumMillis < 0) throw new IllegalArgumentException("CPU prefix timeout cannot be negative");
+        return search(input, maximumMoves, 5, Math.multiplyExact(maximumMillis, 1_000_000L), null);
+    }
+
+    public static PrimitiveSearchResult searchCpuMiss(PrimitivePair input, int maximumMoves, long maximumMillis) {
+        if (maximumMillis < 0) throw new IllegalArgumentException("CPU prefix timeout cannot be negative");
+        return search(input, maximumMoves, 5, Math.multiplyExact(maximumMillis, 1_000_000L), null, false);
+    }
+
+    @FunctionalInterface
+    interface PrimitiveGpuSearch {
+        GPUSortingSearch.PrimitiveSearchOutcome search(PrimitivePair pair, int maximumMoves);
+    }
+
+    @FunctionalInterface
+    interface PrimitiveTimedGpuSearch {
+        GPUSortingSearch.PrimitiveSearchOutcome search(PrimitivePair pair, int maximumMoves,
+                                                       long maximumMillis, int maximumSearchDepth);
+    }
+
+    static PrimitiveSearchResult searchReconstructedGpu(PrimitivePair input, int maximumMoves,
+                                                       PrimitiveTimedGpuSearch dispatcher) {
+        return searchReconstructedGpu(input, maximumMoves, dispatcher, true);
+    }
+
+    private static PrimitiveSearchResult searchReconstructedGpu(PrimitivePair input, int maximumMoves,
+                                                               PrimitiveTimedGpuSearch dispatcher, boolean lookup) {
+        long maximumMillis = reconstructionGpuMillis(maximumMoves);
+        int maximumSearchDepth = reconstructionGpuDepth(maximumMoves);
+        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, -1,
+                (pair, budget) -> dispatcher.search(pair, budget, maximumMillis, maximumSearchDepth), lookup);
+    }
+
+    static PrimitiveSearchResult searchGpuPrefetch(PrimitivePair input, int maximumMoves,
+                                                  PrimitiveTimedGpuSearch dispatcher) {
+        return searchGpuPrefetch(input, maximumMoves, dispatcher, true);
+    }
+
+    static PrimitiveSearchResult searchGpuPrefetch(PrimitivePair input, int maximumMoves,
+                                                  PrimitiveTimedGpuSearch dispatcher, boolean lookup) {
+        long configuredMillis = Long.parseLong(System.getProperty("td20.rootPrefetchGpuMillis", "100").trim());
+        if (configuredMillis <= 0) throw new IllegalArgumentException("Root-prefetch GPU time slice must be positive");
+        long maximumMillis = new GPUSortingSearch.SearchLimits(configuredMillis).maximumMillis();
+        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, -1,
+                (pair, budget) -> dispatcher.search(pair, budget, maximumMillis, budget), lookup);
+    }
+
+    static PrimitiveSearchResult searchGpu(PrimitivePair input, int maximumMoves, PrimitiveGpuSearch dispatcher) {
+        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH, -1, dispatcher);
+    }
+
+    static PrimitiveSearchResult searchWithCpuPrefixTimeout(PrimitivePair input, int maximumMoves,
+                                                            long maximumMillis, PrimitiveGpuSearch dispatcher) {
+        if (maximumMillis < 0) throw new IllegalArgumentException("CPU prefix timeout cannot be negative");
+        return search(input, maximumMoves, CpuPrefixSearch.DEFAULT_DEPTH,
+                Math.multiplyExact(maximumMillis, 1_000_000L), dispatcher);
+    }
+
+    private static PrimitiveSearchResult search(PrimitivePair input, int maximumMoves, int defaultCpuPrefixDepth,
+                                                long cpuPrefixNanos, PrimitiveGpuSearch dispatcher) {
+        return search(input, maximumMoves, defaultCpuPrefixDepth, cpuPrefixNanos, dispatcher, true);
+    }
+
+    private static PrimitiveSearchResult search(PrimitivePair input, int maximumMoves, int defaultCpuPrefixDepth,
+                                                long cpuPrefixNanos, PrimitiveGpuSearch dispatcher, boolean lookup) {
+        Objects.requireNonNull(input);
+        if (maximumMoves < 1 || maximumMoves > KnownDiameters.MAX_BUDGET)
+            throw new IllegalArgumentException("Sorting budget must lie between 1 and 11");
+        var pair = input.canonicalRepresentative();
+        var writer = certificateWriter;
+        if (writer == null) throw new IllegalStateException("Sorting requires a proof-scoped certificate writer");
+        if (lookup) {
+            var existing = writer.findPrimitiveResult(pair, maximumMoves);
+            if (existing.isPresent()) return checked(existing.orElseThrow());
+        }
+        if (cpuPrefixNanos >= 0) {
+            var cpu = cpuPrefixNanos == Long.MAX_VALUE
+                    ? CpuPrefixSearch.search(pair, maximumMoves)
+                    : CpuPrefixSearch.searchWithinNanos(pair, maximumMoves, defaultCpuPrefixDepth, cpuPrefixNanos);
+            if (cpu.isPresent()) return persist(pair, cpu.orElseThrow(), maximumMoves, writer);
+        }
+        if (dispatcher == null) return PrimitiveSearchResult.residual();
+        var outcome = dispatcher.search(pair, maximumMoves);
+        if (outcome.disposition() == GPUSortingSearch.Disposition.RESIDUAL
+                || outcome.disposition() == GPUSortingSearch.Disposition.TIMED_OUT
+                || outcome.disposition() == GPUSortingSearch.Disposition.DEPTH_LIMIT)
+            return PrimitiveSearchResult.residual();
+        var result = outcome.disposition() == GPUSortingSearch.Disposition.COMPLETE
+                ? PrimitiveCertificate.complete(outcome.packedMoves())
+                : PrimitiveCertificate.closure(outcome.packedMoves());
+        return persist(pair, result, maximumMoves, writer);
+    }
+
+    private static GPUSortingSearch.PrimitiveSearchOutcome dispatchPrimitiveGpu(PrimitivePair pair, int maximumMoves) {
+        return dispatchPrimitiveGpu(pair, maximumMoves, 0, maximumMoves);
+    }
+
+    private static GPUSortingSearch.PrimitiveSearchOutcome dispatchPrimitiveGpu(PrimitivePair pair, int maximumMoves,
+                                                                               long maximumMillis, int maximumSearchDepth) {
+        return gpu().search(pair.betaBytes(), pair.omegaBytes(), maximumMoves, true, maximumMillis, maximumSearchDepth);
+    }
+
+    /** Batch lookup replays every hit before any cache miss enters the CPU sorting queue. */
+    public static boolean[] lookupPrimitiveBatch(List<PrimitivePair> inputs, int maximumMoves) {
+        var writer = certificateWriter;
+        if (writer == null) throw new IllegalStateException("Sorting requires a proof-scoped certificate writer");
+        var pairs = inputs.stream().map(PrimitivePair::canonicalRepresentative).toList();
+        var results = writer.findPrimitiveResults(pairs, maximumMoves);
+        var covered = new boolean[results.size()];
+        long hits = 0;
+        for (int i = 0; i < covered.length; i++) if (results.get(i).isPresent()) { covered[i] = true; hits++; }
+        log.debug("Certificate multiGet: classes={}, reusable={}, budget={}", covered.length, hits, maximumMoves);
+        return covered;
+    }
+
+    private static PrimitiveSearchResult persist(PrimitivePair pair, PrimitiveCertificate result,
+                                                 int maximumMoves, AsyncCertificateWriter writer) {
+        CertificateValidator.validate(pair, result, maximumMoves);
+        writer.enqueue(pair, result, maximumMoves);
+        writer.throwIfFailed();
+        return checked(result);
+    }
+
+    private static PrimitiveSearchResult checked(PrimitiveCertificate result) {
+        return new PrimitiveSearchResult(result.kind() == PrimitiveCertificate.Kind.COMPLETE
+                ? Disposition.CERTIFICATE : Disposition.DIAMETER_CLOSURE, result);
+    }
+
+    public record PrimitiveSearchResult(Disposition disposition, PrimitiveCertificate certificate) {
+        public PrimitiveSearchResult {
+            Objects.requireNonNull(disposition);
+            if (disposition == Disposition.RESIDUAL) {
+                if (certificate != null) throw new IllegalArgumentException("A residual cannot contain a certificate");
+            } else {
+                Objects.requireNonNull(certificate);
+                if ((disposition == Disposition.CERTIFICATE) != (certificate.kind() == PrimitiveCertificate.Kind.COMPLETE))
+                    throw new IllegalArgumentException("Search disposition disagrees with certificate kind");
+            }
+        }
+        public static PrimitiveSearchResult residual() { return new PrimitiveSearchResult(Disposition.RESIDUAL, null); }
     }
 
     /** Searches the full budget, accepting identity or a replayed known-diameter closure at any depth. */

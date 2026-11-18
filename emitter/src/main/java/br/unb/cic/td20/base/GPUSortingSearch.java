@@ -256,6 +256,43 @@ public class GPUSortingSearch {
         }
     }
 
+    /** Immutable packed transpositions returned by the production byte-array bridge. */
+    public record PrimitiveSearchOutcome(Disposition disposition, int[] packedMoves) {
+        public PrimitiveSearchOutcome {
+            Objects.requireNonNull(disposition);
+            packedMoves = packedMoves.clone();
+            if (packedMoves.length > KnownDiameters.MAX_BUDGET)
+                throw new IllegalArgumentException("GPU result exceeds the maximum move budget");
+            if ((disposition == Disposition.RESIDUAL || disposition == Disposition.TIMED_OUT
+                    || disposition == Disposition.DEPTH_LIMIT) && packedMoves.length != 0)
+                throw new IllegalArgumentException("An unresolved search cannot contain moves");
+            for (int move : packedMoves) {
+                int a = move & 31, b = (move >>> 5) & 31, c = (move >>> 10) & 31;
+                if (move < 0 || move >= (1 << 15) || a == b || b == c || a == c)
+                    throw new IllegalArgumentException("GPU result requires packed distinct-symbol triples");
+            }
+        }
+        @Override public int[] packedMoves() { return packedMoves.clone(); }
+        public int moveCount() { return packedMoves.length; }
+        public int moveAt(int index) { return packedMoves[index]; }
+        @Override public boolean equals(Object object) {
+            return object instanceof PrimitiveSearchOutcome other && disposition == other.disposition
+                    && Arrays.equals(packedMoves, other.packedMoves);
+        }
+        @Override public int hashCode() { return 31 * disposition.hashCode() + Arrays.hashCode(packedMoves); }
+    }
+
+    public PrimitiveSearchOutcome search(final byte[] beta, final byte[] omega,
+                                          final int maxMoves, final boolean allowDiameterClosure) {
+        return search(beta, omega, maxMoves, allowDiameterClosure, 0, maxMoves);
+    }
+
+    public PrimitiveSearchOutcome search(final byte[] beta, final byte[] omega,
+                                          final int maxMoves, final boolean allowDiameterClosure,
+                                          final long maximumMillis) {
+        return search(beta, omega, maxMoves, allowDiameterClosure, maximumMillis, maxMoves);
+    }
+
     public SearchOutcome search(final byte[] beta, final OneLinePermutation omega,
                                 final int maxMoves, final boolean allowDiameterClosure) {
         return search(beta, omega, maxMoves, allowDiameterClosure, 0);
@@ -274,10 +311,27 @@ public class GPUSortingSearch {
     public SearchOutcome search(final byte[] beta, final OneLinePermutation omega,
                                 final int maxMoves, final boolean allowDiameterClosure,
                                 final long maximumMillis, final int maximumSearchDepth) {
+        final var outcome = search(beta, omega.getOneLine(), maxMoves, allowDiameterClosure,
+                maximumMillis, maximumSearchDepth);
+        final var moves = new ArrayList<int[]>(outcome.moveCount());
+        for (int index = 0; index < outcome.moveCount(); index++) {
+            int move = outcome.moveAt(index);
+            moves.add(new int[]{move & 31, (move >>> 5) & 31, (move >>> 10) & 31});
+        }
+        return new SearchOutcome(outcome.disposition(), moves);
+    }
+
+    /** Production bridge: bounded owned byte inputs, packed output, unchanged CUDA ABI. */
+    @SneakyThrows
+    public PrimitiveSearchOutcome search(final byte[] beta, final byte[] omega,
+                                          final int maxMoves, final boolean allowDiameterClosure,
+                                          final long maximumMillis, final int maximumSearchDepth) {
+        Objects.requireNonNull(beta);
+        Objects.requireNonNull(omega);
         if (maximumSearchDepth < 1 || maximumSearchDepth > maxMoves)
             throw new IllegalArgumentException("GPU search depth must lie between 1 and the move budget");
         final long maximumNanos = new SearchLimits(maximumMillis).maximumNanos();
-        final byte[] images = omega.getOneLine().clone();
+        final byte[] images = omega.clone();
         if (maxMoves < 1 || maxMoves > 11 || beta.length != images.length || beta.length < 1 || beta.length > 21)
             throw new IllegalArgumentException("Invalid bounded GPU search domain or budget");
         requirePermutation(beta); requirePermutation(images);
@@ -290,17 +344,19 @@ public class GPUSortingSearch {
         catch (final ExecutionException e) { throw e.getCause(); }
         final var disposition = SearchOutcome.requireNativeResult(result, maxMoves, inputBeta.length);
         final var currentBeta = inputBeta.clone();
-        final var moves = new ArrayList<int[]>(result.length - 1);
+        final var moves = new int[result.length - 1];
+        final var scratch = new byte[currentBeta.length];
         for (int index = 1; index < result.length; index++) {
             final var posMove = result[index];
             if (posMove == null || posMove.length != 3) throw new IllegalStateException("Malformed native move");
             int i = posMove[0], j = posMove[1], k = posMove[2];
             if (!(0 <= i && i < j && j < k && k < currentBeta.length))
                 throw new IllegalStateException("Inapplicable native positional move");
-            moves.add(new int[]{currentBeta[i] & 0xFF, currentBeta[j] & 0xFF, currentBeta[k] & 0xFF});
-            applyTransposition(currentBeta, i, j, k);
+            moves[index - 1] = Byte.toUnsignedInt(currentBeta[i])
+                    | (Byte.toUnsignedInt(currentBeta[j]) << 5) | (Byte.toUnsignedInt(currentBeta[k]) << 10);
+            applyTransposition(currentBeta, scratch, i, j, k);
         }
-        return new SearchOutcome(disposition, moves);
+        return new PrimitiveSearchOutcome(disposition, moves);
     }
 
     private static void requirePermutation(byte[] values) {
@@ -329,9 +385,9 @@ public class GPUSortingSearch {
     ) {
     }
 
-    private static void applyTransposition(final byte[] beta, final int i, final int j, final int k) {
+    private static void applyTransposition(final byte[] beta, final byte[] temp,
+                                           final int i, final int j, final int k) {
         val len = k - i;
-        val temp = new byte[len];
         System.arraycopy(beta, i, temp, 0, len);
         System.arraycopy(temp, j - i, beta, i, k - j);
         System.arraycopy(temp, 0, beta, i + (k - j), j - i);

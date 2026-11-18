@@ -4,6 +4,8 @@ import br.unb.cic.td20.bracelet.DirectTwistedBraceletGenerator;
 import br.unb.cic.td20.base.GpuDeviceLayout;
 import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,14 +31,19 @@ public final class ErikssonAvoidance {
                                  BiPredicate<CyclicTargetPair,Integer> gpu,
                                  Function<List<DiskStateSet.State>,boolean[]> lookup,
                                  BiPredicate<CyclicTargetPair,Integer> prefetchGpu) {
+        return resolvePrimitive(endpoints,work,adapt(cpu),adapt(gpu),lookup,adapt(prefetchGpu));
+    }
+    public static Result resolvePrimitive(DiskStateSet endpoints,Path work,BiPredicate<PrimitivePair,Integer> cpu,
+                                 BiPredicate<PrimitivePair,Integer> gpu,
+                                 Function<List<DiskStateSet.State>,boolean[]> lookup,
+                                 BiPredicate<PrimitivePair,Integer> prefetchGpu) {
         long count=endpoints.seal();
         var completed = new LongAdder();
         try (var afterTwo=new DiskStateSet(work.resolve("after-two"))) {
             try (var progress=new ReconstructionProgress("Inverse reconstruction after-two generation (endpoint classes)", count, completed::sum)) {
             endpoints.forEachConcurrently(workers(),state -> {
                 require(state,0);
-                afterTwo.addGenerated(ErikssonRoute.ROOT_BUDGET-2,
-                        output -> ErikssonInverseReconstruction.preimages(state.pair(),2,output));
+                afterTwo.addInverseGenerated(state.primitivePair(),ErikssonRoute.ROOT_BUDGET-2,2);
                 completed.increment();
             });
             }
@@ -58,6 +65,12 @@ public final class ErikssonAvoidance {
                                 BiPredicate<CyclicTargetPair,Integer> gpu,
                                 Function<List<DiskStateSet.State>,boolean[]> lookup,
                                 BiPredicate<CyclicTargetPair,Integer> prefetchGpu) {
+        return resumePrimitive(source,work,adapt(cpu),adapt(gpu),lookup,adapt(prefetchGpu));
+    }
+    public static Result resumePrimitive(Path source,Path work,BiPredicate<PrimitivePair,Integer> cpu,
+                                BiPredicate<PrimitivePair,Integer> gpu,
+                                Function<List<DiskStateSet.State>,boolean[]> lookup,
+                                BiPredicate<PrimitivePair,Integer> prefetchGpu) {
         var checkpoint=ErikssonCheckpoint.read(source);
         String name=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? "after-two":checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? "after-one":"roots";
         long count=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? checkpoint.afterTwo():checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? checkpoint.afterOne():checkpoint.roots();
@@ -72,18 +85,16 @@ public final class ErikssonAvoidance {
         }
     }
     private static Result afterTwo(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
-                                    BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
+                                    BiPredicate<PrimitivePair,Integer> cpu,BiPredicate<PrimitivePair,Integer> gpu,
                                     Function<List<DiskStateSet.State>,boolean[]> lookup,
-                                    BiPredicate<CyclicTargetPair,Integer> prefetchGpu) {
+                                    BiPredicate<PrimitivePair,Integer> prefetchGpu) {
         try (var afterOne=new DiskStateSet(work.resolve("after-one"))) {
             Consumer<DiskStateSet.State> expand=state -> {
                 require(state,1);
-                afterOne.addGenerated(ErikssonRoute.ROOT_BUDGET-1,output -> {
-                    for (int gain:new int[]{2,3}) ErikssonInverseReconstruction.preimages(state.pair(),gain,output);
-                });
+                afterOne.addInverseGenerated(state.primitivePair(),ErikssonRoute.ROOT_BUDGET-1,2,3);
             };
             if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-two residuals",checkpoint.afterTwo(),expand);
-            else ReconstructionPipeline.process(states,work.resolve("after-two-search.queue"),workers(),
+            else ReconstructionPipeline.processPrimitive(states,work.resolve("after-two-search.queue"),workers(),
                     ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,1),cpu,gpu,expand);
             // Residual generation already enforces state invariants. Drain writers now;
             // derive the exact logical-key count during the required final inverse expansion.
@@ -93,23 +104,22 @@ public final class ErikssonAvoidance {
         }
     }
     private static Result afterOne(ErikssonCheckpoint checkpoint,DiskStateSet states,Path checkpointSource,Path work,
-                                    BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
+                                    BiPredicate<PrimitivePair,Integer> cpu,BiPredicate<PrimitivePair,Integer> gpu,
                                     Function<List<DiskStateSet.State>,boolean[]> lookup,
-                                    BiPredicate<CyclicTargetPair,Integer> prefetchGpu) {
+                                    BiPredicate<PrimitivePair,Integer> prefetchGpu) {
         var layout=new GpuDeviceLayout(
                 GpuDeviceLayout.parseDevices(System.getProperty("td20.gpuDevices","0")),
                 Integer.getInteger("td20.gpuSlots",8));
-        try (var prefetch=new RootPrefetch(layout.totalSlots(),cpu,prefetchGpu,checked(lookup,3));
+        try (var prefetch=RootPrefetch.primitive(layout.totalSlots(),cpu,prefetchGpu,checked(lookup,3));
              var roots=new DiskStateSet(work.resolve("roots"),prefetch::publish)) {
             prefetch.activate();
             Consumer<DiskStateSet.State> expand=state -> {
                 require(state,2);
-                int gain=state.pair().getBeta().size()==ErikssonRoute.ROOT_SYMBOLS-1 ? 1:0;
-                roots.addGenerated(ErikssonRoute.ROOT_BUDGET,
-                        output -> ErikssonInverseReconstruction.preimages(state.pair(),gain,output));
+                int gain=state.primitivePair().size()==ErikssonRoute.ROOT_SYMBOLS-1 ? 1:0;
+                roots.addInverseGenerated(state.primitivePair(),ErikssonRoute.ROOT_BUDGET,gain);
             };
             if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-one inverse states",checkpoint.afterOne(),expand);
-            else ReconstructionPipeline.process(states,work.resolve("after-one-search.queue"),workers(),
+            else ReconstructionPipeline.processPrimitive(states,work.resolve("after-one-search.queue"),workers(),
                     ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,2),cpu,gpu,expand);
             long afterOneCount=states.knownSize();
             if(afterOneCount<0) throw new IllegalStateException("Completed intermediate expansion did not establish its exact count");
@@ -127,10 +137,10 @@ public final class ErikssonAvoidance {
         }
     }
     private static Result roots(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
-                                 BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
+                                 BiPredicate<PrimitivePair,Integer> cpu,BiPredicate<PrimitivePair,Integer> gpu,
                                  Function<List<DiskStateSet.State>,boolean[]> lookup) {
         AtomicLong unresolved=new AtomicLong();
-        ReconstructionPipeline.process(states,work.resolve("roots-search.queue"),workers(),
+        ReconstructionPipeline.processPrimitive(states,work.resolve("roots-search.queue"),workers(),
                 ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,3),cpu,gpu,state -> {
             require(state,3); unresolved.incrementAndGet();
         });
@@ -150,7 +160,7 @@ public final class ErikssonAvoidance {
         };
     }
     private static void require(DiskStateSet.State state,int stage) {
-        int n=state.pair().getBeta().size(),budget=ErikssonRoute.ROOT_BUDGET;
+        int n=state.primitivePair().size(),budget=ErikssonRoute.ROOT_BUDGET;
         boolean valid=switch(stage) {
             case 0 -> n==ErikssonRoute.ENDPOINT_SYMBOLS && state.maximumMoves()==budget-3;
             case 1 -> n==ErikssonRoute.ROOT_SYMBOLS-3 && state.maximumMoves()==budget-2;
@@ -159,5 +169,8 @@ public final class ErikssonAvoidance {
             default -> false;
         };
         if (!valid) throw new IllegalStateException("Wrong domain or budget in Eriksson inverse stage "+stage);
+    }
+    private static BiPredicate<PrimitivePair,Integer> adapt(BiPredicate<CyclicTargetPair,Integer> legacy) {
+        return (pair,budget) -> legacy.test(LegacyPairs.toLegacy(pair),budget);
     }
 }

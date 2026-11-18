@@ -1,6 +1,7 @@
 package br.unb.cic.td20.joint;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,7 @@ class SupportClearingTest {
     private static void closing(final int expected, final int[] images) {
         final CyclicTargetPair pair = pair(images);
         assertEquals(expected, SupportClearing.closingLength(pair));
+        assertEquals(expected, SupportClearing.closingLength(LegacyPairs.fromLegacy(pair)));
         final MulticyclePermutation relabeledOmega = new MulticyclePermutation();
         for (final Cycle cycle : pair.getOmega()) {
             relabeledOmega.add(Cycle.of(IntStream.of(cycle.getSymbols())
@@ -53,8 +55,9 @@ class SupportClearingTest {
         }
         final Cycle relabeledBeta = Cycle.of(IntStream.of(pair.getBeta().getSymbols())
                 .map(x -> (5 * x + 3) % 21).toArray());
-        assertEquals(expected, SupportClearing.closingLength(
-                CyclicTargetPair.of(relabeledOmega, relabeledBeta)));
+        var relabeled=CyclicTargetPair.of(relabeledOmega,relabeledBeta);
+        assertEquals(expected, SupportClearing.closingLength(relabeled));
+        assertEquals(expected, SupportClearing.closingLength(LegacyPairs.fromLegacy(relabeled)));
     }
 
     private static CyclicTargetPair pair(final int[] images) {

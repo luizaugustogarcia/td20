@@ -6,6 +6,17 @@ The [paper](td20-reduction-count.tex) specifies the mathematics and
 `ErikssonWitnessEmitter` and `ErikssonCertificateChecker` implementations.
 The Maven modules remain independent: the checker has no emitter dependency.
 
+Production emission, reconstruction, import, merging, and certificate replay
+use immutable `PrimitivePair` byte vectors and packed `PrimitiveCertificate`
+transpositions. Worker-owned arrays perform inverse enumeration, canonicalization,
+CPU prefixes, and replay. Inverse callbacks pack canonical state keys directly
+into bounded persistence batches, without disjoint-cycle or encoding objects.
+The general mathematical APIs and comparison harness retain legacy adapters.
+The emitter representation change is intentional; the mathematical route,
+counter, scheduling, persisted formats, and independent checker are preserved.
+The bounded comparison and correctness scope are documented in
+[PERFORMANCE_EXPERIMENTS.md](PERFORMANCE_EXPERIMENTS.md).
+
 `ErikssonRoute` defines the root domain 21, budget 11, endpoint domain
 16, budget 8, and 143 endpoint annotations. `ErikssonInventory`
 reads every active paper row in deterministic partition order. Explicit pending
@@ -74,17 +85,17 @@ order: batched `multiGet`, parallel CPU prefixes for lookup misses, then a
 bounded GPU queue containing CPU misses only. Every newly emitted result follows
 the checked persistence path.
 
-`ErikssonInverseReconstruction` enumerates inverse gains zero through three on
+`PrimitiveInverseReconstruction` enumerates inverse gains zero through three on
 both endpoints, restoring all deleted fixed symbols in all gaps. The emitter
-uses image arrays and simultaneous gap choices. The checker uses permutation
+uses reusable image arrays and simultaneous gap choices. The checker uses permutation
 multiplication and sequential insertion. Small-domain tests compare complete
 predecessor class sets for every gain on both cycles.
 The checker retains its independent sequential insertion and arbitrary supports.
 Within a fixed restored domain, inverse moves preserve the target because
 `(omega * tau^-1) * (tau * beta) = omega * beta`; swapping endpoints has target
-`omega^-1 * rho = beta`. Fresh owned permutation objects can therefore reuse
-that known target. Explicit fixed points are rejected before constructing a
-parent's current cycle, and every accepted parent still passes actual forward
+`omega^-1 * rho = beta`. Each inverse worker retains the known target in its
+restored-domain arrays. Uncontracted source states are rejected, and every
+accepted parent still passes actual forward
 gain and pair replay. All gaps, gains and both endpoints remain covered.
 
 `ErikssonAvoidance` performs three disk-backed waves: reverse gain two, reverse

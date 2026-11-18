@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
@@ -50,6 +51,23 @@ public final class ErikssonRootGenerator {
                                   Consumer<CyclicTargetPair> output) throws Exception {
         return generateConcurrently(partition,workers,progress,
                 images->output.accept(decode(images)),cancellation);
+    }
+
+    /** Production output: an owned compact state, without disjoint-cycle construction. */
+    public static Counts generatePrimitive(int[] partition,int workers,Runnable cancellation,
+                                           Consumer<PrimitivePair> output) throws Exception {
+        return generatePrimitive(partition,workers,new LongAdder(),cancellation,output);
+    }
+
+    public static Counts generatePrimitive(int[] partition,int workers,LongAdder progress,Runnable cancellation,
+                                           Consumer<PrimitivePair> output) throws Exception {
+        return generateConcurrently(partition,workers,progress,images -> {
+            byte[] successors=new byte[images.length];
+            for (int x=0;x<images.length;x++) successors[x]=(byte)images[x];
+            // This generator minimizes normalized image vectors, whereas the
+            // certificate convention minimizes auxiliary encoding words.
+            output.accept(PrimitivePair.fromNormalizedImages(successors,false));
+        },cancellation);
     }
 
     private static Counts generateConcurrently(int[] partition,int workers,LongAdder progress,
@@ -323,7 +341,8 @@ public final class ErikssonRootGenerator {
             boolean totally=unoriented(images);
             if (totally) unoriented++; else oriented++;
             if (!totally && n==KnownDiameters.ROOT_SYMBOLS && SupportClearing.closingLengthCanonicalUnchecked(images)!=0) cleared++;
-            if (consumer!=null) consumer.accept(images.clone());
+            // All internal sinks copy into owned output before the workspace is reused.
+            if (consumer!=null) consumer.accept(images);
         }
     }
 

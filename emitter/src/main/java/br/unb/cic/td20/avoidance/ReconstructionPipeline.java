@@ -2,6 +2,8 @@ package br.unb.cic.td20.avoidance;
 
 import br.unb.cic.td20.base.GpuDeviceLayout;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import java.nio.file.Path;
 import java.util.List;
@@ -45,6 +47,24 @@ public final class ReconstructionPipeline {
                                Function<List<DiskStateSet.State>, boolean[]> lookup,
                                BiPredicate<CyclicTargetPair, Integer> cpu,
                                BiPredicate<CyclicTargetPair, Integer> gpu,
+                               Consumer<DiskStateSet.State> residual, Runnable gpuDrained) {
+        processPrimitive(states, spool, cpuWorkers, gpuWorkers, lookup,
+                (pair, budget) -> cpu.test(LegacyPairs.toLegacy(pair), budget),
+                (pair, budget) -> gpu.test(LegacyPairs.toLegacy(pair), budget), residual, gpuDrained);
+    }
+
+    public static void processPrimitive(DiskStateSet states, Path spool, int cpuWorkers, int gpuWorkers,
+                               Function<List<DiskStateSet.State>, boolean[]> lookup,
+                               BiPredicate<PrimitivePair, Integer> cpu,
+                               BiPredicate<PrimitivePair, Integer> gpu,
+                               Consumer<DiskStateSet.State> residual) {
+        processPrimitive(states, spool, cpuWorkers, gpuWorkers, lookup, cpu, gpu, residual, () -> { });
+    }
+
+    public static void processPrimitive(DiskStateSet states, Path spool, int cpuWorkers, int gpuWorkers,
+                               Function<List<DiskStateSet.State>, boolean[]> lookup,
+                               BiPredicate<PrimitivePair, Integer> cpu,
+                               BiPredicate<PrimitivePair, Integer> gpu,
                                Consumer<DiskStateSet.State> residual, Runnable gpuDrained) {
         var total = new AtomicLong(states.prepareScan());
         int inverseWorkers = Integer.getInteger("td20.reconstructionInverseWorkers",
@@ -90,7 +110,7 @@ public final class ReconstructionPipeline {
                         for (int i = 0; i < gpuWorkers; i++) consumers.submit(() -> {
                             try {
                                 for (DiskStateSet.State state; (state = queue.take()) != null;) {
-                                    boolean closed = gpu.test(state.pair(), state.maximumMoves());
+                                    boolean closed = gpu.test(state.primitivePair(), state.maximumMoves());
                                     queue.check();
                                     if (closed) gpuClosed.increment(); else inverseQueue.add(state);
                                 }
@@ -103,7 +123,7 @@ public final class ReconstructionPipeline {
                                 queue.check(); cached.increment();
                             }, state -> {
                                 queue.check();
-                                if (cpu.test(state.pair(), state.maximumMoves())) cpuClosed.increment();
+                                if (cpu.test(state.primitivePair(), state.maximumMoves())) cpuClosed.increment();
                                 else queue.add(state);
                             });
                             total.set(states.knownSize());

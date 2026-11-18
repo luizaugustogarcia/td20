@@ -2,6 +2,8 @@ package br.unb.cic.td20.avoidance;
 
 import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.ArrayList;
@@ -33,8 +35,8 @@ public final class RootPrefetch implements AutoCloseable {
     private static final int STOPPED = Integer.MIN_VALUE;
     private static final byte[] EMPTY = {};
     private final int cpuWorkers, gpuWorkers;
-    private final BiPredicate<CyclicTargetPair, Integer> cpu;
-    private final BiPredicate<CyclicTargetPair, Integer> gpu;
+    private final BiPredicate<PrimitivePair, Integer> cpu;
+    private final BiPredicate<PrimitivePair, Integer> gpu;
     private final Function<List<DiskStateSet.State>, boolean[]> lookup;
     private final int preparationWorkers;
     private final ConcurrentLinkedQueue<List<DiskStateSet.State>> preparedQueue = new ConcurrentLinkedQueue<>();
@@ -95,6 +97,24 @@ public final class RootPrefetch implements AutoCloseable {
     RootPrefetch(int gpuWorkers, int cpuWorkers, BiPredicate<CyclicTargetPair, Integer> cpu,
                  BiPredicate<CyclicTargetPair, Integer> gpu, int queueBatches, int seenKeys,
                  Function<List<DiskStateSet.State>, boolean[]> lookup) {
+        this(gpuWorkers, cpuWorkers,
+                (pair, budget) -> cpu.test(LegacyPairs.toLegacy(pair), budget),
+                (pair, budget) -> gpu.test(LegacyPairs.toLegacy(pair), budget),
+                queueBatches, seenKeys, lookup, true);
+    }
+
+    public static RootPrefetch primitive(int gpuSlots, BiPredicate<PrimitivePair, Integer> cpu,
+                                        BiPredicate<PrimitivePair, Integer> gpu,
+                                        Function<List<DiskStateSet.State>, boolean[]> lookup) {
+        return new RootPrefetch(configuredCallers(gpuSlots),
+                property("td20.rootPrefetchCpuWorkers", Runtime.getRuntime().availableProcessors()),
+                cpu, gpu, property("td20.rootPrefetchQueueBatches", 256),
+                property("td20.rootPrefetchSeenKeys", 1048576), lookup, true);
+    }
+
+    private RootPrefetch(int gpuWorkers, int cpuWorkers, BiPredicate<PrimitivePair, Integer> cpu,
+                        BiPredicate<PrimitivePair, Integer> gpu, int queueBatches, int seenKeys,
+                        Function<List<DiskStateSet.State>, boolean[]> lookup, boolean primitive) {
         if (cpuWorkers < 1 || gpuWorkers < 1 || queueBatches < 1 || seenKeys < 1)
             throw new IllegalArgumentException("Positive root-prefetch capacities required");
         this.cpuWorkers = cpuWorkers;
@@ -186,7 +206,7 @@ public final class RootPrefetch implements AutoCloseable {
                     if (!remember(key)) { recentSkipped.increment(); completed.increment(); continue; }
                     var state = DiskStateSet.decode(key, EMPTY);
                     if (state.maximumMoves() != ErikssonRoute.ROOT_BUDGET
-                            || state.pair().getBeta().size() != ErikssonRoute.ROOT_SYMBOLS)
+                            || state.primitivePair().size() != ErikssonRoute.ROOT_SYMBOLS)
                         throw new IllegalArgumentException("Root prefetch requires 21 symbols and budget 11");
                     states.add(state);
                 }
@@ -233,7 +253,7 @@ public final class RootPrefetch implements AutoCloseable {
                 for (var state : batch) {
                     if (stopping) return;
                     cpuSearched.increment();
-                    if (cpu.test(state.pair(), state.maximumMoves())) {
+                    if (cpu.test(state.primitivePair(), state.maximumMoves())) {
                         cpuClosed.increment(); completed.increment();
                     } else {
                         misses.add(state);
@@ -271,7 +291,7 @@ public final class RootPrefetch implements AutoCloseable {
                 for (var state : batch) {
                     if (stopping) return;
                     searched.increment();
-                    if (gpu.test(state.pair(), state.maximumMoves())) closed.increment();
+                    if (gpu.test(state.primitivePair(), state.maximumMoves())) closed.increment();
                     gpuCompleted.increment(); completed.increment();
                 }
             }

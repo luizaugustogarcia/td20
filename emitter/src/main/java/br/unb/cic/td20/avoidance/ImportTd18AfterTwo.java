@@ -3,9 +3,10 @@ package br.unb.cic.td20.avoidance;
 import br.unb.cic.td20.certificate.AsyncCertificateWriter;
 import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.certificate.CertificateValidator;
-import br.unb.cic.td20.certificate.SortingCertificate;
+import br.unb.cic.td20.certificate.PrimitiveCertificate;
 import br.unb.cic.td20.joint.ErikssonRoute;
-import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.model.PrimitiveCanonicalizer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -95,20 +96,22 @@ public final class ImportTd18AfterTwo {
             reporter.scheduleWithFixedDelay(() -> progress.accept("TD18 import: phase="+phase.get()
                     + " processed="+processed.get()+"/"+settings.expectedSource()+" imported="+imported.sum()
                     + " residual="+(missing.sum()+longer.sum())+" workers="+workers), 0, 10, TimeUnit.SECONDS);
-            inputs.forEachConcurrently(workers, state -> {
-                CyclicTargetPair pair = requireInput(state);
-                var replayed = source.find(pair);
-                if (replayed == null || replayed.required() > BUDGET) {
-                    if (replayed == null) missing.increment(); else longer.increment();
-                    writer.enqueueObstruction(pair, BUDGET); residuals.add(pair, BUDGET);
-                } else {
-                    if (replayed.result().kind() == SortingCertificate.Kind.COMPLETE)
-                        writer.enqueue(pair, replayed.result().moves());
-                    else writer.enqueueClosure(pair, replayed.result().moves(), BUDGET);
-                    imported.increment();
+            inputs.forEachConcurrently(workers, states -> {
+                var pairs = states.stream().map(ImportTd18AfterTwo::requireInput).toList();
+                var replayed = source.findAll(pairs);
+                var hits = new boolean[pairs.size()];
+                for (int i = 0; i < pairs.size(); i++) {
+                    var pair = pairs.get(i); var record = replayed[i];
+                    if (record == null || record.required() > BUDGET) {
+                        if (record == null) missing.increment(); else longer.increment();
+                        writer.enqueueObstruction(pair, BUDGET); residuals.add(pair, BUDGET);
+                    } else {
+                        writer.enqueue(pair, record.result(), BUDGET); hits[i] = true;
+                    }
                 }
-                processed.incrementAndGet();
-            });
+                return hits;
+            }, state -> { imported.increment(); processed.incrementAndGet(); },
+                    state -> processed.incrementAndGet());
             if (processed.get() != settings.expectedSource() || imported.sum() != settings.expectedImported()
                     || missing.sum()+longer.sum() != settings.expectedResidual())
                 throw new IllegalStateException("Replayed TD18 partition differs from the expected complete inventory");
@@ -126,9 +129,9 @@ public final class ImportTd18AfterTwo {
                         || processed.get() != settings.expectedSource())
                     throw new IllegalStateException("Copied certificate inventory does not match the imported partition");
                 phase.set("verifying residual obstruction markers");
-                residuals.forEachConcurrently(workers, states -> destination.withinBudget(states),
+                residuals.forEachConcurrently(workers, states -> destination.residualsWithinBudget(states),
                         state -> { throw new IllegalStateException("Published residual already has a budget-nine result"); },
-                        state -> destination.requireObstruction(requireInput(state)));
+                        state -> { });
             }
             result[0] = new Result(processed.get(), imported.sum(), missing.sum(), longer.sum(), residualCount);
         }
@@ -148,14 +151,22 @@ public final class ImportTd18AfterTwo {
         return result[0];
     }
 
-    private static CyclicTargetPair requireInput(DiskStateSet.State state) {
-        if (state.maximumMoves() != BUDGET || state.pair().getBeta().size() != SYMBOLS)
+    private static PrimitivePair requireInput(DiskStateSet.State state) {
+        var pair = state.primitivePair();
+        if (state.maximumMoves() != BUDGET || pair.size() != SYMBOLS)
             throw new IllegalArgumentException("Import requires fixed-point-free 18-symbol budget-nine states");
-        var pair = state.pair().canonicalRepresentative();
-        if (!Arrays.equals(CertificateCodec.keyFor(state.pair()), CertificateCodec.keyFor(pair)))
+        var work = INPUT_CANONICALIZER.get();
+        pair.copyOmega(work.omega); pair.copyBeta(work.beta);
+        if (!Arrays.equals(CertificateCodec.keyFor(pair), work.canonicalizer.keyForKnownPair(work.omega, work.beta, pair.size())))
             throw new IllegalArgumentException("Import state key is not canonical");
         return pair;
     }
+
+    private static final class InputWorkspace {
+        final PrimitiveCanonicalizer canonicalizer = new PrimitiveCanonicalizer();
+        final int[] omega = new int[ErikssonRoute.ROOT_SYMBOLS], beta = new int[ErikssonRoute.ROOT_SYMBOLS];
+    }
+    private static final ThreadLocal<InputWorkspace> INPUT_CANONICALIZER = ThreadLocal.withInitial(InputWorkspace::new);
 
     private static void requirePaths(Settings settings) throws IOException {
         if (Files.exists(settings.residualWork())) throw new IllegalArgumentException("Residual publication requires a fresh directory");
@@ -168,7 +179,7 @@ public final class ImportTd18AfterTwo {
         if (database.startsWith(residual) || residual.startsWith(database)) throw new IllegalArgumentException("Certificate and residual directories overlap");
     }
 
-    private record Replayed(SortingCertificate result, int required) { }
+    private record Replayed(PrimitiveCertificate result, int required) { }
 
     /** Read-only, strict version-two source or destination; obstruction markers never select work. */
     private static final class VersionedDatabase implements AutoCloseable {
@@ -203,37 +214,47 @@ public final class ImportTd18AfterTwo {
                 throw new IllegalStateException("Cannot open versioned certificate database "+directory, error);
             }
         }
-        private Replayed find(CyclicTargetPair pair) {
-            try { return replay(pair, database.get(handles.getFirst(), reads, CertificateCodec.keyFor(pair))); }
-            catch (RocksDBException error) { throw new IllegalStateException("Cannot read certificate", error); }
+        private Replayed[] findAll(List<PrimitivePair> pairs) {
+            if (pairs.isEmpty()) return new Replayed[0];
+            try {
+                var values = database.multiGetAsList(Collections.nCopies(pairs.size(), handles.getFirst()),
+                        pairs.stream().map(CertificateCodec::keyFor).toList());
+                if (values.size() != pairs.size()) throw new IllegalStateException("Incomplete certificate bulk lookup");
+                var results = new Replayed[pairs.size()];
+                for (int i = 0; i < pairs.size(); i++) results[i] = replay(pairs.get(i), values.get(i));
+                return results;
+            } catch (RocksDBException error) { throw new IllegalStateException("Cannot bulk-read certificates", error); }
         }
-        private Replayed replay(CyclicTargetPair pair, byte[] value) {
+        private Replayed replay(PrimitivePair pair, byte[] value) {
             if (value == null) return null;
-            var result = CertificateCodec.decodeResult(value);
+            var result = CertificateCodec.decodePrimitiveResult(value);
             int required = CertificateValidator.requiredBudget(pair, result);
-            if (result.moves().size() > maximumBudget || required > maximumBudget)
+            if (result.moveCount() > maximumBudget || required > maximumBudget)
                 throw new IllegalArgumentException("Certificate exceeds its source project budget");
             return new Replayed(result, required);
         }
         private boolean[] withinBudget(List<DiskStateSet.State> states) {
             var pairs = states.stream().map(ImportTd18AfterTwo::requireInput).toList();
+            var replayed = findAll(pairs);
+            var hits = new boolean[pairs.size()];
+            for (int i = 0; i < pairs.size(); i++) hits[i] = replayed[i] != null && replayed[i].required() <= BUDGET;
+            return hits;
+        }
+        private boolean[] residualsWithinBudget(List<DiskStateSet.State> states) {
+            var pairs = states.stream().map(ImportTd18AfterTwo::requireInput).toList();
+            var replayed = findAll(pairs);
             try {
-                var values = database.multiGetAsList(Collections.nCopies(pairs.size(), handles.getFirst()),
+                var markers = database.multiGetAsList(Collections.nCopies(pairs.size(), handles.get(1)),
                         pairs.stream().map(CertificateCodec::keyFor).toList());
-                if (values.size() != pairs.size()) throw new IllegalStateException("Incomplete certificate bulk lookup");
+                if (markers.size() != pairs.size()) throw new IllegalStateException("Incomplete obstruction bulk lookup");
                 var hits = new boolean[pairs.size()];
                 for (int i = 0; i < pairs.size(); i++) {
-                    var replayed = replay(pairs.get(i), values.get(i));
-                    hits[i] = replayed != null && replayed.required() <= BUDGET;
+                    hits[i] = replayed[i] != null && replayed[i].required() <= BUDGET;
+                    if (!hits[i] && (markers.get(i) == null || markers.get(i).length != 0))
+                        throw new IllegalStateException("Missing or malformed persisted residual obstruction");
                 }
                 return hits;
-            } catch (RocksDBException error) { throw new IllegalStateException("Cannot verify copied certificates", error); }
-        }
-        private void requireObstruction(CyclicTargetPair pair) {
-            try {
-                byte[] value = database.get(handles.get(1), reads, CertificateCodec.keyFor(pair));
-                if (value == null || value.length != 0) throw new IllegalStateException("Missing or malformed persisted residual obstruction");
-            } catch (RocksDBException error) { throw new IllegalStateException("Cannot verify obstruction marker", error); }
+            } catch (RocksDBException error) { throw new IllegalStateException("Cannot bulk-verify obstruction markers", error); }
         }
         private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
         @Override public void close() { handles.forEach(ColumnFamilyHandle::close); database.close(); reads.close(); first.close(); second.close(); options.close(); }

@@ -16,6 +16,7 @@ CPU validation:
   census       Check root/endpoint counts via JShell
   audit-roots  Independently regenerate every root count via checker JShell
   audit-import  Independently replay copied TD18 results and check residual equality
+  bench-permutations  Compare four small experimental primitive CPU populations
 
 Computation:
   emit         Emit sorting results via JShell (build native CUDA first)
@@ -79,6 +80,7 @@ case "$command" in
     audit-endpoints) module=checker; entry=br.unb.cic.td20.CountEriksson; set -- --phase=endpoints "$@" ;;
     audit-roots) module=checker; script=tools/audit/CountErikssonRoots.jsh ;;
     audit-import) module=checker; entry=br.unb.cic.td20.verification.ImportedTd18Verifier ;;
+    bench-permutations) script=tools/bench/PrimitivePermutations.jsh ;;
     count|census) entry=br.unb.cic.td20.CountEriksson ;;
     emit) entry=br.unb.cic.td20.WitnessEmitter ;;
     avoidance) entry=br.unb.cic.td20.WitnessEmitter; set -- --phase=avoidance "$@" ;;

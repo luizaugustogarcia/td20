@@ -2,6 +2,9 @@ package br.unb.cic.td20.avoidance;
 
 import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.model.PrimitiveCanonicalizer;
+import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.runtime.DatabaseWriteBatching;
 import java.io.IOException;
@@ -49,14 +52,30 @@ public final class DiskStateSet implements AutoCloseable {
     private final boolean readOnly;
     private final long checkpointCount;
 
-    public record State(CyclicTargetPair pair, int maximumMoves) {
-        public State {
-            if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
-            for (int symbol : pair.getBeta().getSymbols()) {
-                if (pair.getOmega().image(symbol) == symbol)
-                    throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
-            }
+    public static final class State {
+        private final PrimitivePair primitivePair;
+        private final int maximumMoves;
+        private volatile CyclicTargetPair legacyPair;
+        public State(CyclicTargetPair pair, int maximumMoves) {
+            this(LegacyPairs.fromLegacy(pair), maximumMoves);
         }
+        public State(PrimitivePair pair, int maximumMoves) {
+            if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+            if (!pair.isFixedPointFree()) throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
+            this.primitivePair = pair; this.maximumMoves = maximumMoves;
+        }
+        public PrimitivePair primitivePair() { return primitivePair; }
+        public int maximumMoves() { return maximumMoves; }
+        /** General mathematical/test compatibility only; production uses primitivePair(). */
+        public CyclicTargetPair pair() {
+            var result = legacyPair;
+            if (result == null) { result = LegacyPairs.toLegacy(primitivePair); legacyPair = result; }
+            return result;
+        }
+        @Override public boolean equals(Object other) {
+            return other instanceof State state && maximumMoves == state.maximumMoves && primitivePair.equals(state.primitivePair);
+        }
+        @Override public int hashCode() { return 31 * primitivePair.hashCode() + maximumMoves; }
     }
 
     public DiskStateSet(Path directory) {
@@ -151,6 +170,10 @@ public final class DiskStateSet implements AutoCloseable {
     }
 
     public void add(CyclicTargetPair pair, int maximumMoves) {
+        add(LegacyPairs.fromLegacy(pair), maximumMoves);
+    }
+
+    public void add(PrimitivePair pair, int maximumMoves) {
         beginGeneration();
         try {
             submit(List.of(encode(new State(pair.canonicalRepresentative(), maximumMoves))));
@@ -159,6 +182,31 @@ public final class DiskStateSet implements AutoCloseable {
             throw failure;
         } finally { admissions.decrementAndGet(); }
     }
+
+    /** Primitive inverse callbacks pack keys directly into bounded producer batches. */
+    public void addInverseGenerated(PrimitivePair child, int maximumMoves, int... gains) {
+        if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+        beginGeneration();
+        try {
+            var work = INVERSE.get();
+            var batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
+                    ignored -> new ArrayList<>(generatedBatchKeys));
+            for (int gain : gains) work.inverse.preimages(child, gain, (omega, beta, n) -> {
+                byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
+                key[0] = VERSION; key[1] = (byte) maximumMoves; key[2] = (byte) n;
+                batch.add(key);
+                if (batch.size() == generatedBatchKeys) { submit(batch); batch.clear(); }
+            });
+        } catch (RuntimeException | Error failure) {
+            generationFailure.compareAndSet(null, failure); throw failure;
+        } finally { admissions.decrementAndGet(); }
+    }
+
+    private static final class InverseWorkspace {
+        final PrimitiveInverseReconstruction inverse = new PrimitiveInverseReconstruction();
+        final PrimitiveCanonicalizer canonicalizer = new PrimitiveCanonicalizer();
+    }
+    private static final ThreadLocal<InverseWorkspace> INVERSE = ThreadLocal.withInitial(InverseWorkspace::new);
 
     /**
      * Inserts one synchronous generation into bounded, producer-thread key batches.
@@ -214,10 +262,10 @@ public final class DiskStateSet implements AutoCloseable {
     }
 
     static byte[] encode(State state) {
-        var pair = state.pair().canonicalRepresentative();
+        var pair = state.primitivePair().canonicalRepresentative();
         byte[] raw = CertificateCodec.keyFor(pair);
         return ByteBuffer.allocate(raw.length + 3).put(VERSION).put((byte) state.maximumMoves())
-                .put((byte) pair.getBeta().size()).put(raw).array();
+                .put((byte) pair.size()).put(raw).array();
     }
 
     /** Persist a bounded, already sorted batch without creating asynchronous SST writers. */
@@ -437,7 +485,7 @@ public final class DiskStateSet implements AutoCloseable {
     static State decode(byte[] key, byte[] value) {
         if (key.length < 4 || key[0] != VERSION || value.length != 0)
             throw new IllegalStateException("Malformed reconstruction state");
-        return new State(CertificateCodec.pairForKey(Arrays.copyOfRange(key, 3, key.length),
+        return new State(PrimitivePair.fromCanonicalKey(Arrays.copyOfRange(key, 3, key.length),
                 Byte.toUnsignedInt(key[2])), Byte.toUnsignedInt(key[1]));
     }
 

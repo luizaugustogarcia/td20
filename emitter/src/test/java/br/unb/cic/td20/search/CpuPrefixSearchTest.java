@@ -5,6 +5,7 @@ import br.unb.cic.td20.certificate.CertificateValidator;
 import br.unb.cic.td20.certificate.SortingCertificate;
 import br.unb.cic.td20.joint.KnownDiameters;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 import java.util.ArrayList;
@@ -26,6 +27,20 @@ class CpuPrefixSearchTest {
                     var result = CpuPrefixSearch.search(input, budget, budget, Integer.MAX_VALUE);
                     assertEquals(oracle(omega, beta, 0, budget), result.isPresent(),
                             "omega=" + Arrays.toString(omega) + " budget=" + budget);
+                    var primitive = CpuPrefixSearch.search(PrimitivePair.of(omega, beta), budget, budget, Integer.MAX_VALUE);
+                    assertEquals(oracle(omega, beta, 0, budget), primitive.isPresent(),
+                            "primitive omega=" + Arrays.toString(omega) + " budget=" + budget);
+                    if (primitive.isPresent()) {
+                        var packed = primitive.orElseThrow();
+                        var legacy = result.orElseThrow();
+                        assertEquals(legacy.kind().name(), packed.kind().name());
+                        assertEquals(legacy.moves().size(), packed.moveCount());
+                        for (int step = 0; step < packed.moveCount(); step++) {
+                            var move = legacy.moves().get(step);
+                            assertEquals(move.get(0) | (move.get(1) << 5) | (move.get(2) << 10), packed.moveAt(step));
+                        }
+                        CertificateValidator.validate(PrimitivePair.of(omega, beta), packed, budget);
+                    }
                     result.ifPresent(record -> check(input, record));
                     if (result.isPresent()) CertificateValidator.validate(input, result.orElseThrow(), budget);
                 }
@@ -47,6 +62,31 @@ class CpuPrefixSearchTest {
         var identity = CpuPrefixSearch.search(pair(beta, beta), 1, 0, 0).orElseThrow();
         assertEquals(SortingCertificate.Kind.COMPLETE, identity.kind());
         assertTrue(identity.moves().isEmpty());
+    }
+
+    @Test void primitiveWorkspaceKeepsAnchorsAndInputsAcrossLargeThenSmallDomains() {
+        var input = CyclicTargetPair.of(new MulticyclePermutation(
+                "(0)(1 5 9 13)(2 7 10 8)(14 11 3)(12 6 4)"),
+                Cycle.of(java.util.stream.IntStream.range(0, 15).toArray()).startingBy(2));
+        int[] omega = new int[15]; Arrays.setAll(omega, input.getOmega()::image);
+        var pair = PrimitivePair.of(omega, input.getBeta().getSymbols());
+        var beforeOmega = pair.omegaBytes(); var beforeBeta = pair.betaBytes();
+        var result = CpuPrefixSearch.search(pair, 7, 1, 1).orElseThrow();
+        assertEquals(1, result.moveCount());
+        assertEquals(5 | (9 << 5) | (1 << 10), result.moveAt(0));
+        CertificateValidator.validate(pair, result, 7);
+        assertArrayEquals(beforeOmega, pair.omegaBytes()); assertArrayEquals(beforeBeta, pair.betaBytes());
+        assertTrue(CpuPrefixSearch.search(pair, 7, 0, 8192).isEmpty());
+        assertTrue(CpuPrefixSearch.searchWithinNanos(pair, 7, 3, 0).isEmpty());
+        var identity = PrimitivePair.of(new int[]{0}, new int[]{0});
+        assertEquals(br.unb.cic.td20.certificate.PrimitiveCertificate.Kind.COMPLETE,
+                CpuPrefixSearch.search(identity, 1, 0, 0).orElseThrow().kind());
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(java.util.concurrent.CancellationException.class, () -> CpuPrefixSearch.search(pair, 7, 3, 8192));
+        } finally { Thread.interrupted(); }
+        assertArrayEquals(beforeOmega, pair.omegaBytes()); assertArrayEquals(beforeBeta, pair.betaBytes());
+        assertEquals(result, CpuPrefixSearch.search(pair, 7, 1, 1).orElseThrow());
     }
 
     @Test void boundsProduceMissesAndLeaveTheOriginalObligationUntouched() {

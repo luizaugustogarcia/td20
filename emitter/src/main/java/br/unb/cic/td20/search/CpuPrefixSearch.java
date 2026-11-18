@@ -1,11 +1,14 @@
 package br.unb.cic.td20.search;
 
 import br.unb.cic.td20.certificate.SortingCertificate;
+import br.unb.cic.td20.certificate.PrimitiveCertificate;
 import br.unb.cic.td20.joint.KnownDiameters;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
@@ -22,6 +25,52 @@ public final class CpuPrefixSearch {
     private static final ThreadLocal<Workspace> WORKSPACE = ThreadLocal.withInitial(Workspace::new);
 
     private CpuPrefixSearch() { }
+
+    /** Production entry: initialize the reusable search workspace without cycle objects. */
+    public static Optional<PrimitiveCertificate> search(PrimitivePair pair, int maximumMoves) {
+        return recordedPrimitiveSearch(pair, maximumMoves, DEFAULT_DEPTH,
+                Math.multiplyExact(timeoutMillis(), 1_000_000L));
+    }
+
+    static Optional<PrimitiveCertificate> searchWithinNanos(PrimitivePair pair, int maximumMoves,
+                                                            int defaultDepth, long maximumNanos) {
+        if (maximumNanos < 0) throw new IllegalArgumentException("CPU prefix time limit cannot be negative");
+        return recordedPrimitiveSearch(pair, maximumMoves, defaultDepth, maximumNanos);
+    }
+
+    private static Optional<PrimitiveCertificate> recordedPrimitiveSearch(PrimitivePair pair, int maximumMoves,
+                                                                          int defaultDepth, long maximumNanos) {
+        long started = System.nanoTime();
+        try {
+            var result = search(pair, maximumMoves,
+                    Integer.getInteger("td20.cpuPrefixDepth", defaultDepth),
+                    Integer.getInteger("td20.cpuPrefixMaxTriples", DEFAULT_TRIPLE_LIMIT),
+                    deadline(started, maximumNanos));
+            CpuPrefixSearchStats.instance().completedPrimitive(result, System.nanoTime() - started);
+            return result;
+        } catch (RuntimeException | Error error) {
+            CpuPrefixSearchStats.instance().failed(System.nanoTime() - started);
+            throw error;
+        }
+    }
+
+    public static Optional<PrimitiveCertificate> search(PrimitivePair pair, int maximumMoves,
+                                                        int maximumDepth, int maximumTriples) {
+        return search(pair, maximumMoves, maximumDepth, maximumTriples, Long.MAX_VALUE);
+    }
+
+    private static Optional<PrimitiveCertificate> search(PrimitivePair pair, int maximumMoves,
+                                                         int maximumDepth, int maximumTriples,
+                                                         long deadlineNanos) {
+        Objects.requireNonNull(pair);
+        requireLimits(pair.size(), maximumMoves, maximumDepth, maximumTriples);
+        var work = WORKSPACE.get();
+        initialize(work, pair.size(), maximumMoves, maximumDepth, maximumTriples, deadlineNanos);
+        pair.copyOmega(work.omega);
+        pair.copyBeta(work.beta[0]);
+        work.visit(0, Integer.bitCount(pair.fixedMask()), work.oddCycles());
+        return Optional.ofNullable(work.result);
+    }
 
     public static Optional<SortingCertificate> search(CyclicTargetPair pair, int maximumMoves) {
         return recordedSearch(pair, maximumMoves, DEFAULT_DEPTH, Math.multiplyExact(timeoutMillis(), 1_000_000L));
@@ -65,17 +114,9 @@ public final class CpuPrefixSearch {
                                                        int maximumDepth, int maximumTriples,
                                                        long deadlineNanos) {
         Objects.requireNonNull(pair);
-        if (maximumMoves < 1 || maximumMoves > KnownDiameters.MAX_BUDGET
-                || maximumDepth < 0 || maximumDepth > KnownDiameters.MAX_BUDGET
-                || maximumTriples < 0 || pair.getBeta().size() > KnownDiameters.ROOT_SYMBOLS)
-            throw new IllegalArgumentException("Invalid CPU prefix domain, budget, depth, or triple limit");
+        requireLimits(pair.getBeta().size(), maximumMoves, maximumDepth, maximumTriples);
         var work = WORKSPACE.get();
-        work.n = pair.getBeta().size();
-        work.maximumMoves = maximumMoves;
-        work.maximumDepth = Math.min(maximumDepth, maximumMoves);
-        work.remainingTriples = maximumTriples;
-        work.deadlineNanos = deadlineNanos;
-        work.result = null;
+        initialize(work, pair.getBeta().size(), maximumMoves, maximumDepth, maximumTriples, deadlineNanos);
         int fixed = 0;
         for (int symbol = 0; symbol < work.n; symbol++) {
             work.omega[symbol] = pair.getOmega().image(symbol);
@@ -83,7 +124,35 @@ public final class CpuPrefixSearch {
             if (work.omega[symbol] == symbol) fixed++;
         }
         work.visit(0, fixed, work.oddCycles());
-        return Optional.ofNullable(work.result);
+        return Optional.ofNullable(work.result).map(CpuPrefixSearch::legacy);
+    }
+
+    private static void requireLimits(int domain, int maximumMoves, int maximumDepth, int maximumTriples) {
+        if (maximumMoves < 1 || maximumMoves > KnownDiameters.MAX_BUDGET
+                || maximumDepth < 0 || maximumDepth > KnownDiameters.MAX_BUDGET
+                || maximumTriples < 0 || domain < 1 || domain > KnownDiameters.ROOT_SYMBOLS)
+            throw new IllegalArgumentException("Invalid CPU prefix domain, budget, depth, or triple limit");
+    }
+
+    private static void initialize(Workspace work, int domain, int maximumMoves, int maximumDepth,
+                                   int maximumTriples, long deadlineNanos) {
+        work.n = domain;
+        work.maximumMoves = maximumMoves;
+        work.maximumDepth = Math.min(maximumDepth, maximumMoves);
+        work.remainingTriples = maximumTriples;
+        work.deadlineNanos = deadlineNanos;
+        work.result = null;
+    }
+
+    /** Compatibility boundary for mathematical tests and the previous public API. */
+    private static SortingCertificate legacy(PrimitiveCertificate result) {
+        var moves = new ArrayList<Cycle>(result.moveCount());
+        for (int step = 0; step < result.moveCount(); step++) {
+            int move = result.moveAt(step);
+            moves.add(Cycle.of(move & 31, (move >>> 5) & 31, (move >>> 10) & 31));
+        }
+        return result.kind() == PrimitiveCertificate.Kind.COMPLETE
+                ? SortingCertificate.complete(moves) : SortingCertificate.closure(moves);
     }
 
     private static long deadline(long started, long maximumNanos) {
@@ -99,17 +168,13 @@ public final class CpuPrefixSearch {
         final int[] stack = new int[KnownDiameters.MAX_BUDGET];
         int n, maximumMoves, maximumDepth, remainingTriples;
         long deadlineNanos;
-        SortingCertificate result;
+        PrimitiveCertificate result;
 
         boolean visit(int depth, int fixed, int odd) {
             if (Thread.currentThread().isInterrupted()) throw new CancellationException("CPU search interrupted");
             if (fixed == n || KnownDiameters.knownDiameter(n - fixed) <= maximumMoves - depth) {
-                var moves = new ArrayList<Cycle>(depth);
-                for (int step = 0; step < depth; step++) {
-                    int move = stack[step];
-                    moves.add(Cycle.of(move & 31, (move >>> 5) & 31, move >>> 10));
-                }
-                result = fixed == n ? SortingCertificate.complete(moves) : SortingCertificate.closure(moves);
+                int[] moves = Arrays.copyOf(stack, depth);
+                result = fixed == n ? PrimitiveCertificate.complete(moves) : PrimitiveCertificate.closure(moves);
                 return true;
             }
             if (deadlineReached()) return false;

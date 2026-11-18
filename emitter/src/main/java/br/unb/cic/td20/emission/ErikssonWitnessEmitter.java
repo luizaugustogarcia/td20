@@ -11,6 +11,8 @@ import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.joint.ErikssonRootGenerator;
 import br.unb.cic.td20.joint.SupportClearing;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.runtime.ProjectPaths;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.search.WitnessSearch;
@@ -54,7 +56,7 @@ public final class ErikssonWitnessEmitter {
                      generation.leavesOnly() ? generation.expectedLeaves() : -1,generated::sum)) {
             WitnessSearch.installWriter(writer);
             try {
-                DirectTwistedBraceletGenerator.generateWork(endpoint.partition(),endpoint.orientedByPart(),generation,() -> { },pair -> {
+                DirectTwistedBraceletGenerator.generatePrimitiveWork(endpoint.partition(),endpoint.orientedByPart(),generation,() -> { },pair -> {
                     if (!settle(pair,ErikssonRoute.ENDPOINT_BUDGET,writer,null,true)) {
                         residuals.add(pair,ErikssonRoute.ENDPOINT_BUDGET); misses.increment();
                     }
@@ -89,7 +91,7 @@ public final class ErikssonWitnessEmitter {
             WitnessSearch.installWriter(writer);
             try {
                 if (options.roots()) for (var row : inventory) if (options.includesPartition(row.number())) {
-                    var result = emitRoot(row, (pair, budget) -> settle(pair, budget, writer, null, true), progress);
+                    var result = emitRootPrimitive(row, (pair, budget) -> settle(pair, budget, writer, null, true), progress);
                     writer.flush();
                     log.info("Root partition {}: retainedUnoriented={}, retainedOriented={}, supportCleared={}, directClasses={}, unresolved={}",
                             row.number(), result.unoriented, result.oriented, result.supportCleared,
@@ -101,7 +103,7 @@ public final class ErikssonWitnessEmitter {
                         // Avoidance regenerates misses from the witness database. It
                         // never starts from a persisted obstruction list alone.
                         boolean search = !options.phase.equals("avoidance");
-                        emitEndpoint(endpoint, (pair, budget) -> settle(pair, budget, writer, source, search),
+                        emitEndpointPrimitive(endpoint, (pair, budget) -> settle(pair, budget, writer, source, search),
                                 endpoints, progress);
                         writer.flush();
                     }
@@ -112,10 +114,10 @@ public final class ErikssonWitnessEmitter {
                     log.info("Reconstruction CPU prefix deadline: {} ms before GPU fallback",
                             RECONSTRUCTION_CPU_PREFIX_MILLIS);
                     var result=options.resumeWork==null
-                            ? ErikssonAvoidance.resolve(endpoints,work,ErikssonWitnessEmitter::settleReconstructedCpu,
+                            ? ErikssonAvoidance.resolvePrimitive(endpoints,work,ErikssonWitnessEmitter::settleReconstructedCpu,
                                     (pair,budget)->settleReconstructedGpu(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch,
                                     ErikssonWitnessEmitter::settlePrefetchedGpu)
-                            : ErikssonAvoidance.resume(options.resumeWork,work,ErikssonWitnessEmitter::settleReconstructedCpu,
+                            : ErikssonAvoidance.resumePrimitive(options.resumeWork,work,ErikssonWitnessEmitter::settleReconstructedCpu,
                                     (pair,budget)->settleReconstructedGpu(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch,
                                     ErikssonWitnessEmitter::settlePrefetchedGpu);
                     writer.flush();
@@ -138,18 +140,18 @@ public final class ErikssonWitnessEmitter {
         int budget = states.getFirst().maximumMoves();
         for (var state : states) if (state.maximumMoves() != budget)
             throw new IllegalStateException("A reconstruction lookup batch must have one obligation budget");
-        return WitnessSearch.lookupBatch(states.stream().map(DiskStateSet.State::pair).toList(), budget);
+        return WitnessSearch.lookupPrimitiveBatch(states.stream().map(DiskStateSet.State::primitivePair).toList(), budget);
     }
 
     /** Returns true only for a replayed complete witness or a persisted known-diameter closure. */
-    private static boolean settle(CyclicTargetPair input, int budget,
+    private static boolean settle(PrimitivePair input, int budget,
                                   AsyncCertificateWriter writer, ReadOnlyWitnessSource source, boolean search) {
         var pair = input.canonicalRepresentative();
         // Direct generation is unique within each root/annotated endpoint type.
         // Read stored witnesses only for imports or avoidance miss regeneration.
-        if ((source != null || !search) && writer.find(pair, budget).isPresent()) return true;
+        if ((source != null || !search) && writer.findPrimitiveResult(pair, budget).isPresent()) return true;
         if (source != null) {
-            var imported = source.find(pair, budget);
+            var imported = source.findPrimitive(pair, budget);
             if (imported.isPresent()) { writer.enqueue(pair, imported.orElseThrow()); return true; }
         }
         if (!search) return false;
@@ -160,6 +162,10 @@ public final class ErikssonWitnessEmitter {
     }
 
     static boolean settleReconstructedCpu(CyclicTargetPair pair, int budget) {
+        return settleReconstructedCpu(LegacyPairs.fromLegacy(pair),budget);
+    }
+
+    static boolean settleReconstructedCpu(PrimitivePair pair, int budget) {
         // The pipeline has already replayed this state's batch with multiGet.
         var result = WitnessSearch.searchCpuMiss(
                 pair, budget, RECONSTRUCTION_CPU_PREFIX_MILLIS);
@@ -167,6 +173,10 @@ public final class ErikssonWitnessEmitter {
     }
 
     static boolean settleReconstructedGpu(CyclicTargetPair pair, int budget, AsyncCertificateWriter writer) {
+        return settleReconstructedGpu(LegacyPairs.fromLegacy(pair),budget,writer);
+    }
+
+    static boolean settleReconstructedGpu(PrimitivePair pair, int budget, AsyncCertificateWriter writer) {
         var result = WitnessSearch.searchGpuMiss(pair, budget);
         if (result.disposition() != WitnessSearch.Disposition.RESIDUAL) return true;
         writer.enqueueObstruction(pair, budget);
@@ -174,6 +184,10 @@ public final class ErikssonWitnessEmitter {
     }
 
     static boolean settlePrefetchedGpu(CyclicTargetPair pair, int budget) {
+        return settlePrefetchedGpu(LegacyPairs.fromLegacy(pair),budget);
+    }
+
+    static boolean settlePrefetchedGpu(PrimitivePair pair, int budget) {
         return WitnessSearch.searchGpuPrefetchMiss(pair, budget).disposition() != WitnessSearch.Disposition.RESIDUAL;
     }
 
@@ -185,6 +199,10 @@ public final class ErikssonWitnessEmitter {
     }
 
     static RootResult emitRoot(ErikssonInventory.Root row,PairDischarge discharge,Progress progress) {
+        return emitRootPrimitive(row,(pair,budget)->discharge.apply(LegacyPairs.toLegacy(pair),budget),progress);
+    }
+
+    static RootResult emitRootPrimitive(ErikssonInventory.Root row,PrimitiveDischarge discharge,Progress progress) {
         row.requireCompleteCounts();
         long total = row.directClasses();
         progress.phase(() -> null);
@@ -203,7 +221,7 @@ public final class ErikssonWitnessEmitter {
         try (var reporting=new ReconstructionProgress("Root emission partition "+row.number(),total,settled::sum,
                      () -> "unresolved="+unresolved.sum()+", generationPrefixNodes="+prefixes.sum()+", generationStillRunning="+generating.get());
              var tasks=new BoundedTasks(Runtime.getRuntime().availableProcessors(),"eriksson-root")) {
-            counts=ErikssonRootGenerator.generate(row.partition(),Runtime.getRuntime().availableProcessors(),prefixes,tasks::check,pair->{
+            counts=ErikssonRootGenerator.generatePrimitive(row.partition(),Runtime.getRuntime().availableProcessors(),prefixes,tasks::check,pair->{
                 if (!SupportClearing.closes(pair)) tasks.submit(()->{
                     if (!discharge.apply(pair.canonicalRepresentative(),ErikssonRoute.ROOT_BUDGET)) unresolved.increment();
                     settled.increment();
@@ -218,6 +236,11 @@ public final class ErikssonWitnessEmitter {
     }
 
     static void emitEndpoint(EndpointWork work, PairDischarge discharge,
+                             DiskStateSet residuals, Progress progress) {
+        emitEndpointPrimitive(work,(pair,budget)->discharge.apply(LegacyPairs.toLegacy(pair),budget),residuals,progress);
+    }
+
+    static void emitEndpointPrimitive(EndpointWork work, PrimitiveDischarge discharge,
                              DiskStateSet residuals, Progress progress) {
         var endpoint = work.endpoint();
         if (work.classes() == 0) {
@@ -234,7 +257,7 @@ public final class ErikssonWitnessEmitter {
         progress.phase(() -> null);
         try (var reporting=new ReconstructionProgress("Endpoint emission type "+endpoint.number(),expected,generated::sum,
                 () -> "missingEndpointDischarges="+misses.sum())) {
-        DirectTwistedBraceletGenerator.generateRepresentativesConcurrently(endpoint.partition(), endpoint.orientedByPart(),
+        DirectTwistedBraceletGenerator.generatePrimitiveRepresentativesConcurrently(endpoint.partition(), endpoint.orientedByPart(),
                 () -> { }, pair -> {
                     if (!discharge.apply(pair.canonicalRepresentative(), ErikssonRoute.ENDPOINT_BUDGET)) {
                         residuals.add(pair, ErikssonRoute.ENDPOINT_BUDGET); misses.increment();
@@ -297,6 +320,7 @@ public final class ErikssonWitnessEmitter {
     }
 
     @FunctionalInterface interface PairDischarge { boolean apply(CyclicTargetPair pair, int budget); }
+    @FunctionalInterface interface PrimitiveDischarge { boolean apply(PrimitivePair pair, int budget); }
     record RootResult(long unoriented, long oriented, long supportCleared, long unresolved) { }
 
     static final class Progress implements AutoCloseable {

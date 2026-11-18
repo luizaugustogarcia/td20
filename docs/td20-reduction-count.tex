@@ -659,7 +659,11 @@ every transferred case is processed before sealing the next wave. Active
 residual-expansion emission instead generates both remaining inverse waves
 directly on CPU, without budget-nine or budget-ten sorting queues. Every source
 class is accounted for and all generation and persistence workers join before
-the next wave is sealed. Interrupted queues are regenerated from their sealed
+the next wave is ready for processing. A version-three emitter checkpoint may
+explicitly defer the completed budget-ten wave's exact count; the mandatory
+final inverse-expansion scan establishes and publishes that count without a
+separate emitter validation traversal. Independent proof checking is unchanged.
+Interrupted queues are regenerated from their completed
 source wave. Final-root sorting retains the CPU/GPU pools and witness replay.
 Inverse outputs use deterministic writer shards with bounded queues. Shards
 sort distinct keys in unsigned byte order, build SST files independently,

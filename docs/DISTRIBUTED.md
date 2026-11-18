@@ -259,6 +259,13 @@ The work has these boundaries:
    searches the final roots at budget 11. The legacy `FULL_SEARCH` mode also
    searches inputs at budget 9 and intermediate states at budget 10. Fixed
    points are contracted before fixed-point-free state encoding.
+   After residual intermediate generation, writers drain without a separate
+   inventory traversal. A version-three `AFTER_ONE` checkpoint explicitly
+   records `afterOne=-1` until the mandatory final inverse-expansion scan
+   establishes the exact logical-key count and publishes a counted checkpoint.
+   This deferred count is accepted only for a completed residual generation
+   boundary; it cannot appear in legacy checkpoint versions or `FULL_SEARCH`.
+   The independent proof checker retains its own regeneration and checks.
    A job fails if any final root remains unresolved.
 5. After both remote computation phases, all completed witness databases are
    downloaded for the final merge. Cross-server duplicate classes

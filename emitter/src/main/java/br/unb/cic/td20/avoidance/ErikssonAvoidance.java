@@ -62,10 +62,11 @@ public final class ErikssonAvoidance {
         String name=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? "after-two":checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? "after-one":"roots";
         long count=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? checkpoint.afterTwo():checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? checkpoint.afterOne():checkpoint.roots();
         // Every resumed wave validates its inventory during mandatory processing.
-        try (var states=DiskStateSet.openSealedForScan(source.resolve(name),count)) {
+        try (var states=checkpoint.afterOneCountPending()?DiskStateSet.openCompletedForScan(source.resolve(name))
+                :DiskStateSet.openSealedForScan(source.resolve(name),count)) {
             return switch (checkpoint.stage()) {
                 case AFTER_TWO -> afterTwo(checkpoint,states,work,cpu,gpu,lookup,prefetchGpu);
-                case AFTER_ONE -> afterOne(checkpoint,states,work,cpu,gpu,lookup,prefetchGpu);
+                case AFTER_ONE -> afterOne(checkpoint,states,source,work,cpu,gpu,lookup,prefetchGpu);
                 case ROOTS -> roots(checkpoint,states,work,cpu,gpu,lookup);
             };
         }
@@ -84,11 +85,14 @@ public final class ErikssonAvoidance {
             if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-two residuals",checkpoint.afterTwo(),expand);
             else ReconstructionPipeline.process(states,work.resolve("after-two-search.queue"),workers(),
                     ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,1),cpu,gpu,expand);
-            var next=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),checkpoint.afterTwo(),afterOne.seal(),-1,checkpoint.mode());
-            next.write(work); return afterOne(next,afterOne,work,cpu,gpu,lookup,prefetchGpu);
+            // Residual generation already enforces state invariants. Drain writers now;
+            // derive the exact logical-key count during the required final inverse expansion.
+            long afterOneCount=checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION?afterOne.prepareScan():afterOne.seal();
+            var next=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),checkpoint.afterTwo(),afterOneCount,-1,checkpoint.mode());
+            next.write(work); return afterOne(next,afterOne,work,work,cpu,gpu,lookup,prefetchGpu);
         }
     }
-    private static Result afterOne(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
+    private static Result afterOne(ErikssonCheckpoint checkpoint,DiskStateSet states,Path checkpointSource,Path work,
                                     BiPredicate<CyclicTargetPair,Integer> cpu,BiPredicate<CyclicTargetPair,Integer> gpu,
                                     Function<List<DiskStateSet.State>,boolean[]> lookup,
                                     BiPredicate<CyclicTargetPair,Integer> prefetchGpu) {
@@ -107,13 +111,18 @@ public final class ErikssonAvoidance {
             if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-one inverse states",checkpoint.afterOne(),expand);
             else ReconstructionPipeline.process(states,work.resolve("after-one-search.queue"),workers(),
                     ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,2),cpu,gpu,expand);
+            long afterOneCount=states.knownSize();
+            if(afterOneCount<0) throw new IllegalStateException("Completed intermediate expansion did not establish its exact count");
+            var counted=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),
+                    checkpoint.afterTwo(),afterOneCount,-1,checkpoint.mode());
+            if(checkpoint.afterOneCountPending()) counted.write(checkpointSource);
             roots.prepareScan();
             prefetch.finish();
             // Count while processing roots; publish a counted checkpoint only
             // after the exhaustive scan and all search workers have joined.
-            var result = roots(checkpoint,roots,work,cpu,gpu,lookup);
+            var result = roots(counted,roots,work,cpu,gpu,lookup);
             new ErikssonCheckpoint(ErikssonCheckpoint.Stage.ROOTS,checkpoint.endpoints(),
-                    checkpoint.afterTwo(),checkpoint.afterOne(),result.roots(),checkpoint.mode()).write(work);
+                    checkpoint.afterTwo(),afterOneCount,result.roots(),checkpoint.mode()).write(work);
             return result;
         }
     }

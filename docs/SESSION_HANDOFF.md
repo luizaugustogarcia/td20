@@ -1,6 +1,32 @@
-# TD20 distributed simulation handoff — 17 November 2026
+# TD20 computational handoff — 18 November 2026
 
 ## Active production
+
+The operator chose local residual reconstruction on 18 November 2026.
+RUN/local-residual-reconstruction-v1 uses the RTX 4070 Laptop GPU and the
+automatically detected local CPU allocation, appending results to project-root
+certificates/. Its logs/emitter-latest.log and console.log expose progress.
+The remote fleet and independent full-proof waiter remain stopped.
+
+The operator requested removal of the separate intermediate validation/count
+traversal and chose to finish the current generation wave before restarting.
+The updated residual route drains completed writes, then records a version-three
+AFTER_ONE checkpoint with afterOne=-1. Its mandatory final inverse-expansion
+scan establishes the exact count and publishes the counted checkpoint.
+Legacy versions and FULL_SEARCH reject a pending count; the independent
+proof checker is unchanged. Both CPU suites passed (emitter 244 tests,
+15 configured CUDA skips; checker 105 tests; zero failures/errors).
+
+tools/RestartResidualAtBoundary.jsh is armed through the local run's
+boundary-restart.pid and boundary-restart.log. It waits for complete original
+residual processing and writer drains, stops the old intermediate counting
+scan, preserves work/emitter-20261118T024413Z-706373/after-one, publishes a
+pending-count checkpoint there, and resumes from that completed wave.
+boundary-restart-v1.txt records its current status. A small process-control
+simulation confirmed that it waits for the complete boundary and then
+restarts the next expansion; logs/td18-after-two-reuse-v1 contains its report
+and both test logs. Use tail -F on logs/emitter-latest.log to follow the
+new log after the automatic restart, or tail -f on the stable console.log.
 
 The operator now requests a single physical emission database at project-root
 certificates/, before reconstruction. Local consolidation uses exactly the ten

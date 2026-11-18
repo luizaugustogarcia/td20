@@ -139,6 +139,11 @@ report explicitly records that no budget-ten certificate lookup pruned the
 final roots. If a wave is empty, the full checker must still report that scope.
 Historical full-search checkpoints and residual-expansion checkpoints are
 distinct modes; no incompatible checkpoint or batch inventory may be reused.
+For completed residual intermediate generation, version-three emitter
+checkpoints may explicitly defer the after-one count as `-1`. The mandatory
+next inverse-expansion scan counts every logical key, joins all callbacks and
+publishes the exact count. This removes a redundant emitter-only traversal;
+it does not permit an incomplete generation wave or alter checker obligations.
 
 ## 5. Independently verify the entire proof
 

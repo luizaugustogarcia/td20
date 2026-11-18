@@ -84,6 +84,11 @@ public final class DiskStateSet implements AutoCloseable {
         return new DiskStateSet(directory, true, expectedCount, null, false);
     }
 
+    /** A completed generated wave with an explicit pending count; its mandatory processing scan establishes the count. */
+    public static DiskStateSet openCompletedForScan(Path directory) {
+        return new DiskStateSet(directory, true, -1, null, false);
+    }
+
     /** Inventory an emitter output before assigning its counted reconstruction work. */
     public static DiskStateSet openForInventory(Path directory) {
         return new DiskStateSet(directory, true, -1, null, false);

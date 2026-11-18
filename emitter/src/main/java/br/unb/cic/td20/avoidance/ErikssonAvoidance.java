@@ -99,7 +99,7 @@ public final class ErikssonAvoidance {
         var layout=new GpuDeviceLayout(
                 GpuDeviceLayout.parseDevices(System.getProperty("td20.gpuDevices","0")),
                 Integer.getInteger("td20.gpuSlots",8));
-        try (var prefetch=new RootPrefetch(layout.totalSlots(),prefetchGpu,checked(lookup,3));
+        try (var prefetch=new RootPrefetch(layout.totalSlots(),cpu,prefetchGpu,checked(lookup,3));
              var roots=new DiskStateSet(work.resolve("roots"),prefetch::publish)) {
             prefetch.activate();
             Consumer<DiskStateSet.State> expand=state -> {

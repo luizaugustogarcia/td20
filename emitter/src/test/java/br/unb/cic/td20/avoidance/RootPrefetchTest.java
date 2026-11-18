@@ -114,6 +114,27 @@ class RootPrefetchTest {
         }
     }
 
+    @Test void batchedReplayFeedsMissesThroughCpuPrefixBeforeGpu() throws Exception {
+        var gpuCalled=new CountDownLatch(1);
+        var lookups=new AtomicInteger();var cpuCalls=new AtomicInteger();var gpuCalls=new AtomicInteger();
+        var order=new java.util.concurrent.CopyOnWriteArrayList<String>();
+        try(var prefetch=new RootPrefetch(1,1,(pair,budget) -> {
+            int call=cpuCalls.incrementAndGet();order.add("cpu-"+call);return call==1;
+        },(pair,budget) -> {
+            gpuCalls.incrementAndGet();order.add("gpu");gpuCalled.countDown();return true;
+        },2,8,states -> {
+            lookups.incrementAndGet();order.add("lookup");assertEquals(2,states.size());
+            return new boolean[]{false,false};
+        })) {
+            prefetch.publish(List.of(key(1,11),key(2,11)));prefetch.activate();
+            assertTrue(gpuCalled.await(10,TimeUnit.SECONDS));prefetch.finish();
+            assertEquals(1,lookups.get(),"Certificate lookup must stay batched");
+            assertEquals(2,cpuCalls.get(),"Every lookup miss enters CPU prefixes");
+            assertEquals(1,gpuCalls.get(),"Only CPU-prefix misses enter the GPU");
+            assertEquals(List.of("lookup","cpu-1","cpu-2","gpu"),order);
+        }
+    }
+
     private static byte[] key(int step, int budget) {
         int[] beta = new int[21], omega = new int[21];
         for (int i = 0; i < 21; i++) { beta[i] = i; omega[i] = i * (step == 2 ? 4 : step) % 21; }

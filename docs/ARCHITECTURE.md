@@ -69,8 +69,9 @@ valid-pair class within each type. Ordinary emission therefore skips the
 preliminary certificate lookup and searches the generated class directly.
 Source imports and reconstruction retain certificate reuse. Reconstruction
 replays each source batch with `multiGet`; CPU and GPU sorting consume its
-misses without repeating per-class reads. Root prefetch follows the same
-bulk-lookup/miss-dispatch boundary. Every newly emitted result still follows
+misses without repeating per-class reads. Root prefetch follows the same exact
+order: batched `multiGet`, parallel CPU prefixes for lookup misses, then a
+bounded GPU queue containing CPU misses only. Every newly emitted result follows
 the checked persistence path.
 
 `ErikssonInverseReconstruction` enumerates inverse gains zero through three on
@@ -195,8 +196,9 @@ producers. Native resources outlive every writer. The deterministic key
 format and the represented class set are unchanged.
 
 During the final inverse wave, encoded root batches also feed a bounded
-advisory GPU prefetch queue. GPU prefetch starts immediately with at most one
-worker per GPU slot. Full-depth searches use a positive time slice (100 ms
+advisory prefetch pipeline. Preparation workers perform batched `multiGet`;
+lookup misses pass through all configured CPU-prefix workers, and only CPU
+misses enter the GPU queue. GPU searches use a positive time slice (100 ms
 by default), filling gaps between source batches without indefinitely holding
 GPU slots needed by source checks. Early root searches overlap continued
 inverse generation and SST persistence. Queue pressure never blocks

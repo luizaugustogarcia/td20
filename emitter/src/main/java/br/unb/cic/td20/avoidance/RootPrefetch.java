@@ -32,12 +32,15 @@ public final class RootPrefetch implements AutoCloseable {
     private static final int BATCH_KEYS = 65536;
     private static final int STOPPED = Integer.MIN_VALUE;
     private static final byte[] EMPTY = {};
-    private final int gpuWorkers;
+    private final int cpuWorkers, gpuWorkers;
+    private final BiPredicate<CyclicTargetPair, Integer> cpu;
     private final BiPredicate<CyclicTargetPair, Integer> gpu;
     private final Function<List<DiskStateSet.State>, boolean[]> lookup;
     private final int preparationWorkers;
     private final ConcurrentLinkedQueue<List<DiskStateSet.State>> preparedQueue = new ConcurrentLinkedQueue<>();
     private final Semaphore preparedSlots, preparedAvailable = new Semaphore(0);
+    private final ConcurrentLinkedQueue<List<DiskStateSet.State>> gpuQueue = new ConcurrentLinkedQueue<>();
+    private final Semaphore gpuSlots, gpuAvailable = new Semaphore(0);
     private static final int PREPARED_BATCH_KEYS = 4096;
     private final ConcurrentLinkedQueue<List<byte[]>> queue = new ConcurrentLinkedQueue<>();
     private final Semaphore slots, available = new Semaphore(0), seenSlots;
@@ -46,43 +49,63 @@ public final class RootPrefetch implements AutoCloseable {
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
     private final AtomicInteger publishers = new AtomicInteger();
     private final LongAdder accepted = new LongAdder(), examined = new LongAdder();
+    private final LongAdder cpuSearched = new LongAdder(), cpuClosed = new LongAdder();
     private final LongAdder searched = new LongAdder(), closed = new LongAdder(), dropped = new LongAdder();
     private final LongAdder completed = new LongAdder(), cached = new LongAdder(), recentSkipped = new LongAdder();
-    private final LongAdder prepared = new LongAdder(), gpuCompleted = new LongAdder();
+    private final LongAdder prepared = new LongAdder(), cpuCompleted = new LongAdder();
+    private final LongAdder gpuPrepared = new LongAdder(), gpuCompleted = new LongAdder();
     private final java.util.concurrent.ScheduledExecutorService reporter =
             Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon(true)
                     .name("root-prefetch-progress").factory());
     private volatile boolean stopping;
     private ExecutorService workers;
+    private ExecutorService prefixWorkers;
     private ExecutorService preparers;
     private boolean finished;
 
     public RootPrefetch(int gpuWorkers, BiPredicate<CyclicTargetPair, Integer> gpu) {
-        this(gpuWorkers, gpu, null);
+        this(gpuWorkers, 1, (pair,budget) -> false, gpu,
+                property("td20.rootPrefetchQueueBatches", 256), property("td20.rootPrefetchSeenKeys", 1048576), null);
     }
 
-    /** GPU callers consume prepared cache misses; preparation never waits on a GPU result. */
+    /** Batched lookup misses pass through CPU-prefix workers before independent GPU callers. */
     public RootPrefetch(int gpuSlots, BiPredicate<CyclicTargetPair, Integer> gpu,
                         Function<List<DiskStateSet.State>, boolean[]> lookup) {
-        this(configuredCallers(gpuSlots), gpu,
-                property("td20.rootPrefetchQueueBatches", 256), property("td20.rootPrefetchSeenKeys", 1048576), lookup);
+        this(gpuSlots, (pair,budget) -> false, gpu, lookup);
+    }
+
+    public RootPrefetch(int gpuSlots, BiPredicate<CyclicTargetPair, Integer> cpu,
+                        BiPredicate<CyclicTargetPair, Integer> gpu,
+                        Function<List<DiskStateSet.State>, boolean[]> lookup) {
+        this(configuredCallers(gpuSlots), property("td20.rootPrefetchCpuWorkers", Runtime.getRuntime().availableProcessors()),
+                cpu, gpu, property("td20.rootPrefetchQueueBatches", 256),
+                property("td20.rootPrefetchSeenKeys", 1048576), lookup);
     }
 
     RootPrefetch(int gpuWorkers, BiPredicate<CyclicTargetPair, Integer> gpu,
                  int queueBatches, int seenKeys) {
-        this(gpuWorkers, gpu, queueBatches, seenKeys, null);
+        this(gpuWorkers, 1, (pair,budget) -> false, gpu, queueBatches, seenKeys, null);
     }
 
     RootPrefetch(int gpuWorkers, BiPredicate<CyclicTargetPair, Integer> gpu,
                  int queueBatches, int seenKeys, Function<List<DiskStateSet.State>, boolean[]> lookup) {
-        if (gpuWorkers < 1 || queueBatches < 1 || seenKeys < 1)
+        this(gpuWorkers, 1, (pair,budget) -> false, gpu, queueBatches, seenKeys, lookup);
+    }
+
+    RootPrefetch(int gpuWorkers, int cpuWorkers, BiPredicate<CyclicTargetPair, Integer> cpu,
+                 BiPredicate<CyclicTargetPair, Integer> gpu, int queueBatches, int seenKeys,
+                 Function<List<DiskStateSet.State>, boolean[]> lookup) {
+        if (cpuWorkers < 1 || gpuWorkers < 1 || queueBatches < 1 || seenKeys < 1)
             throw new IllegalArgumentException("Positive root-prefetch capacities required");
+        this.cpuWorkers = cpuWorkers;
         this.gpuWorkers = gpuWorkers;
+        this.cpu = Objects.requireNonNull(cpu);
         this.gpu = Objects.requireNonNull(gpu);
         this.lookup = lookup;
         preparationWorkers = property("td20.rootPrefetchPreparationWorkers",
                 Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors())));
         preparedSlots = new Semaphore(property("td20.rootPrefetchPreparedQueueBatches", 1024));
+        gpuSlots = new Semaphore(property("td20.rootPrefetchGpuQueueBatches", 1024));
         slots = new Semaphore(queueBatches);
         seenSlots = new Semaphore(seenKeys);
     }
@@ -134,14 +157,17 @@ public final class RootPrefetch implements AutoCloseable {
     public synchronized void activate() {
         check();
         if (stopping || workers != null) return;
-        log.info("Root GPU prefetch activated: preparation workers={}, GPU callers={}, queued keys={}",
-                preparationWorkers, gpuWorkers, accepted.sum());
+        log.info("Root prefetch activated: batched-lookup workers={}, CPU-prefix workers={}, GPU callers={}, queued keys={}",
+                preparationWorkers, cpuWorkers, gpuWorkers, accepted.sum());
         reporter.scheduleWithFixedDelay(this::report, 10, 10, TimeUnit.SECONDS);
         workers = Executors.newFixedThreadPool(gpuWorkers,
                 Thread.ofPlatform().name("root-prefetch-", 0).factory());
+        prefixWorkers = Executors.newFixedThreadPool(cpuWorkers,
+                Thread.ofPlatform().name("root-prefetch-cpu-", 0).factory());
         preparers = Executors.newFixedThreadPool(preparationWorkers,
                 Thread.ofPlatform().name("root-prefetch-prepare-", 0).factory());
-        for (int i = 0; i < gpuWorkers; i++) workers.submit(this::searchPrepared);
+        for (int i = 0; i < gpuWorkers; i++) workers.submit(this::searchGpuPrepared);
+        for (int i = 0; i < cpuWorkers; i++) prefixWorkers.submit(this::searchCpuPrepared);
         for (int i = 0; i < preparationWorkers; i++) preparers.submit(this::consume);
     }
 
@@ -181,7 +207,7 @@ public final class RootPrefetch implements AutoCloseable {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             failure.compareAndSet(null, error);
             stopping = true;
-            available.release(preparationWorkers); preparedAvailable.release(gpuWorkers);
+            available.release(preparationWorkers); preparedAvailable.release(cpuWorkers); gpuAvailable.release(gpuWorkers);
         }
     }
 
@@ -195,7 +221,7 @@ public final class RootPrefetch implements AutoCloseable {
         }
     }
 
-    private void searchPrepared() {
+    private void searchCpuPrepared() {
         try {
             while (!stopping) {
                 if (!preparedAvailable.tryAcquire(100, TimeUnit.MILLISECONDS)) continue;
@@ -203,6 +229,45 @@ public final class RootPrefetch implements AutoCloseable {
                 var batch = preparedQueue.poll();
                 if (batch == null) continue;
                 preparedSlots.release();
+                var misses = new ArrayList<DiskStateSet.State>(PREPARED_BATCH_KEYS);
+                for (var state : batch) {
+                    if (stopping) return;
+                    cpuSearched.increment();
+                    if (cpu.test(state.pair(), state.maximumMoves())) {
+                        cpuClosed.increment(); completed.increment();
+                    } else {
+                        misses.add(state);
+                        if (misses.size() == PREPARED_BATCH_KEYS) { publishGpu(misses); misses.clear(); }
+                    }
+                    cpuCompleted.increment();
+                }
+                if (!misses.isEmpty()) publishGpu(misses);
+            }
+        } catch (Throwable error) {
+            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+            failure.compareAndSet(null, error); stopping = true;
+            available.release(preparationWorkers); preparedAvailable.release(cpuWorkers); gpuAvailable.release(gpuWorkers);
+        }
+    }
+
+    private void publishGpu(List<DiskStateSet.State> states) throws InterruptedException {
+        while (!stopping) {
+            check();
+            if (!gpuSlots.tryAcquire(100, TimeUnit.MILLISECONDS)) continue;
+            if (stopping) { gpuSlots.release(); return; }
+            gpuQueue.add(List.copyOf(states)); gpuPrepared.add(states.size()); gpuAvailable.release();
+            return;
+        }
+    }
+
+    private void searchGpuPrepared() {
+        try {
+            while (!stopping) {
+                if (!gpuAvailable.tryAcquire(100, TimeUnit.MILLISECONDS)) continue;
+                if (stopping) return;
+                var batch = gpuQueue.poll();
+                if (batch == null) continue;
+                gpuSlots.release();
                 for (var state : batch) {
                     if (stopping) return;
                     searched.increment();
@@ -213,7 +278,7 @@ public final class RootPrefetch implements AutoCloseable {
         } catch (Throwable error) {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             failure.compareAndSet(null, error); stopping = true;
-            available.release(preparationWorkers); preparedAvailable.release(gpuWorkers);
+            available.release(preparationWorkers); preparedAvailable.release(cpuWorkers); gpuAvailable.release(gpuWorkers);
         }
     }
 
@@ -242,14 +307,17 @@ public final class RootPrefetch implements AutoCloseable {
 
     private void report() {
         long done = completed.sum(), examinedCount = examined.sum(), total = accepted.sum();
-        long gpuDone = gpuCompleted.sum(), gpuSent = searched.sum(), ready = prepared.sum();
+        long cpuDone = cpuCompleted.sum(), cpuSent = cpuSearched.sum(), ready = prepared.sum();
+        long gpuDone = gpuCompleted.sum(), gpuSent = searched.sum(), gpuReady = gpuPrepared.sum();
         long discarded = finished ? total - done : 0;
-        log.info("Root GPU prefetch (advisory keys): processed={}/{} ({}%), remaining={}, examined={}, cached={}, "
-                        + "recentSkipped={}, searched={}, closed={}, encodedQueued={}, preparedRemaining={}, inFlight={}, discarded={}, dropped={}, active={}",
+        log.info("Root prefetch (advisory keys): processed={}/{} ({}%), remaining={}, examined={}, cached={}, "
+                        + "recentSkipped={}, cpuSearched={}, cpuClosed={}, gpuSearched={}, gpuClosed={}, encodedQueued={}, "
+                        + "cpuPreparedRemaining={}, cpuInFlight={}, gpuPreparedRemaining={}, gpuInFlight={}, discarded={}, dropped={}, active={}",
                 done, total, String.format(Locale.ROOT, "%.2f", total == 0 ? 100 : 100.0 * done / total),
-                total - done - discarded, examinedCount, cached.sum(), recentSkipped.sum(), gpuSent, closed.sum(),
-                finished ? 0 : total - examinedCount, finished ? 0 : ready - gpuDone,
-                gpuSent - gpuDone, discarded, dropped.sum(), !stopping);
+                total - done - discarded, examinedCount, cached.sum(), recentSkipped.sum(), cpuSent, cpuClosed.sum(),
+                gpuSent, closed.sum(), finished ? 0 : total - examinedCount, finished ? 0 : ready - cpuDone,
+                cpuSent - cpuDone, finished ? 0 : gpuReady - gpuDone, gpuSent - gpuDone,
+                discarded, dropped.sum(), !stopping);
     }
 
     /** Discards optional backlog and joins in-flight GPU calls before final scanning. */
@@ -264,8 +332,10 @@ public final class RootPrefetch implements AutoCloseable {
             }
             queue.clear();
             preparedQueue.clear();
-            available.release(preparationWorkers); preparedAvailable.release(gpuWorkers);
+            gpuQueue.clear();
+            available.release(preparationWorkers); preparedAvailable.release(cpuWorkers); gpuAvailable.release(gpuWorkers);
             if (preparers != null) preparers.shutdown();
+            if (prefixWorkers != null) prefixWorkers.shutdown();
             if (workers != null) {
                 workers.shutdown();
                 for (;;) {
@@ -279,8 +349,15 @@ public final class RootPrefetch implements AutoCloseable {
                     catch (InterruptedException error) { interrupted = true; }
                 }
             }
+            if (prefixWorkers != null) {
+                for (;;) {
+                    try { if (prefixWorkers.awaitTermination(1, TimeUnit.SECONDS)) break; }
+                    catch (InterruptedException error) { interrupted = true; }
+                }
+            }
             queue.clear();
             preparedQueue.clear();
+            gpuQueue.clear();
             seen.clear();
             seenOrder.clear();
             dropped.add(accepted.sum() - completed.sum());

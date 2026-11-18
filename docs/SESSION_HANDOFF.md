@@ -8,25 +8,17 @@ automatically detected local CPU allocation, appending results to project-root
 certificates/. Its logs/emitter-latest.log and console.log expose progress.
 The remote fleet and independent full-proof waiter remain stopped.
 
-The operator requested removal of the separate intermediate validation/count
-traversal and chose to finish the current generation wave before restarting.
-The updated residual route drains completed writes, then records a version-three
-AFTER_ONE checkpoint with afterOne=-1. Its mandatory final inverse-expansion
-scan establishes the exact count and publishes the counted checkpoint.
-Legacy versions and FULL_SEARCH reject a pending count; the independent
-proof checker is unchanged. Both CPU suites passed (emitter 244 tests,
-15 configured CUDA skips; checker 105 tests; zero failures/errors).
-
-tools/RestartResidualAtBoundary.jsh is armed through the local run's
-boundary-restart.pid and boundary-restart.log. It waits for complete original
-residual processing and writer drains, stops the old intermediate counting
-scan, preserves work/emitter-20261118T024413Z-706373/after-one, publishes a
-pending-count checkpoint there, and resumes from that completed wave.
-boundary-restart-v1.txt records its current status. A small process-control
-simulation confirmed that it waits for the complete boundary and then
-restarts the next expansion; logs/td18-after-two-reuse-v1 contains its report
-and both test logs. Use tail -F on logs/emitter-latest.log to follow the
-new log after the automatic restart, or tail -f on the stable console.log.
+The first local run completed and deduplicated the 44 GiB budget-ten
+`after-one` database, then began the final inverse expansion. That process was
+stopped. The operator chose to retain the two physical waves because disk space
+is available and global intermediate deduplication avoids repeated final
+expansion. Reconstruction resumed from the completed version-three `AFTER_ONE`
+checkpoint at `work/emitter-20261118T024413Z-706373` on 18 November 2026. Its
+`afterOne=-1` count is established during this mandatory final expansion. The
+new work directory is `work/emitter-20261118T143031Z-1431181`. Earlier partial
+roots are not a resume boundary, but their valid deterministically keyed
+certificates remain reusable. Root settlement is batched certificate lookup,
+then CPU prefixes, then GPU fallback only for CPU misses.
 
 The operator now requests a single physical emission database at project-root
 certificates/, before reconstruction. Local consolidation uses exactly the ten
@@ -38,7 +30,7 @@ target. Progress is RUN/local-certificate-consolidation/emission.log; its
 complete-v1.txt is published only after final physical integrity validation.
 No witnesses are replayed; replay belongs to the independent checker. Preserve
 all ten source DBs. This emission union is not the completed proof certificate:
-reconstruction remains stopped and its later results must still be incorporated.
+the later reconstruction results must still be incorporated.
 
 The physical emission union completed at 21:28:20 UTC on 17 November 2026,
 with 11,523,937,239 witnesses and 2,036 informational endpoint markers.
@@ -63,8 +55,9 @@ configured CUDA skips; checker 105 tests, zero failures/errors/skips.
 The updated paper also compiled successfully.
 
 Active reconstruction uses only these 970,331 second-level residuals,
-expands both remaining inverse waves without budget-nine or budget-ten
-sorting, and searches final 21-symbol roots at budget eleven.
+retains a canonical disk-deduplicated budget-ten intermediate wave without
+budget-nine or budget-ten sorting, and searches the final 21-symbol roots at
+budget eleven.
 The 2,036 original endpoint markers remain informational. fleet/launch.args
 now explicitly selects this residual input. At batch size 256 the active
 scope is 3,791 batches, with 91 states in the last batch; their preparation

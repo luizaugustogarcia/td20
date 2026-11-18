@@ -58,7 +58,8 @@ class ActiveErikssonAvoidanceTest {
         Set<ExtendedToricClassKey> expected=ConcurrentHashMap.newKeySet(),actual=ConcurrentHashMap.newKeySet();
         var baseline=ErikssonAvoidance.resume(source,Files.createDirectory(directory.resolve("baseline")),(p,b)->{
             if (b<ErikssonRoute.ROOT_BUDGET) return false;
-            assertTrue(expected.add(p.extendedToricClassKey())); return true;
+            // CPU settlement may see a class in advisory prefetch and again in the mandatory scan.
+            expected.add(p.extendedToricClassKey()); return true;
         },null);
         var split=ErikssonAvoidance.resume(source,Files.createDirectory(directory.resolve("split")),
                 (p,b)->false,(p,b)->{

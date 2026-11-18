@@ -105,7 +105,8 @@ database lookup. Source imports and avoidance miss regeneration retain
 stored-certificate lookups. Reconstruction replays stored certificates with
 one bounded `multiGet` per source batch before dispatch; its CPU and GPU miss
 paths do not repeat individual `get` calls. Root prefetch also uses bulk
-lookup followed by searches of prepared misses. Every new result still passes
+lookup, parallel CPU prefixes on its misses, and GPU fallback only for CPU
+misses. Every new result still passes
 certificate validation before persistence.
 
 Concurrent reconstruction scans copy encoded RocksDB keys into bounded batches.

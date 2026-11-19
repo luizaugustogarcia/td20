@@ -60,7 +60,7 @@ public final class ErikssonCertificateChecker {
         final String type = "root type " + row.number() + "/83 partition=" + Arrays.toString(row.partition());
         final var generation = new ErikssonRootGenerator.Progress();
         try (var verifier=required(certificates,ErikssonRoute.ROOT_BUDGET)) {
-            progress.phase(() -> type + " prefixes=" + fraction(generation.completedPrefixes(), generation.totalPrefixes())
+            progress.phase(() -> type + " prefixes=" + generation.completedPrefixes() + "/" + generation.discoveredPrefixes()
                     + (Boolean.getBoolean("td20.checkerVerboseProgress")
                         ? " " + verifier.progress() + " " + certificates.readProgress() : ""),
                     generation::prefixNodes, "nodes");

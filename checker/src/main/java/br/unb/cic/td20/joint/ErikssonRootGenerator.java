@@ -21,10 +21,10 @@ public final class ErikssonRootGenerator {
     /** Operational counters; none controls generation or certificate coverage. */
     public static final class Progress {
         private final LongAdder nodes = new LongAdder(), completedPrefixes = new LongAdder();
-        private volatile long totalPrefixes = -1;
+        private volatile long discoveredPrefixes;
         public long prefixNodes() { return nodes.sum(); }
         public long completedPrefixes() { return completedPrefixes.sum(); }
-        public long totalPrefixes() { return totalPrefixes; }
+        public long discoveredPrefixes() { return discoveredPrefixes; }
     }
     public static Counts generate(int[] partition,int workers,Runnable cancellation,Consumer<CyclicTargetPair> output) throws Exception {
         return generatePrimitive(partition,workers,cancellation,pair -> output.accept(LegacyPairs.toLegacy(pair).canonicalRepresentative()));
@@ -50,13 +50,15 @@ public final class ErikssonRootGenerator {
         List<Future<Counts>> jobs=new ArrayList<>();
         try {
             template.frontierDepth=Math.min(5,template.n-1);
-            template.frontier=branch -> jobs.add(pool.submit(()->{
-                try { Enumeration worker=new Enumeration(template,branch); worker.place(branch.rank(),branch.used()); return worker.result(); }
-                catch (RuntimeException|Error error) { failure.compareAndSet(null,error); throw error; }
-                finally { if (operational != null) operational.completedPrefixes.increment(); }
-            }));
+            template.frontier=branch -> {
+                if (operational != null) operational.discoveredPrefixes++;
+                jobs.add(pool.submit(()->{
+                    try { Enumeration worker=new Enumeration(template,branch); worker.place(branch.rank(),branch.used()); return worker.result(); }
+                    catch (RuntimeException|Error error) { failure.compareAndSet(null,error); throw error; }
+                    finally { if (operational != null) operational.completedPrefixes.increment(); }
+                }));
+            };
             template.run(); Counts result=template.result();
-            if (operational != null) operational.totalPrefixes = jobs.size();
             for (var job:jobs) result=result.plus(job.get());
             check.run(); return result;
         } finally {

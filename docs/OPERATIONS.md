@@ -406,10 +406,10 @@ This is an estimate of Java work retained by the pipeline, not an exact heap lim
 producer-private tails and generation/storage allocations are additional.
 The budget must hold at least one native batch. All private tails and asynchronous
 results drain before a phase completes, and count mismatches or failures reject
-verification. Regular ten-second progress lines show the type, completed/total
-work and interval throughput. Root generation reports completed prefix tasks
-(total unknown until the frontier is scheduled) and visited nodes per second;
-endpoints report checked/total classes and classes per second. Each type emits
+verification. Regular ten-second progress lines show the type, progress
+and interval throughput. Root generation reports completed/discovered
+prefix tasks and visited nodes per second; the discovered count grows during
+scheduling. Endpoints report checked/total classes and classes per second. Each type emits
 a completion line. `td20.checkerVerboseProgress=true` additionally reports
 generation, buffering, witness hits, native reads, cache and heap diagnostics.
 

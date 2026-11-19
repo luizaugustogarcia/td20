@@ -7,7 +7,6 @@ import br.unb.cic.td20.compat.LegacyPairs;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -330,11 +329,10 @@ public final class RootPrefetch implements AutoCloseable {
         long cpuDone = cpuCompleted.sum(), cpuSent = cpuSearched.sum(), ready = prepared.sum();
         long gpuDone = gpuCompleted.sum(), gpuSent = searched.sum(), gpuReady = gpuPrepared.sum();
         long discarded = finished ? total - done : 0;
-        log.info("Root prefetch (advisory keys): processed={}/{} ({}%), remaining={}, examined={}, cached={}, "
+        log.info("Root prefetch (advisory key occurrences): processedOccurrences={}, submittedSoFar={}, pendingOccurrences={}, examined={}, cached={}, "
                         + "recentSkipped={}, cpuSearched={}, cpuClosed={}, gpuSearched={}, gpuClosed={}, encodedQueued={}, "
                         + "cpuPreparedRemaining={}, cpuInFlight={}, gpuPreparedRemaining={}, gpuInFlight={}, discarded={}, dropped={}, active={}",
-                done, total, String.format(Locale.ROOT, "%.2f", total == 0 ? 100 : 100.0 * done / total),
-                total - done - discarded, examinedCount, cached.sum(), recentSkipped.sum(), cpuSent, cpuClosed.sum(),
+                done, total, total - done - discarded, examinedCount, cached.sum(), recentSkipped.sum(), cpuSent, cpuClosed.sum(),
                 gpuSent, closed.sum(), finished ? 0 : total - examinedCount, finished ? 0 : ready - cpuDone,
                 cpuSent - cpuDone, finished ? 0 : gpuReady - gpuDone, gpuSent - gpuDone,
                 discarded, dropped.sum(), !stopping);

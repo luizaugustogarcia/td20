@@ -138,6 +138,7 @@ PY
     invocation+=("--database=$database" "--work=$work")
     printf -v TD20_JSHELL_OPTIONS '%s ' "${jvm[@]}"
     export TD20_JSHELL_OPTIONS
+    export TD20_LAUNCH_TMPDIR="$base/tmp"
     if [[ $action == dry-run ]]; then
         printf 'profile=4080s module=%s cpuWorkers=%s heapGiB=%s writers=%s\n' "$module" "$cpu" "$heap" "$writers"
         [[ $module != emitter ]] || printf 'gpuSlots=%s queueMiBPerSlot=%s aggregateQueueGiB=%s GPUCallers=%s\n' \
@@ -201,10 +202,15 @@ PY
     else
         test -f "$database/CURRENT"
     fi
+    # The run lock is held: old interrupted outputs are disposable, while the
+    # selected complete source wave and certificate databases remain protected.
+    local -a cleanup=(python3 tools/local-work-cleanup.py --base "$base" --database "$database" --lock-fd=9)
+    [[ -z $resume ]] || cleanup+=("--resume-work=$resume")
+    "${cleanup[@]}"
     local free_disk
     free_disk=$(df -Pk "$base" | awk 'NR==2 {print $4}')
     (( free_disk >= ${TD20_MIN_FREE_GIB:-64} * 1024 * 1024 )) || {
-        printf '%s\n' 'Insufficient free workspace storage; no data was removed.' >&2; return 2;
+        printf '%s\n' 'Insufficient free workspace storage after abandoned-work cleanup.' >&2; return 2;
     }
     touch "$log"
     ln -sfn "$(basename -- "$log")" "$base/logs/$module-latest.log"

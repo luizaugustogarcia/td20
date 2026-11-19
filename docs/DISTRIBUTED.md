@@ -259,12 +259,22 @@ The work has these boundaries:
    searches the final roots at budget 11. The legacy `FULL_SEARCH` mode also
    searches inputs at budget 9 and intermediate states at budget 10. Fixed
    points are contracted before fixed-point-free state encoding.
-   After residual intermediate generation, writers drain without a separate
-   inventory traversal. A version-three `AFTER_ONE` checkpoint explicitly
-   records `afterOne=-1` until the mandatory final inverse-expansion scan
-   establishes the exact logical-key count and publishes a counted checkpoint.
-   This deferred count is accepted only for a completed residual generation
-   boundary; it cannot appear in legacy checkpoint versions or `FULL_SEARCH`.
+   After residual intermediate generation, writers drain and a key-only
+   RocksDB iterator scan counts the distinct budget-ten classes. The exact
+   count is saved in the `AFTER_ONE` checkpoint before final expansion begins.
+   This scan performs no state decoding, validation, prefetch, or additional
+   Java deduplication. Legacy version-three `AFTER_ONE` checkpoints with
+   `afterOne=-1` remain accepted only at a completed residual generation
+   boundary; resume counts their persisted set and atomically upgrades the
+   checkpoint before final generation. A deferred count cannot appear in
+   legacy checkpoint versions or `FULL_SEARCH`.
+   Final-wave progress reports completed expanded source classes as
+   `processed=X/N (P%)`, using the exact fixed source total `N` for its
+   completion fraction and rate-based ETA. Generated, submitted, consumed and SST-ingested output
+   key occurrences accumulate during persistence and can include duplicates.
+   The unique final-root count is established by the mandatory merged-database
+   scan. Advisory prefetch reports submitted-so-far and pending occurrences
+   without an expansion completion percentage.
    The independent proof checker retains its own regeneration and checks.
    A job fails if any final root remains unresolved.
 5. After both remote computation phases, all completed witness databases are

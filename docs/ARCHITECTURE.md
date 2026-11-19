@@ -110,7 +110,21 @@ persistence queues. Both handoffs have fixed-size validated records and exact
 final counts. All pools join before sealing, with coverage equalities checking
 source classification, every GPU result, and every transferred inverse case.
 Progress reports count processed source cases against the full wave total and
-show the remaining CPU, GPU and inverse work separately.
+show the remaining CPU, GPU and inverse work separately. The completed
+budget-ten set is counted before final inverse generation starts: after writers
+drain, `DiskStateSet.countKeys()` traverses RocksDB's merged logical keys with
+independent iterators over disjoint half-open byte ranges on one snapshot.
+The range counts sum exactly; overlapping SSTs are merged within each iterator.
+Workers default to all available CPUs, and approximate range byte sizes guide
+the bounded task partition without determining any inventory count.
+Persisted canonical keys already identify distinct classes, so this
+pass counts without decoding states, performing validation, invoking prefetch,
+or constructing a Java deduplication set. The exact source count is saved in
+the `AFTER_ONE` checkpoint. Final expansion reports completed expanded source
+classes as `processed=X/N (P%)`, where `N` is this exact fixed source total
+and `P=100 X/N` for a nonempty source. Remaining source classes, throughput
+and an ETA estimated from the observed rate accompany that fraction. Output
+key-occurrence and write counters are reported separately.
 Intermediate CUDA searches explore the full obligation budget (9 or 10).
 The former depth-five cap and its override have been removed.
 `td20.reconstructionGpuMillis` defaults to 0 (no time cutoff). Budget-11 searches
@@ -200,11 +214,20 @@ the same batch's remaining partitions.
 Producer buffers persist across callbacks on the same thread. Final partial
 batches are queued after all generators join, before writer drain and sealing.
 An atomic admission counter prevents sealing or closing while a generator
-is active. After every generator joins, sealing stops admissions, drains and
-joins every writer, flushes RocksDB and validates the exact sorted inventory.
+is active. After every generator joins, persistence stops admissions and drains
+and joins every writer. The budget-ten boundary then uses the key-only counting
+pass; existing validated sealing and the mandatory processing scans remain
+available for their own obligations.
 Generation or writer failure prevents sealing and propagates to blocked
 producers. Native resources outlive every writer. The deterministic key
 format and the represented class set are unchanged.
+During final generation, thread-safe accumulated counters report generated,
+submitted and consumed key occurrences, successfully ingested SST key
+occurrences, and ingested table totals. These counters can include the same
+canonical key more than once across batches or SSTs; they measure accumulated
+output and persistence work. The exact distinct final-root count remains
+unknown until the mandatory merged-database root scan completes. No per-write
+global key lookup or extra deduplication pass is introduced.
 
 During the final inverse wave, encoded root batches also feed a bounded
 advisory prefetch pipeline. Preparation workers perform batched `multiGet`;
@@ -216,9 +239,18 @@ inverse generation and SST persistence. Queue pressure never blocks
 generation; recent-key suppression and discarded advisory work cannot omit
 obligations. Started searches finish and use the normal checked certificate
 path. The sealed root inventory is still exhaustively scanned afterwards.
+Prefetch reports handled occurrences, `submittedSoFar` and pending work. Its
+submitted total grows during generation, so it carries no overall expansion
+completion percentage. Final-wave completion is reported against the fixed
+counted source inventory instead.
 
 Sealed checkpoints are versioned computation state. The latest-wave count,
 route and budgets are validated on resume. Intrinsic certificates remain
 route-independent and are replayed at the requested budget. Counts, successful
 partial scopes, checkpoints and passing tests are distinct from a complete
 end-to-end proof report.
+Legacy version-three `AFTER_ONE` checkpoints may contain `afterOne=-1` for a
+completed residual wave. Resume counts that persisted set with `countKeys()`
+and atomically upgrades the checkpoint before activating final-root prefetch
+or starting final inverse generation. New completed budget-ten checkpoints
+record the count immediately.

@@ -78,7 +78,8 @@ bash -ic './tools/run-local-checker.sh --build'
 bash -ic './tools/run-local-checker.sh'
 ```
 
-The launcher records settings and logs under `target/local-runtime/` by default.
+The launcher records settings and logs under project-root `local-runtime/`
+by default, outside `fleet/` and Maven `target/` directories.
 Alternatively, use `tools/td20 verify --phase=all --database=PATH --work=FRESH_PATH`
 through the prepared JShell launcher. The full success marker is
 `All regenerated obligations in the complete joint-selection scope are verified.`

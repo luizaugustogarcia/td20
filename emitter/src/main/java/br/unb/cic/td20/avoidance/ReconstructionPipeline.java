@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +67,14 @@ public final class ReconstructionPipeline {
                                BiPredicate<PrimitivePair, Integer> cpu,
                                BiPredicate<PrimitivePair, Integer> gpu,
                                Consumer<DiskStateSet.State> residual, Runnable gpuDrained) {
+        processPrimitive(states,spool,cpuWorkers,gpuWorkers,lookup,cpu,gpu,residual,gpuDrained,() -> "");
+    }
+
+    public static void processPrimitive(DiskStateSet states, Path spool, int cpuWorkers, int gpuWorkers,
+                               Function<List<DiskStateSet.State>, boolean[]> lookup,
+                               BiPredicate<PrimitivePair, Integer> cpu,
+                               BiPredicate<PrimitivePair, Integer> gpu,
+                               Consumer<DiskStateSet.State> residual, Runnable gpuDrained, Supplier<String> details) {
         var total = new AtomicLong(states.prepareScan());
         int inverseWorkers = Integer.getInteger("td20.reconstructionInverseWorkers",
                 Math.min(cpuWorkers, Runtime.getRuntime().availableProcessors()));
@@ -82,12 +91,14 @@ public final class ReconstructionPipeline {
                 long processed = cachedCount + cpuCount + gpuCount + inverseCount;
                 long expected = total.get();
                 String percent = expected < 0 ? "unknown" : String.format(Locale.ROOT, "%.2f", expected == 0 ? 100.0 : 100.0 * processed / expected);
+                String extra=details.get();
                 log.info("Inverse reconstruction {} search/inverse: processed={}/{} ({}%), remaining={}, cached={}, cpuClosed={}, "
-                                + "cpuRemaining={}, gpuSubmitted={}, gpuClosed={}, gpuMisses={}, gpuRemaining={}, inverseCompleted={}, inverseRemaining={}",
+                                + "cpuRemaining={}, gpuSubmitted={}, gpuClosed={}, gpuMisses={}, gpuRemaining={}, inverseCompleted={}, inverseRemaining={}{}",
                         spool.getFileName(), processed, expected < 0 ? "unknown" : expected, percent,
                         expected < 0 ? "unknown" : expected - processed, cachedCount, cpuCount,
                         expected < 0 ? "unknown" : expected - cachedCount - cpuCount - submitted, submitted, gpuCount, misses,
-                        submitted - gpuCount - misses, inverseCount, misses - inverseCount);
+                        submitted - gpuCount - misses, inverseCount, misses - inverseCount,
+                        extra.isEmpty()?"":", "+extra);
             };
             log.info("Reconstruction pipeline {}: CPU workers={}, GPU workers={}, inverse workers={}, disk queue={}",
                     spool.getFileName(), cpuWorkers, gpuWorkers, inverseWorkers, spool);

@@ -11,7 +11,7 @@ td20_local_main() {
     local default_lookup=32768 default_pipelines=4
     local preparation_workers=4 prepared_batches=16 prefetch_batches=32 seen_keys=262144
     project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-    default_base=$project_root/target/local-runtime
+    default_base=$project_root/local-runtime
     default_database=$project_root/certificates
     architecture=${TD20_CUDA_ARCHITECTURE:-89}
     [[ $module == emitter || $module == checker ]] || return 2
@@ -129,6 +129,7 @@ PY
     invocation+=("--database=$database" "--work=$work")
     printf -v TD20_JSHELL_OPTIONS '%s ' "${jvm[@]}"
     export TD20_JSHELL_OPTIONS
+    export TD20_LAUNCH_TMPDIR="$base/tmp"
     if [[ $action == dry-run ]]; then
         printf 'profile=local module=%s cpuWorkers=%s heapGiB=%s writers=%s\n' "$module" "$cpu" "$heap" "$writers"
         [[ $module != emitter ]] || printf 'gpuSlots=%s queueMiBPerSlot=%s aggregateQueueGiB=%s GPUCallers=%s\n' \
@@ -185,10 +186,15 @@ PY
     else
         test -f "$database/CURRENT"
     fi
+    # The run lock is held: old interrupted outputs are disposable, while the
+    # selected complete source wave and certificate databases remain protected.
+    local -a cleanup=(python3 tools/local-work-cleanup.py --base "$base" --database "$database" --lock-fd=9)
+    [[ -z $resume ]] || cleanup+=("--resume-work=$resume")
+    "${cleanup[@]}"
     local free_disk
     free_disk=$(df -Pk "$base" | awk 'NR==2 {print $4}')
     (( free_disk >= ${TD20_MIN_FREE_GIB:-32} * 1024 * 1024 )) || {
-        printf '%s\n' 'Insufficient free workspace storage; no data was removed.' >&2; return 2;
+        printf '%s\n' 'Insufficient free workspace storage after abandoned-work cleanup.' >&2; return 2;
     }
     touch "$log"
     ln -sfn "$(basename -- "$log")" "$base/logs/$module-latest.log"

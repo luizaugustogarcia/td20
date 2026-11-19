@@ -16,6 +16,8 @@ public final class ReconstructionProgress implements AutoCloseable {
     private final Supplier<String> details;
     private final java.util.concurrent.ScheduledExecutorService reporter;
     private volatile long total;
+    private final long startedNanos=System.nanoTime();
+    private final long startedCount;
     private long previousCount, previousNanos = System.nanoTime();
 
     public ReconstructionProgress(String phase, long total, LongSupplier completed) {
@@ -26,6 +28,7 @@ public final class ReconstructionProgress implements AutoCloseable {
         if (total < -1) throw new IllegalArgumentException("A phase total is nonnegative or unknown (-1)");
         this.phase = phase; this.total = total; this.completed = completed; this.details = details;
         previousCount = completed.getAsLong();
+        startedCount = previousCount;
         reporter = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofPlatform().daemon(true).name("phase-progress").factory());
         report();
@@ -50,9 +53,22 @@ public final class ReconstructionProgress implements AutoCloseable {
                     + String.format(Locale.ROOT, "%.2f", 100.0 * count / denominator)
                     + "%), remaining=" + (denominator - count);
         String extra = details.get();
-        log.info("{}: {}, throughput={}/s{}", phase, inventory, rate,
+        double averageRate=(count-startedCount)/(Math.max(1L,now-startedNanos)/1_000_000_000.0);
+        String eta=denominator<0?"unknown":formatEta(denominator-count,averageRate);
+        log.info("{}: {}, throughput={}/s, etaAtAverageRate={}{}", phase, inventory, rate,eta,
                 extra.isEmpty() ? "" : ", " + extra);
         previousCount = count; previousNanos = now;
+    }
+
+    static String formatEta(long remaining,double rate) {
+        if(remaining<0) return "unknown";
+        if(remaining==0) return "00:00:00";
+        if(!Double.isFinite(rate) || rate<=0) return "unknown";
+        double seconds=Math.ceil(remaining/rate);
+        if(seconds>=Long.MAX_VALUE) return "unknown";
+        long duration=(long)seconds,days=duration/86400;
+        String clock=String.format(Locale.ROOT,"%02d:%02d:%02d",(duration/3600)%24,(duration/60)%60,duration%60);
+        return days==0?clock:days+"d "+clock;
     }
 
     @Override public void close() { reporter.shutdownNow(); report(); }

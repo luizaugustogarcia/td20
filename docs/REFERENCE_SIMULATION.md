@@ -6,7 +6,7 @@ cannot establish TD20 coverage. The matching TD20 upper bound remains pending
 until every criterion in [RESEARCH_PLAN.md](RESEARCH_PLAN.md) has a checked artifact.
 
 The maintained local launchers create per-run settings and logs under
-`target/local-runtime/logs/`, scratch work under `target/local-runtime/work/`,
+`local-runtime/logs/`, scratch work under `local-runtime/work/`,
 and use `certificates/` by default. They detect CPU affinity, quota and memory
 limits, record the source revision and working-tree status, execution-VM options,
 class/native hashes, start/finish timestamps, phase and exit status. These are

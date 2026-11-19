@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Three inverse waves, both gain branches, both endpoints, and disk-backed deduplication. */
 public final class ErikssonAvoidance {
@@ -93,12 +94,12 @@ public final class ErikssonAvoidance {
                 require(state,1);
                 afterOne.addInverseGenerated(state.primitivePair(),ErikssonRoute.ROOT_BUDGET-1,2,3);
             };
-            if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-two residuals",checkpoint.afterTwo(),expand);
+            if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-two residuals",checkpoint.afterTwo(),expand,() -> writeProgress(afterOne));
             else ReconstructionPipeline.processPrimitive(states,work.resolve("after-two-search.queue"),workers(),
-                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,1),cpu,gpu,expand);
-            // Residual generation already enforces state invariants. Drain writers now;
-            // derive the exact logical-key count during the required final inverse expansion.
-            long afterOneCount=checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION?afterOne.prepareScan():afterOne.seal();
+                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,1),cpu,gpu,expand,() -> {},() -> writeProgress(afterOne));
+            // RocksDB already deduplicates canonical keys. Count the completed
+            // logical set without decoding or searching before the next wave.
+            long afterOneCount=afterOne.countKeys();
             var next=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),checkpoint.afterTwo(),afterOneCount,-1,checkpoint.mode());
             next.write(work); return afterOne(next,afterOne,work,work,cpu,gpu,lookup,prefetchGpu);
         }
@@ -107,6 +108,7 @@ public final class ErikssonAvoidance {
                                     BiPredicate<PrimitivePair,Integer> cpu,BiPredicate<PrimitivePair,Integer> gpu,
                                     Function<List<DiskStateSet.State>,boolean[]> lookup,
                                     BiPredicate<PrimitivePair,Integer> prefetchGpu) {
+        checkpoint=countAfterOneIfPending(checkpoint,states,checkpointSource);
         var layout=new GpuDeviceLayout(
                 GpuDeviceLayout.parseDevices(System.getProperty("td20.gpuDevices","0")),
                 Integer.getInteger("td20.gpuSlots",8));
@@ -118,14 +120,13 @@ public final class ErikssonAvoidance {
                 int gain=state.primitivePair().size()==ErikssonRoute.ROOT_SYMBOLS-1 ? 1:0;
                 roots.addInverseGenerated(state.primitivePair(),ErikssonRoute.ROOT_BUDGET,gain);
             };
-            if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-one inverse states",checkpoint.afterOne(),expand);
+            if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-one inverse states",checkpoint.afterOne(),expand,() -> writeProgress(roots));
             else ReconstructionPipeline.processPrimitive(states,work.resolve("after-one-search.queue"),workers(),
-                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,2),cpu,gpu,expand);
+                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,2),cpu,gpu,expand,() -> {},() -> writeProgress(roots));
             long afterOneCount=states.knownSize();
-            if(afterOneCount<0) throw new IllegalStateException("Completed intermediate expansion did not establish its exact count");
+            if(afterOneCount!=checkpoint.afterOne()) throw new IllegalStateException("Final expansion did not process the counted intermediate inventory");
             var counted=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),
                     checkpoint.afterTwo(),afterOneCount,-1,checkpoint.mode());
-            if(checkpoint.afterOneCountPending()) counted.write(checkpointSource);
             roots.prepareScan();
             prefetch.finish();
             // Count while processing roots; publish a counted checkpoint only
@@ -147,10 +148,43 @@ public final class ErikssonAvoidance {
         return new Result(checkpoint.endpoints(),checkpoint.afterTwo(),checkpoint.afterOne(),states.knownSize(),unresolved.get());
     }
     private static int workers() { return DirectTwistedBraceletGenerator.configuredWorkerCount(); }
-    private static void expandOnly(DiskStateSet states,String name,long expected,Consumer<DiskStateSet.State> output) {
+    private static void expandOnly(DiskStateSet states,String name,long expected,Consumer<DiskStateSet.State> output,
+                                   Supplier<String> details) {
         var completed=new LongAdder();
-        try(var progress=new ReconstructionProgress("Inverse expansion "+name,expected,completed::sum)) {
+        try(var progress=new ReconstructionProgress("Inverse expansion "+name,expected,completed::sum,details)) {
             states.forEachConcurrently(workers(),state -> { output.accept(state);completed.increment(); });
+        }
+    }
+    private static String writeProgress(DiskStateSet output) {
+        var writes=output.writeProgress();
+        return "generatedKeyOccurrences="+writes.generatedKeyOccurrences()
+                +", submittedKeyOccurrences="+writes.submittedKeyOccurrences()
+                +", consumedKeyOccurrences="+writes.consumedKeyOccurrences()
+                +", ingestedKeyOccurrences="+writes.ingestedKeyOccurrences()
+                +", queuedKeyOccurrences="+writes.queuedKeyOccurrences()
+                +", ingestedTables="+writes.ingestedTables()
+                +", outputUniqueClasses=unknown until counted scan";
+    }
+    private static ErikssonCheckpoint countAfterOneIfPending(ErikssonCheckpoint checkpoint,DiskStateSet states,Path source) {
+        if(!checkpoint.afterOneCountPending()) return checkpoint;
+        long count=states.countKeys();
+        var counted=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),
+                checkpoint.afterTwo(),count,-1,checkpoint.mode());
+        counted.write(source);
+        return counted;
+    }
+    /** Upgrade a completed legacy wave by counting logical keys without inverse generation or search. */
+    public static ErikssonCheckpoint countCompletedAfterOne(Path source) {
+        var checkpoint=ErikssonCheckpoint.read(source);
+        if(checkpoint.stage()!=ErikssonCheckpoint.Stage.AFTER_ONE)
+            throw new IllegalArgumentException("Counting requires a completed AFTER_ONE checkpoint");
+        try(var states=checkpoint.afterOneCountPending()?DiskStateSet.openCompletedForScan(source.resolve("after-one"))
+                :DiskStateSet.openSealedForScan(source.resolve("after-one"),checkpoint.afterOne())) {
+            long count=states.countKeys();
+            var counted=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),
+                    checkpoint.afterTwo(),count,-1,checkpoint.mode());
+            counted.write(source);
+            return counted;
         }
     }
     private static Function<List<DiskStateSet.State>,boolean[]> checked(Function<List<DiskStateSet.State>,boolean[]> lookup,int stage) {

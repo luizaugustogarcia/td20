@@ -149,7 +149,9 @@ bash -ic './tools/run-local-checker.sh'
 ```
 
 Local data uses `certificates/` for the database, `emitter/target/native/`
-for CUDA, and `target/local-runtime/` for work, logs and settings. The checker
+for CUDA build output, and project-root `local-runtime/` for work, logs,
+settings and temporary files. Computational runtime storage stays outside
+`fleet/` and Maven `target/` directories. The checker
 always creates fresh work and reads certificates without writing them. Both
 launchers share a runtime lock. The local emitter uses up to 8 persistence writers,
 4,194,304 aggregate buffer keys, 512 queued batches, a 262,144-key certificate
@@ -157,6 +159,11 @@ queue and 32,768-key lookups. Its prefetch uses 4 preparation workers,
 16 prepared batches, 32 input batches and a 262,144-key recent-key cache.
 The local checker uses the same bounded state persistence, 32,768-key lookups
 and 4 lookup pipelines.
+Before a restart, the maintained launchers hold their runtime lock and remove
+recorded abandoned interrupted work and temporary files. Cleanup preserves
+the certificate database, the validated `--resume-work` source and every
+completed-wave checkpoint; it does not follow directory symlinks. Logs and
+settings retain execution history. No deletion occurs during `--dry-run`.
 
 Override `TD20_RUN_ROOT`, `TD20_CERTIFICATE_DB`, `TD20_CPU_WORKERS`,
 `TD20_HEAP_GIB`, `TD20_WRITERS`, `TD20_BUFFER_KEYS`, `TD20_QUEUE_BATCHES`,
@@ -252,6 +259,37 @@ A wave completes only after CPU production, GPU dispatch and all inverse work
 have joined. Coverage checks require every GPU input to be closed or transferred
 and every transferred case to finish inverse processing.
 
+For residual reconstruction, the completed budget-ten set is counted before
+final inverse generation. After all writers drain, `countKeys()` scans
+RocksDB's merged unique logical keys through parallel disjoint byte ranges on
+one snapshot, without decoding or validating states,
+running prefetch, or constructing a further deduplication set. The exact count
+is saved in the `AFTER_ONE` checkpoint. Legacy version-three checkpoints with
+`afterOne=-1` are counted and atomically upgraded before final generation.
+Counting uses all available CPUs by default. The JVM properties
+`td20.reconstructionCountWorkers` and `td20.reconstructionCountRangesPerWorker`
+select the worker limit and task granularity (four ranges per worker by default).
+Approximate range byte sizes guide scheduling; the inventory comes from exact
+merged-key iteration. Logs show effective workers, completed ranges and keys.
+The count can also be performed independently while reconstruction is stopped:
+
+```bash
+bash -ic './tools/td20 count-reconstruction --source-work=/home/luiz/Projects/others/td20/local-runtime/work/emitter-20261118T024413Z-706373'
+```
+
+The `Inverse expansion after-one inverse states` line reports completed
+expanded source classes as `processed=X/N (P%)`, with the exact source total
+`N`, percentage `P=100 X/N` for a nonempty source, remaining classes, throughput
+and `etaAtAverageRate`. A completed source callback has enumerated its final-root
+outputs; asynchronous writers may still need to drain. That same line reports
+`generatedKeyOccurrences`, `submittedKeyOccurrences`,
+`consumedKeyOccurrences`, `ingestedKeyOccurrences`, `queuedKeyOccurrences` and
+`ingestedTables` separately. These accumulated output and write counters can
+include duplicate canonical keys. `outputUniqueClasses` stays unknown until
+the mandatory final-root database scan establishes the distinct total.
+Advisory prefetch reports handled, submitted-so-far and pending occurrences
+without an expansion completion percentage.
+
 The final root inventory is counted during the mandatory root-processing scan.
 Persistence writers drain before that scan starts; there is no preliminary
 count-only traversal. Until the iterator completes, progress reports an unknown
@@ -308,7 +346,7 @@ or proof coverage counts.
 
 The maintained local emitter defaults to `td20.gpuSlots=8` and `td20.gpuBudgetMB=768`,
 for 6 GiB of GPU queues plus state caches and metadata.
-Per-run settings under `target/local-runtime/logs/` record the actual JVM options,
+Per-run settings under `local-runtime/logs/` record the actual JVM options,
 source revision, work path, start/finish times and completion status.
 
 | State | Symbols | Budget |

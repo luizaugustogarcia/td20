@@ -31,7 +31,7 @@ public record ErikssonCheckpoint(Stage stage,long endpoints,long afterTwo,long a
         } catch (Exception error) { throw new IllegalStateException("Cannot persist sealed Eriksson wave",error); }
         finally { if (temporary!=null) try { Files.deleteIfExists(temporary); } catch (Exception ignored) { } }
     }
-    /** Version three records a completed residual wave whose exact count is deferred to mandatory expansion. */
+    /** Version three records a legacy completed residual wave that must be counted before final expansion. */
     public boolean afterOneCountPending() { return stage==Stage.AFTER_ONE && afterOne==-1; }
     public static ErikssonCheckpoint read(Path directory) {
         try {

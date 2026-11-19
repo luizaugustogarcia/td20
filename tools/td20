@@ -11,6 +11,7 @@ CPU validation:
   count        Check root and endpoint class counts on all available CPU cores
   count-roots  Regenerate and publish all active root U3,O3,C3 values; resumable
   count-endpoints  Persist the complete endpoint census via emitter JShell
+  count-reconstruction  Count persisted budget-ten keys and save the completed-wave checkpoint
   audit-endpoints  Recount and compare endpoints via checker JShell
   endpoint-table  Write checked endpoint and root table totals into the paper
   census       Check root/endpoint counts via JShell
@@ -82,6 +83,7 @@ case "$command" in
     audit-import) module=checker; entry=br.unb.cic.td20.verification.ImportedTd18Verifier ;;
     bench-permutations) script=tools/bench/PrimitivePermutations.jsh ;;
     count|census) entry=br.unb.cic.td20.CountEriksson ;;
+    count-reconstruction) entry=br.unb.cic.td20.avoidance.CountReconstructionWave ;;
     emit) entry=br.unb.cic.td20.WitnessEmitter ;;
     avoidance) entry=br.unb.cic.td20.WitnessEmitter; set -- --phase=avoidance "$@" ;;
     import-td18) entry=br.unb.cic.td20.avoidance.ImportTd18AfterTwo ;;
@@ -113,8 +115,9 @@ if [[ -n $script ]]; then
     if (( $# != 0 )); then printf '%s\n' 'This complete inventory command takes no range arguments.' >&2; exit 2; fi
     exec "${invocation[@]}" "$script"
 fi
-mkdir -p "$module/target"
-driver=$(mktemp "$module/target/jshell-arguments-XXXXXX")
+launch_tmp=${TD20_LAUNCH_TMPDIR:-${TMPDIR:-/tmp}}
+mkdir -p -- "$launch_tmp"
+driver=$(mktemp "$launch_tmp/td20-jshell-arguments-XXXXXX")
 trap 'rm -f -- "$driver"' EXIT
 printf '%s\0' "$entry" "$command" "$@" > "$driver"
 export TD20_LAUNCH_ARGS="$driver"

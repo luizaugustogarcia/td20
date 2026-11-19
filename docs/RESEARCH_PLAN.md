@@ -139,11 +139,24 @@ report explicitly records that no budget-ten certificate lookup pruned the
 final roots. If a wave is empty, the full checker must still report that scope.
 Historical full-search checkpoints and residual-expansion checkpoints are
 distinct modes; no incompatible checkpoint or batch inventory may be reused.
-For completed residual intermediate generation, version-three emitter
-checkpoints may explicitly defer the after-one count as `-1`. The mandatory
-next inverse-expansion scan counts every logical key, joins all callbacks and
-publishes the exact count. This removes a redundant emitter-only traversal;
-it does not permit an incomplete generation wave or alter checker obligations.
+After residual intermediate generation completes and all writers drain,
+`countKeys()` counts distinct persisted budget-ten classes through RocksDB's
+merged logical keys using parallel, disjoint half-open ranges on one snapshot.
+All range workers join and every iterator status is checked before summing and
+publishing the exact inventory. Approximate byte sizes guide range scheduling
+only. It does not decode or validate states, invoke
+prefetch, or perform an additional Java deduplication. Publish that exact count
+in the `AFTER_ONE` checkpoint before final inverse generation starts. Legacy
+version-three checkpoints with `afterOne=-1` remain readable only for completed
+residual generation; resume performs the key-only count and atomically upgrades
+the checkpoint before proceeding. Final expansion logs completed expanded
+source classes as `processed=X/N (P%)`, against the exact fixed source total
+`N`, and estimates its ETA from the observed rate. The completion percentage
+comes from completed source expansions, independently of output counters.
+Accumulated generated, submitted, consumed and SST-ingested output key
+occurrences are operational counters that may include duplicates. They are
+separate from the exact final-root inventory established by the mandatory
+root scan, and do not alter independent checker obligations.
 
 ## 5. Independently verify the entire proof
 

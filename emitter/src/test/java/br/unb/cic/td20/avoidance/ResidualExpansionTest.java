@@ -51,7 +51,7 @@ class ResidualExpansionTest {
         assertEquals(ErikssonCheckpoint.Mode.FULL_SEARCH,ErikssonCheckpoint.read(directory).mode());
     }
 
-    @Test void completedUncountedIntermediateWaveResumesAndCountsDuringExpansion(@TempDir Path directory) throws Exception {
+    @Test void completedUncountedIntermediateWaveCountsBeforeFinalExpansion(@TempDir Path directory) throws Exception {
         Path source=Files.createDirectory(directory.resolve("source"));
         var twenty=ActiveErikssonAvoidanceTest.pair(20);
         var twentyOne=ActiveErikssonAvoidanceTest.pair(21);
@@ -69,13 +69,44 @@ class ResidualExpansionTest {
         assertTrue(pending.afterOneCountPending());
         assertEquals("td-eriksson-reconstruction-v3",Files.readAllLines(source.resolve("eriksson-reconstruction-v1.txt")).getFirst());
         var result=ErikssonAvoidance.resume(source,Files.createDirectory(directory.resolve("work")),(p,b) -> {
-            assertEquals(11,b);actual.add(p.extendedToricClassKey());return true;
-        },batch -> {batch.forEach(state -> assertEquals(11,state.maximumMoves()));return new boolean[batch.size()];});
+            assertEquals(11,b);
+            assertEquals(2,ErikssonCheckpoint.read(source).afterOne(),"Source count must be checkpointed before any final-root search");
+            actual.add(p.extendedToricClassKey());return true;
+        },batch -> {
+            assertEquals(2,ErikssonCheckpoint.read(source).afterOne(),"Source count must precede even advisory root lookup");
+            batch.forEach(state -> assertEquals(11,state.maximumMoves()));return new boolean[batch.size()];
+        });
         assertEquals(expected,actual);assertEquals(2,result.afterOne());assertEquals(0,result.unresolved());
         assertEquals(2,ErikssonCheckpoint.read(source).afterOne());
         assertFalse(ErikssonCheckpoint.read(source).afterOneCountPending());
         var completed=ErikssonCheckpoint.read(directory.resolve("work"));
         assertEquals(2,completed.afterOne());assertFalse(completed.afterOneCountPending());
+    }
+
+    @Test void completedWaveCanBeCountedWithoutStartingFinalGeneration(@TempDir Path directory) throws Exception {
+        try(var states=new DiskStateSet(directory.resolve("after-one"))) {
+            states.add(ActiveErikssonAvoidanceTest.pair(20),10);
+            states.add(ActiveErikssonAvoidanceTest.pair(20),10);
+            states.add(ActiveErikssonAvoidanceTest.pair(21),10);
+        }
+        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,2036,970331,-1,-1,
+                ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION).write(directory);
+        var counted=ErikssonAvoidance.countCompletedAfterOne(directory);
+        assertEquals(2,counted.afterOne()); assertEquals(-1,counted.roots());
+        assertEquals(counted,ErikssonCheckpoint.read(directory));
+        assertFalse(Files.exists(directory.resolve("roots")));
+        assertEquals(counted,ErikssonAvoidance.countCompletedAfterOne(directory));
+    }
+
+    @Test void keyCountFailureKeepsTheExistingCheckpoint(@TempDir Path directory) throws Exception {
+        try(var states=new DiskStateSet(directory.resolve("after-one"))) {
+            states.add(ActiveErikssonAvoidanceTest.pair(20),10);
+        }
+        var expected=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1,
+                ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION);
+        expected.write(directory);
+        assertThrows(IllegalStateException.class,() -> ErikssonAvoidance.countCompletedAfterOne(directory));
+        assertEquals(expected,ErikssonCheckpoint.read(directory));
     }
 
     @Test void pendingCountCannotBeHiddenInLegacyVersionsOrFullSearch(@TempDir Path directory) throws Exception {

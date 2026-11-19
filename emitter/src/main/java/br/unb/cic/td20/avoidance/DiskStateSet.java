@@ -41,16 +41,39 @@ public final class DiskStateSet implements AutoCloseable {
     private final RocksDB database;
     private final StateSetWriter[] writers;
     private final Consumer<List<byte[]>> generatedObserver;
-    private final ConcurrentHashMap<Long, ArrayList<byte[]>> producerBatches = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, ProducerBatch> producerBatches = new ConcurrentHashMap<>();
     private final AtomicInteger admissions = new AtomicInteger();
     private final AtomicReference<Throwable> generationFailure = new AtomicReference<>();
     private final AtomicReference<Throwable> persistenceFailure = new AtomicReference<>();
-    private final LongAdder ingestedTables = new LongAdder(), ingestedKeys = new LongAdder();
+    private final LongAdder generatedKeys = new LongAdder(), ingestedTables = new LongAdder(), ingestedKeys = new LongAdder();
     private long size = -1;
+    private boolean inventoryValidated;
     private boolean scanPrepared;
     private volatile boolean closed;
     private final boolean readOnly;
     private final long checkpointCount;
+
+    /** Operational occurrence totals, never exact global class counts. Snapshots need not be atomic across fields. */
+    public record WriteProgress(long generatedKeyOccurrences, long submittedKeyOccurrences,
+                                long consumedKeyOccurrences, long ingestedKeyOccurrences, long ingestedTables) {
+        public long queuedKeyOccurrences() { return Math.max(0, submittedKeyOccurrences - consumedKeyOccurrences); }
+    }
+
+    /** Worker-owned mutable batch. Counter publication is amortized over batches and source calls. */
+    private static final class ProducerBatch {
+        final ArrayList<byte[]> keys;
+        long generatedSincePublication;
+        ProducerBatch(int capacity) { keys = new ArrayList<>(capacity); }
+    }
+
+    /** Concurrent generation/persistence telemetry; partial current source calls may await counter publication. */
+    public WriteProgress writeProgress() {
+        long consumed = 0, submitted = 0;
+        for (var writer : writers) if (writer != null) {
+            consumed += writer.consumedKeys(); submitted += writer.submittedKeys();
+        }
+        return new WriteProgress(generatedKeys.sum(), submitted, consumed, ingestedKeys.sum(), ingestedTables.sum());
+    }
 
     public static final class State {
         private final PrimitivePair primitivePair;
@@ -103,7 +126,7 @@ public final class DiskStateSet implements AutoCloseable {
         return new DiskStateSet(directory, true, expectedCount, null, false);
     }
 
-    /** A completed generated wave with an explicit pending count; its mandatory processing scan establishes the count. */
+    /** A completed generated wave with a pending count; countKeys establishes its inventory before expansion. */
     public static DiskStateSet openCompletedForScan(Path directory) {
         return new DiskStateSet(directory, true, -1, null, false);
     }
@@ -176,7 +199,9 @@ public final class DiskStateSet implements AutoCloseable {
     public void add(PrimitivePair pair, int maximumMoves) {
         beginGeneration();
         try {
-            submit(List.of(encode(new State(pair.canonicalRepresentative(), maximumMoves))));
+            byte[] key = encode(new State(pair.canonicalRepresentative(), maximumMoves));
+            generatedKeys.increment();
+            submit(List.of(key));
         } catch (RuntimeException | Error failure) {
             generationFailure.compareAndSet(null, failure);
             throw failure;
@@ -187,19 +212,23 @@ public final class DiskStateSet implements AutoCloseable {
     public void addInverseGenerated(PrimitivePair child, int maximumMoves, int... gains) {
         if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
         beginGeneration();
+        ProducerBatch batch = null;
         try {
             var work = INVERSE.get();
-            var batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
-                    ignored -> new ArrayList<>(generatedBatchKeys));
+            batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
+                    ignored -> new ProducerBatch(generatedBatchKeys));
+            var outputBatch = batch;
             for (int gain : gains) work.inverse.preimages(child, gain, (omega, beta, n) -> {
                 byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
                 key[0] = VERSION; key[1] = (byte) maximumMoves; key[2] = (byte) n;
-                batch.add(key);
-                if (batch.size() == generatedBatchKeys) { submit(batch); batch.clear(); }
+                appendGenerated(outputBatch, key);
             });
         } catch (RuntimeException | Error failure) {
             generationFailure.compareAndSet(null, failure); throw failure;
-        } finally { admissions.decrementAndGet(); }
+        } finally {
+            if (batch != null) publishGeneratedCount(batch);
+            admissions.decrementAndGet();
+        }
     }
 
     private static final class InverseWorkspace {
@@ -221,20 +250,33 @@ public final class DiskStateSet implements AutoCloseable {
         if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
         java.util.Objects.requireNonNull(generator);
         beginGeneration();
+        ProducerBatch batch = null;
         try {
-            var batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
-                    ignored -> new ArrayList<>(generatedBatchKeys));
+            batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
+                    ignored -> new ProducerBatch(generatedBatchKeys));
+            var outputBatch = batch;
             generator.accept(pair -> {
-                batch.add(encode(new State(pair.canonicalRepresentative(), maximumMoves)));
-                if (batch.size() == generatedBatchKeys) {
-                    submit(batch);
-                    batch.clear();
-                }
+                appendGenerated(outputBatch, encode(new State(pair.canonicalRepresentative(), maximumMoves)));
             });
         } catch (RuntimeException | Error failure) {
             generationFailure.compareAndSet(null, failure);
             throw failure;
-        } finally { admissions.decrementAndGet(); }
+        } finally {
+            if (batch != null) publishGeneratedCount(batch);
+            admissions.decrementAndGet();
+        }
+    }
+
+    private void appendGenerated(ProducerBatch batch, byte[] key) {
+        batch.keys.add(key); batch.generatedSincePublication++;
+        if (batch.keys.size() == generatedBatchKeys) {
+            publishGeneratedCount(batch); submit(batch.keys); batch.keys.clear();
+        }
+    }
+
+    private void publishGeneratedCount(ProducerBatch batch) {
+        if (batch.generatedSincePublication == 0) return;
+        generatedKeys.add(batch.generatedSincePublication); batch.generatedSincePublication = 0;
     }
 
     private void submit(List<byte[]> keys) {
@@ -343,9 +385,26 @@ public final class DiskStateSet implements AutoCloseable {
     /** Unknown until an exhaustive iterator and its callbacks complete. */
     public synchronized long knownSize() { return size; }
 
-    public synchronized long seal() {
+    /**
+     * Counts RocksDB's already-deduplicated logical keys after writers drain.
+     * This performs no Java deduplication, state decoding, value validation or
+     * advisory search callbacks. Mandatory processing retains record validation.
+     */
+    public synchronized long countKeys() {
         prepareScan();
         if (size >= 0) return size;
+        int workers=Math.min(Runtime.getRuntime().availableProcessors(),
+                positiveProperty("td20.reconstructionCountWorkers",Runtime.getRuntime().availableProcessors()));
+        long scanned=ParallelKeyCounter.count(database,workers,
+                positiveProperty("td20.reconstructionCountRangesPerWorker",4),checkpointCount,
+                "State inventory "+stagingDirectory.getParent().getFileName()+" key counting");
+        size = scanned;
+        return size;
+    }
+
+    public synchronized long seal() {
+        prepareScan();
+        if (size >= 0 && inventoryValidated) return size;
         // This set writes exclusively through completed external-SST ingests.
         // There is no memtable to flush; a synchronous flush can wait behind
         // compactions even though the complete inventory is already readable.
@@ -356,6 +415,7 @@ public final class DiskStateSet implements AutoCloseable {
                     // scan still visits every persisted record.
                     if (generatedObserver != null) generatedObserver.accept(keys);
                 });
+        inventoryValidated = true;
         return size;
     }
 
@@ -375,7 +435,7 @@ public final class DiskStateSet implements AutoCloseable {
             scannedCount.set(scanned);
         } catch (RocksDBException failure) { throw new IllegalStateException("Cannot scan reconstruction states", failure); }
         if (expected >= 0 && scanned != expected) throw new IllegalStateException("Reconstruction scan missed states");
-        synchronized (this) { size = scanned; }
+        synchronized (this) { size = scanned; inventoryValidated = true; }
     }
 
     /** Reads deterministic keys with bounded parallel callbacks, waiting for all work to finish. */
@@ -431,7 +491,7 @@ public final class DiskStateSet implements AutoCloseable {
                 }
             }
         });
-        synchronized (this) { size = scanned; }
+        synchronized (this) { size = scanned; inventoryValidated = true; }
     }
 
     /** The single RocksDB iterator owns ordering; bounded batches own all costly work. */
@@ -519,8 +579,9 @@ public final class DiskStateSet implements AutoCloseable {
         // reach any shard. A drain failure still joins all native-resource users.
         for (var batch : producerBatches.values()) {
             try {
-                if (!batch.isEmpty()) submit(batch);
-                batch.clear();
+                publishGeneratedCount(batch);
+                if (!batch.keys.isEmpty()) submit(batch.keys);
+                batch.keys.clear();
             } catch (RuntimeException error) {
                 if (failure == null) failure = error; else failure.addSuppressed(error);
             }

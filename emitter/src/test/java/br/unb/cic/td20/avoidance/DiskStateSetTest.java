@@ -32,6 +32,7 @@ class DiskStateSetTest {
             try {
                 assertTrue(entered.await(10, TimeUnit.SECONDS));
                 assertThrows(IllegalStateException.class, states::seal);
+                assertThrows(IllegalStateException.class, states::countKeys);
                 assertThrows(IllegalStateException.class, states::close);
             } finally { release.countDown(); }
             producer.get(10, TimeUnit.SECONDS);

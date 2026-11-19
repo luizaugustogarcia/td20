@@ -13,6 +13,7 @@ avoidance-work/
 logs/
 /fleet/
 /runs/
+/local-runtime/
 
 # Native/CMake build products
 **/CMakeFiles/

@@ -101,6 +101,13 @@ reports progress every ten seconds. Known totals show processed/total, percent
 and remaining work. During the first unique-class count, the exact total is
 explicitly unknown until enumeration finishes; the counted classes and rate
 remain visible. Writer names include their state-set directory.
+After the budget-ten wave is fully persisted, a key-only scan counts its exact
+distinct source inventory and saves that count before final expansion starts.
+Final expansion reports completed source expansions as `processed=X/N (P%)`,
+with the fixed exact source total `N`, remaining classes, throughput and a
+rate-based ETA. Accumulated generated and written final-root key occurrences
+appear separately and can include duplicates; the mandatory final-root scan
+establishes the distinct output count.
 
 ## Verify complete coverage
 

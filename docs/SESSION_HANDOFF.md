@@ -1,36 +1,82 @@
-# TD20 computational handoff — 18 November 2026
+# TD20 computational handoff — 19 November 2026
 
 ## Active production
 
-The operator chose local residual reconstruction on 18 November 2026.
-RUN/local-residual-reconstruction-v1 uses the RTX 4070 Laptop GPU and the
-automatically detected local CPU allocation, appending results to project-root
-certificates/. Its logs/emitter-latest.log and console.log expose progress.
-The remote fleet and independent full-proof waiter remain stopped.
+Local reconstruction restarted at 03:17:48 UTC on 19 November 2026 as PID
+2109221 (persistent terminal session 48344). Its work directory is
+`local-runtime/work/emitter-20261119T031748Z-2109221`. Local runtime work, logs,
+settings and temporary files are under project-root `local-runtime/`, outside
+both `fleet/` and Maven `target/` directories. The local profile uses the RTX
+4070 Laptop GPU and automatically detected CPU allocation, appending results
+to project-root `certificates/`. The active log is
+`local-runtime/logs/emitter-latest.log`. The remote fleet and independent
+full-proof waiter remain stopped.
 
-The first local run completed and deduplicated the 44 GiB budget-ten
-`after-one` database, then began the final inverse expansion. That process was
-stopped. The operator chose to retain the two physical waves because disk space
-is available and global intermediate deduplication avoids repeated final
-expansion. Reconstruction resumed from the completed version-three `AFTER_ONE`
-checkpoint at `work/emitter-20261118T024413Z-706373` on 18 November 2026. Its
-`afterOne=-1` count is established during this mandatory final expansion. The
-new work directory is `work/emitter-20261118T143031Z-1431181`. Earlier partial
-roots are not a resume boundary, but their valid deterministically keyed
-certificates remain reusable. Root settlement is batched certificate lookup,
-then CPU prefixes, then GPU fallback only for CPU misses.
+The retained completed budget-ten `after-one` database and counted version-two
+`AFTER_ONE` checkpoint are at
+`/home/luiz/Projects/others/td20/local-runtime/work/emitter-20261118T024413Z-706373`.
+The operator chose to retain the two physical waves because disk space is
+available and global intermediate deduplication avoids repeated final expansion.
+The checkpoint
+recorded `afterOne=-1` at restart; the exact intermediate cardinality was not
+recorded before the earlier final expansion. A key-only count of this completed
+source began with a serial scan at 03:02:09 UTC; that process was retired
+for the parallel implementation. The new count started at 03:17:51 UTC with
+22 workers and 88 disjoint snapshot ranges, initially counting around
+35--39 million keys per second. All 88 ranges completed at 03:19:52 UTC:
+the exact inventory is **4,010,256,622** unique logical keys. The source
+checkpoint now records `afterOne=4010256622`, and final expansion began
+automatically against this fixed denominator. Earlier partial roots are not
+a restart boundary, but their valid deterministically keyed certificates remain
+reusable. Root settlement is batched certificate lookup, then CPU prefixes, then GPU
+fallback only for CPU misses.
 
-The operator now requests a single physical emission database at project-root
-certificates/, before reconstruction. Local consolidation uses exactly the ten
+The primitive emitter migration was committed and pushed as `387910b`. Its
+later local final expansion was stopped during the requested counting and
+progress update. Do not resume from its unfinished final-root output. The new
+launch resumes the retained completed budget-ten source in fresh work. The
+maintained launchers remove their recorded abandoned interrupted work and
+temporary files before restarting, while preserving certificate databases,
+the selected completed resume source, and other completed-wave checkpoints.
+
+The requested counting update counts distinct persisted budget-ten keys with
+`countKeys()` after writer drain and saves the exact total in the `AFTER_ONE`
+checkpoint before final inverse generation. This is a key-only merged RocksDB
+scan with independent iterators on disjoint half-open snapshot ranges,
+without decoding, validation, prefetch, or further Java
+deduplication. Legacy uncounted checkpoints are counted and atomically upgraded
+before final generation. Final expansion then reports completed expanded
+source classes as `processed=X/N (P%)`, where `N` is the exact counted
+budget-ten source total and `P=100 X/N` for a nonempty source, together with
+remaining source classes and a rate-based ETA. Generated, submitted, consumed and
+SST-ingested output key occurrences accumulate separately and can include
+duplicates; only the mandatory root scan establishes the exact final class
+count. Prefetch reports submitted-so-far and pending work without a misleading
+completion percentage. The parallel count completed in about 121 seconds,
+averaging approximately 33 million logical keys per second, with observed
+production JVM CPU utilization around 1,888 percent (about 19 cores).
+Final expansion logs its completed source classes and accumulated output
+occurrences against the counted inventory. Both required Maven CPU suites passed
+before the earlier serial launch: emitter 289 tests with 16 configured CUDA
+skips; checker 105 tests. Both had zero failures and errors. The operator
+requested production verification of the parallel update without additional
+tests. The parallel code compiled successfully and completed its production
+count; the counted checkpoint and live final-expansion logs confirm integration.
+
+The physical emission union was consolidated at project-root certificates/
+before local reconstruction. That consolidation used exactly the ten
 accepted inputs in RUN/consolidation/complete-v1.txt (all 1,469 emission tasks),
 including the five recovered vast-06 inputs. The incomplete crashed-server DB
-is excluded. fleet/MergeEmissionCertificates.jsh runs the existing opaque-KV
+was excluded. fleet/MergeEmissionCertificates.jsh ran the existing opaque-KV
 CertificateDatabaseConsolidator with the coordinator profile and 1 GiB SST
-target. Progress is RUN/local-certificate-consolidation/emission.log; its
-complete-v1.txt is published only after final physical integrity validation.
-No witnesses are replayed; replay belongs to the independent checker. Preserve
-all ten source DBs. This emission union is not the completed proof certificate:
-the later reconstruction results must still be incorporated.
+target. Its historical progress is RUN/local-certificate-consolidation/emission.log;
+complete-v1.txt was published after final physical integrity validation.
+No witnesses were replayed; replay belongs to the independent checker. These
+source paths record the historical consolidation inputs; their downloaded
+copies are not a reconstruction restart requirement after consolidation.
+Preserve the project-root certificate database. The emission union alone is not
+the completed proof certificate; reconstruction results and full independent
+checking remain required.
 
 The physical emission union completed at 21:28:20 UTC on 17 November 2026,
 with 11,523,937,239 witnesses and 2,036 informational endpoint markers.
@@ -58,10 +104,12 @@ Active reconstruction uses only these 970,331 second-level residuals,
 retains a canonical disk-deduplicated budget-ten intermediate wave without
 budget-nine or budget-ten sorting, and searches the final 21-symbol roots at
 budget eleven.
-The 2,036 original endpoint markers remain informational. fleet/launch.args
-now explicitly selects this residual input. At batch size 256 the active
-scope is 3,791 batches, with 91 states in the last batch; their preparation
-and execution have not started. Final inverse totals remain unknown.
+The 2,036 original endpoint markers remain informational. The historical fleet
+configuration selected this residual input as 3,791 batches of at most 256
+states, with 91 states in the last batch. Those remote batches were not
+started; the active local reconstruction resumes the completed global
+budget-ten set. Its exact source count is pending, and the final unique-root
+total remains unknown until the mandatory root scan.
 
 Work belongs to /home/luiz/Projects/others/td20. TD18 is closed and restored;
 its archived attempts are not TD20 inputs. TD(16) = 9 and TD(18) = 10 are
@@ -73,8 +121,9 @@ UUID: b360c418-25af-4100-a62d-40b4b226817d.
 The complete fleet tree was moved out of target at the operator's request.
 Keep computational data/configuration outside Maven build directories.
 All durable fleet artifacts are ignored under project-root fleet/.
-Earlier attempts were deleted. Preserve this run's completed emission during
-the authorized reconstruction restart; never reset or mix in older output.
+Earlier attempts were deleted. The completed emission was consolidated into
+project-root `certificates/`, which the local reconstruction preserves; never
+reset or mix in older output.
 
 All 1,469 emission computations completed. Receipts and sealed residual sets
 were downloaded and all 143 annotation inventories validated. The residual
@@ -84,7 +133,12 @@ The archived full-search input has 19,660 reconstruction batches of at most
 Keep 83 root partitions, 143 full endpoint annotations, budgets 8/9/10/11,
 both endpoints, and both (1,2,2) and (0,3,2) inverse paths.
 
-## Fleet
+## Historical fleet
+
+The following fleet paths and resource allocations describe completed or
+stopped attempts. Downloaded source databases are not required for the current
+local restart: it uses project-root `certificates/` and the completed budget-ten
+source recorded above. Reinspect resources before any new fleet operation.
 
 Connections: fleet/servers.tsv. Individual profiles: fleet/profiles/.
 The five surviving active servers have 16 certificate writers. vast-06 crashed
@@ -106,22 +160,23 @@ heap, eight certificate/reconstruction writers. Re-inspect resources before
 computing; automatic UseNUMA applies to multiple allocated sockets/NUMA nodes.
 Verify identical Git revisions across surviving servers, without source-file hashes.
 
-## Lost emission recovery
+## Historical lost emission recovery
 
 All five surviving emission databases finished downloading at 19:18:52 Lisbon
-and passed local file/schema/count/checksum validation by 19:19:34. They are
-under RUN/downloads/vast-02, vast-03, vast-04, vast-05 and vast-08. Their
+and passed local file/schema/count/checksum validation by 19:19:34. They were
+published under RUN/downloads/vast-02, vast-03, vast-04, vast-05 and vast-08. Their
 completion marker is RUN/consolidation/survivors-complete-v1.txt.
 vast-06 saved 16/26 SSTs locally; ten SSTs (about 9.6 GiB) are missing. Its
-incomplete database is not an input. All original receipts, endpoint residuals,
-the 2,036-class union and the prepared 5,032,950-state inverse wave are retained.
+incomplete database was excluded. Original receipts, endpoint residuals,
+the 2,036-class union and the prepared 5,032,950-state inverse wave were retained
+through recovery.
 
 The operator authorized regenerating the lost data with all five survivors
 and cleaning their remote run files before launch. Cleanup completed with no
 remote Java workers active and their local accepted backups checked. Remote
 source clones/native caches were retained; other old remote run files were
 deleted. The cleanup record is RUN/emission-recovery-vast-06-v1/cleanup-v1.txt.
-Use fleet/servers-survivors.tsv and each server's existing individual profile.
+Recovery used fleet/servers-survivors.tsv and each server's individual profile.
 
 tools/td20 fleet-recover-emission --run=fleet/production-td20-20261117
 --servers=fleet/servers-survivors.tsv --lost-server=vast-06 regenerates exactly
@@ -136,13 +191,13 @@ originals before adopting certificates. New emission databases are physically
 consolidated per server, targeting 1 GiB SSTs, then transferred with bounded
 parallel SSH workers. Retries resume at the saved byte offset. Publication uses
 RUN/downloads/recovered-vast-06-vast-XX/certificates; the five survivor inputs
-remain intact. The combined scope must cover all 1,469 original emission tasks
-exactly once before RUN/consolidation/complete-v1.txt is published.
-Inverse reconstruction and the independent proof-verification waiter remain
-stopped. The final single merged database still belongs at project-root
-certificates/ after inverse reconstruction completes.
+were preserved through consolidation. The combined scope covered all 1,469
+original emission tasks exactly once before
+RUN/consolidation/complete-v1.txt was published. Inverse reconstruction and the
+independent proof-verification waiter were stopped during recovery. The
+consolidated database now belongs at project-root certificates/.
 
-## Authorized streaming reconstruction upgrade
+## Historical streaming reconstruction upgrade
 
 The operator requested parallel batch preparation, immediate dispatch of sealed
 batches, local unit tests, deployment and reconstruction restart. No experiments
@@ -169,18 +224,21 @@ module target logs contain the final test totals. The independent checker is
 unchanged. The frozen TD18 comparison has not been updated/rerun for these
 explicitly authorized distributed extensions.
 
-## Completion and separate checking
+## Historical fleet completion and separate checking
 
-Reconstruction is stopped at the operator's request, pending a replacement fleet.
-Zero reconstruction batches completed. The coordinator, remote workers, temporary
-streaming bridge and independent verification waiter are stopped. Preserve all
-completed emission databases, RUN/results and RUN/reconstruction. Do not restart
-reconstruction or its waiter until the operator supplies the replacement fleet.
+The earlier remote reconstruction attempt stopped pending a replacement fleet,
+with zero remote reconstruction batches completed. Its coordinator, remote
+workers, temporary streaming bridge and independent verification waiter were
+stopped. The completed fleet emission was later consolidated locally. The
+operator subsequently selected local reconstruction;
+its current running state, retained source and runtime location are recorded
+above. Independent final proof checking still requires the complete certificate.
 
 The old 24-worker per-task download was aborted. All RUN/downloads contents and
 partial transfer archives were deleted, freeing 52,030,878,767 bytes. Old successful
-downloads had removed their transfer intents, so recover the complete 1,469-task
-scope from closed remote receipts and match them against local validated results.
+downloads had removed their transfer intents, so recovery restored the complete
+1,469-task scope from closed remote receipts and matched it against local
+validated results.
 
 The authorized replacement is tools/td20 fleet-consolidate, with --run and --servers
 pointing to this run and fleet/servers.tsv. It re-inspects all sources, uses
@@ -188,17 +246,19 @@ their individual profiles and automatic NUMA flags, and performs physical KV
 consolidation concurrently on all six servers. Values remain opaque; no witness
 replay occurs. Final native compaction targets 1 GiB ZSTD SSTs. Original closed
 databases remain remote. The separate consolidation source snapshot is under
-RUN/consolidation; preserve the original computational source.tar/source.bundle.
+RUN/consolidation; the original computational source.tar/source.bundle was
+preserved through consolidation.
 
 After consolidation, 24 independent SSH workers download SSTs in round-robin
 server order. SSH recompression is disabled for these already compressed tables.
 Files are staged separately per server, then accepted after exact file sizes,
 task scope, schema, KV counts and RocksDB checksums pass. Publication is
 RUN/downloads/vast-XX/certificates, with RUN/consolidation/complete-v1.txt requiring
-every emission task. Resume can use these six DBs without old emission servers;
-the later replaying merge still includes every completed reconstruction result.
-The project-root certificates/ was an earlier interrupted local run (41 GiB),
-never a fleet input, and was deleted at the operator's request.
+every emission task. The accepted sources were later consolidated into the
+local certificate database, so current reconstruction does not require these
+download directories.
+An earlier interrupted local certificates/ database (41 GiB) was never a fleet
+input and was deleted at the operator's request before later consolidation.
 The operator selected project-root certificates/ for the final single merged
 database after reconstruction. fleet/launch.args includes --database=certificates,
 and RUN/merged-database-v1.txt records that destination. The separate verification

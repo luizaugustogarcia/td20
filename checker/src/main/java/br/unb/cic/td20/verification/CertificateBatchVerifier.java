@@ -6,85 +6,165 @@ import br.unb.cic.td20.runtime.CheckerParallelism;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
-/** Large bounded multiGet batches whose replay overlaps concurrent generation. */
+/** Worker-owned input buffers and memory-admitted asynchronous certificate batches. */
 final class CertificateBatchVerifier implements Consumer<PrimitivePair>, AutoCloseable {
-    private final CertificateStore certificates;
-    private final int maximumMoves;
+    // Conservative accounting for pairs, keys, results, references and replay temporaries.
+    // This bounds admitted Java work, rather than claiming an exact JVM object size.
+    private static final long BYTES_PER_PAIR = 512;
+    private final Function<List<PrimitivePair>, CompletableFuture<boolean[]>> lookup;
     private final Consumer<PrimitivePair> missing;
-    private final int batchSize = CheckerParallelism.lookupBatchSize();
-    private final Semaphore pipelines = new Semaphore(CheckerParallelism.lookupPipelines());
+    private final int batchSize, producerSize;
+    private final ArrayBlockingQueue<List<PrimitivePair>> queue;
+    private final ConcurrentLinkedQueue<Producer> producers = new ConcurrentLinkedQueue<>();
+    private final ThreadLocal<Producer> local;
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
-    private ArrayList<PrimitivePair> pending = new ArrayList<>(batchSize);
-    private boolean closed;
+    private final LongAdder submitted = new LongAdder(), checked = new LongAdder(), hits = new LongAdder();
+    private final Object memory = new Object(), completion = new Object();
+    private final long memoryLimit;
+    private long retainedBytes;
+    private int inFlight;
+    private volatile boolean inputFinished, closed;
+    private final Thread dispatcher;
 
-    CertificateBatchVerifier(final CertificateStore certificates, final int maximumMoves,
-                             final Consumer<PrimitivePair> missing) {
-        this.certificates = Objects.requireNonNull(certificates);
-        this.maximumMoves = maximumMoves;
-        this.missing = Objects.requireNonNull(missing);
+    CertificateBatchVerifier(CertificateStore certificates, int maximumMoves, Consumer<PrimitivePair> missing) {
+        this(pairs -> certificates.findAllPrimitiveAsync(pairs, maximumMoves), missing,
+                CheckerParallelism.lookupBatchSize(), CheckerParallelism.producerBatchSize(),
+                CheckerParallelism.bufferedBytes());
     }
-
-    @Override public void accept(final PrimitivePair pair) {
-        final List<PrimitivePair> batch;
-        synchronized (this) {
-            check();
-            if (closed) throw new IllegalStateException("Certificate batch verifier is closed");
-            pending.add(pair);
-            if (pending.size() < batchSize) return;
-            acquirePipeline();
-            batch = pending;
-            pending = new ArrayList<>(batchSize);
+    CertificateBatchVerifier(Function<List<PrimitivePair>, CompletableFuture<boolean[]>> lookup,
+                             Consumer<PrimitivePair> missing, int batchSize, int producerSize, long memoryLimit) {
+        this.lookup = Objects.requireNonNull(lookup); this.missing = Objects.requireNonNull(missing);
+        if (batchSize < 1 || producerSize < 1 || memoryLimit < Math.multiplyExact(batchSize, BYTES_PER_PAIR))
+            throw new IllegalArgumentException("Buffered memory must hold at least one complete certificate batch");
+        this.batchSize = batchSize; this.producerSize = Math.min(batchSize, producerSize); this.memoryLimit = memoryLimit;
+        queue = new ArrayBlockingQueue<>((int) Math.min(256, Math.max(2, memoryLimit / (this.producerSize * BYTES_PER_PAIR))));
+        local = ThreadLocal.withInitial(() -> { var p = new Producer(this.producerSize); producers.add(p); return p; });
+        dispatcher = Thread.ofPlatform().daemon(true).name("certificate-batch-dispatch").start(this::dispatch);
+    }
+    private static final class Producer {
+        private final int size;
+        private ArrayList<PrimitivePair> pending;
+        Producer(int size) { this.size = size; pending = new ArrayList<>(size); }
+        void accept(PrimitivePair pair, CertificateBatchVerifier owner) {
+            pending.add(pair); if (pending.size() == size) flush(owner);
         }
-        process(batch);
+        void flush(CertificateBatchVerifier owner) {
+            if (!pending.isEmpty()) { owner.publish(pending); pending = new ArrayList<>(size); }
+        }
     }
-
-    private void process(final List<PrimitivePair> batch) {
+    @Override public void accept(PrimitivePair pair) {
+        check(); if (closed) throw new IllegalStateException("Certificate batch verifier is closed");
+        local.get().accept(Objects.requireNonNull(pair), this);
+    }
+    private void publish(List<PrimitivePair> pairs) {
+        long bytes = pairs.size() * BYTES_PER_PAIR; boolean admitted = false, queued = false;
         try {
-            final boolean[] present = certificates.findAllPrimitive(batch, maximumMoves);
-            if (present.length != batch.size())
-                throw new IllegalStateException("Incomplete certificate batch result");
-            for (int i = 0; i < present.length; i++) if (!present[i]) missing.accept(batch.get(i));
-        } catch (final Throwable error) {
-            failure.compareAndSet(null, error);
-            throw propagate(error);
-        } finally {
-            pipelines.release();
+            synchronized (memory) {
+                while (retainedBytes > memoryLimit - bytes) { check(); memory.wait(100); }
+                check(); retainedBytes += bytes; admitted = true;
+            }
+            // Each producer owns its list. No producer-wide lock is held while waiting.
+            while (!queue.offer(pairs, 100, TimeUnit.MILLISECONDS)) check();
+            queued = true; submitted.add(pairs.size());
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt(); fail(error);
+            throw new IllegalStateException("Certificate producer interrupted", error);
+        } finally { if (admitted && !queued) release(pairs.size()); }
+    }
+    private void dispatch() {
+        var pending = new ArrayList<PrimitivePair>(batchSize);
+        try {
+            while (!inputFinished || !queue.isEmpty()) {
+                check(); var chunk = queue.poll(100, TimeUnit.MILLISECONDS);
+                if (chunk == null) {
+                    // A partial assembler must not retain all credits while producers
+                    // wait for enough room to publish their next complete buffer.
+                    boolean saturated;
+                    synchronized (memory) { saturated = retainedBytes > memoryLimit - producerSize * BYTES_PER_PAIR; }
+                    if (!pending.isEmpty() && saturated) {
+                        var batch = pending; pending = new ArrayList<>(batchSize); submit(batch);
+                    }
+                    continue;
+                }
+                if (chunk.isEmpty()) continue;
+                if (!pending.isEmpty() && pending.size() + chunk.size() > batchSize) {
+                    var batch = pending; pending = new ArrayList<>(batchSize); submit(batch);
+                }
+                pending.addAll(chunk);
+                if (pending.size() == batchSize) {
+                    var batch = pending; pending = new ArrayList<>(batchSize); submit(batch);
+                }
+            }
+            if (!pending.isEmpty()) { var batch = pending; pending = new ArrayList<>(); submit(batch); }
+        } catch (Throwable error) { fail(error); }
+        finally {
+            if (!pending.isEmpty()) release(pending.size());
+            for (var chunk = queue.poll(); chunk != null; chunk = queue.poll()) release(chunk.size());
+            synchronized (completion) {
+                while (inFlight != 0) {
+                    try { completion.wait(); } catch (InterruptedException error) { fail(error); }
+                }
+            }
         }
     }
-
-    private void acquirePipeline() {
-        try { pipelines.acquire(); }
-        catch (final InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting for certificate batch capacity", error);
+    private void submit(List<PrimitivePair> batch) {
+        synchronized (completion) { inFlight++; }
+        try {
+            lookup.apply(batch).whenComplete((present, error) -> {
+                try {
+                    if (error != null) throw propagate(error);
+                    if (present.length != batch.size()) throw new IllegalStateException("Incomplete certificate batch result");
+                    long found = 0;
+                    for (int i = 0; i < present.length; i++) { if (present[i]) found++; else missing.accept(batch.get(i)); }
+                    hits.add(found); checked.add(batch.size());
+                } catch (Throwable problem) { fail(problem); }
+                finally { finished(batch.size()); }
+            });
+        } catch (Throwable error) { fail(error); finished(batch.size()); }
+    }
+    private void finished(int size) {
+        try { release(size); }
+        finally { synchronized (completion) { inFlight--; completion.notifyAll(); } }
+    }
+    private void release(int size) {
+        synchronized (memory) {
+            retainedBytes -= size * BYTES_PER_PAIR;
+            if (retainedBytes < 0) throw new IllegalStateException("Certificate memory accounting underflow");
+            memory.notifyAll();
         }
     }
-
-    void check() {
-        final var error = failure.get();
-        if (error != null) throw propagate(error);
+    private void fail(Throwable error) { failure.compareAndSet(null, error); synchronized (memory) { memory.notifyAll(); } }
+    void check() { var error = failure.get(); if (error != null) throw propagate(error); }
+    String progress() {
+        long bytes; synchronized (memory) { bytes = retainedBytes; }
+        return "submitted=" + submitted.sum() + " checked=" + checked.sum() + " witnessHits=" + hits.sum()
+                + " pending=" + Math.max(0, submitted.sum() - checked.sum())
+                + " bufferedMiB=" + bytes / (1024 * 1024) + "/" + memoryLimit / (1024 * 1024);
     }
-
+    /** Generation joins its workers before close; every private tail and asynchronous result is then drained. */
     @Override public void close() {
-        final List<PrimitivePair> batch;
-        synchronized (this) {
-            if (closed) { check(); return; }
-            closed = true;
-            check();
-            if (pending.isEmpty()) return;
-            acquirePipeline();
-            batch = pending;
-            pending = new ArrayList<>();
+        if (closed) { check(); return; } closed = true;
+        try { check(); for (var producer : producers) producer.flush(this); } catch (Throwable error) { fail(error); }
+        finally { inputFinished = true; queue.offer(List.of()); }
+        boolean interrupted = false;
+        for (;;) {
+            try { dispatcher.join(); break; } catch (InterruptedException error) { interrupted = true; fail(error); }
         }
-        process(batch);
-        check();
+        if (interrupted) Thread.currentThread().interrupt(); check();
+        if (checked.sum() != submitted.sum()) throw new IllegalStateException("Incomplete certificate verification");
+        synchronized (memory) { if (retainedBytes != 0) throw new IllegalStateException("Undrained certificate input"); }
     }
-
-    private static RuntimeException propagate(final Throwable error) {
+    private static RuntimeException propagate(Throwable error) {
+        while (error instanceof java.util.concurrent.CompletionException && error.getCause() != null) error = error.getCause();
         if (error instanceof Error fatal) throw fatal;
         if (error instanceof RuntimeException runtime) return runtime;
         return new IllegalStateException("Certificate batch verification failed", error);

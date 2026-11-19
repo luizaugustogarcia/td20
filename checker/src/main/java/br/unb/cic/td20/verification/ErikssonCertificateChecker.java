@@ -30,9 +30,11 @@ public final class ErikssonCertificateChecker {
         final var endpoints = ErikssonInventory.endpoints();
         System.out.printf("joint-selection inventory checked: rootPartitions=%d endpointAnnotations=%d elementaryEndpoints=%d%n",
                 inventory.size(),endpoints.size(),endpoints.stream().filter(ErikssonInventory.Endpoint::elementaryClosure).count());
-        System.out.printf("checker parallelism: workers=%d braceletWorkers=%d lookupBatch=%d lookupPipelines=%d reconstructionBufferKeys=%d%n",
+        System.out.printf("checker parallelism: workers=%d braceletWorkers=%d readWorkers=%d lookupBatch=%d producerBatch=%d bufferedMiB=%d readCacheMiB=%d reconstructionBufferKeys=%d%n",
                 CheckerParallelism.workers(), DirectTwistedBraceletGenerator.configuredWorkerCount(),
-                CheckerParallelism.lookupBatchSize(), CheckerParallelism.lookupPipelines(),
+                CheckerParallelism.readWorkers(), CheckerParallelism.lookupBatchSize(),
+                CheckerParallelism.producerBatchSize(), CheckerParallelism.bufferedBytes() / (1L << 20),
+                CheckerParallelism.readCacheBytes() / (1L << 20),
                 CheckerParallelism.reconstructionBufferKeys());
         if (options.structuralOnly) {
             System.out.println("Structural inventory checks only; sorting certificates and final avoidance remain unchecked.");
@@ -55,6 +57,8 @@ public final class ErikssonCertificateChecker {
         row.requireCompleteCounts();
         progress.phase("independent Eriksson root partition "+row.number());
         try (var verifier=required(certificates,ErikssonRoute.ROOT_BUDGET)) {
+            progress.phase(() -> "independent Eriksson root partition " + row.number() + " "
+                    + verifier.progress() + " " + certificates.readProgress());
             var counts=ErikssonRootGenerator.generatePrimitive(row.partition(),CheckerParallelism.workers(),verifier::check,pair->{
                 if (!SupportClearing.closes(pair)) verifier.accept(pair);
             });
@@ -70,10 +74,11 @@ public final class ErikssonCertificateChecker {
         final long expected = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(
                 endpoint.partition(),endpoint.orientedByPart());
         final var generated = new LongAdder(); final var residual = new LongAdder();
-        progress.phase(() -> "endpoint " + endpoint.number() + ": regenerated=" + generated.sum() + " residual=" + residual.sum());
         try (final var verifier = new CertificateBatchVerifier(certificates, ErikssonRoute.ENDPOINT_BUDGET, pair -> {
             residuals.add(new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair)); residual.increment();
         })) {
+            progress.phase(() -> "endpoint " + endpoint.number() + ": regenerated=" + generated.sum()
+                    + " residual=" + residual.sum() + " " + verifier.progress() + " " + certificates.readProgress());
             DirectTwistedBraceletGenerator.generatePrimitiveRepresentativesConcurrently(endpoint.partition(),endpoint.orientedByPart(),
                     verifier::check, pair -> { generated.increment(); verifier.accept(pair); });
         }

@@ -8,7 +8,7 @@ td20_local_main() {
     local max_heap=16 max_writers=8 initial_heap=2 max_gc=8 max_concurrent_gc=2
     local default_slots=8 default_budget=768 default_gpu_queue=16
     local default_buffer=4194304 default_queue=512 default_certificate_queue=262144
-    local default_lookup=32768 default_pipelines=4
+    local default_lookup=32768
     local preparation_workers=4 prepared_batches=16 prefetch_batches=32 seen_keys=262144
     project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
     default_base=$project_root/local-runtime
@@ -65,11 +65,16 @@ PY
     )
     local cpu=${TD20_CPU_WORKERS:-$detected_cpu}
     if [[ $module == checker ]]; then
-        default_lookup=$(((cpu < 32 ? cpu : 32) * 262144))
+        default_lookup=262144
     fi
     local default_heap=$((detected_memory * 5 / 8))
     (( default_heap > max_heap )) && default_heap=$max_heap
     local heap=${TD20_HEAP_GIB:-$default_heap}
+    local checker_buffer_mb=$((heap * 1024 / 3)) checker_cache_mb=$((heap * 1024 / 4))
+    (( checker_buffer_mb > 4096 )) && checker_buffer_mb=4096
+    (( checker_buffer_mb < 128 )) && checker_buffer_mb=128
+    (( checker_cache_mb > 4096 )) && checker_cache_mb=4096
+    (( checker_cache_mb < 64 )) && checker_cache_mb=64
     local writers=${TD20_WRITERS:-$((cpu < max_writers ? cpu : max_writers))}
     local slots=${TD20_GPU_SLOTS:-$default_slots} budget=${TD20_GPU_BUDGET_MB:-$default_budget}
     local gpu_queue=${TD20_GPU_QUEUE_CAPACITY:-$default_gpu_queue}
@@ -126,7 +131,11 @@ PY
     else
         jvm+=("-R-Dtd20.checkerWorkers=$cpu" -R-Dtd20.checkerStatsPeriodSeconds=10
             "-R-Dtd20.certificateLookupBatchSize=${TD20_LOOKUP_BATCH_KEYS:-$default_lookup}"
-            "-R-Dtd20.certificateLookupPipelines=${TD20_LOOKUP_PIPELINES:-$default_pipelines}")
+            "-R-Dtd20.certificateReadWorkers=${TD20_READ_WORKERS:-$cpu}"
+            "-R-Dtd20.certificateProducerBatchKeys=${TD20_PRODUCER_BATCH_KEYS:-4096}"
+            "-R-Dtd20.certificateBufferedMB=${TD20_CERTIFICATE_BUFFER_MB:-$checker_buffer_mb}"
+            "-R-Dtd20.certificateReadCacheMB=${TD20_READ_CACHE_MB:-$checker_cache_mb}"
+            "-R-Dtd20.certificateMaxOpenFiles=${TD20_READ_MAX_OPEN_FILES:-512}")
         invocation+=(verify --phase=all)
     fi
     invocation+=("--database=$database" "--work=$work")

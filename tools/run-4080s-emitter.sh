@@ -8,7 +8,7 @@ td20_4080s_main() {
     local max_heap=320 max_writers=16 initial_heap=4 max_gc=16 max_concurrent_gc=4
     local default_slots=16 default_budget=768 default_gpu_queue=64
     local default_buffer=4194304 default_queue=64 default_certificate_queue=262144
-    local default_lookup=32768 default_pipelines=4
+    local default_lookup=32768
     local preparation_workers=4 prepared_batches=16 prefetch_batches=32 seen_keys=262144
     project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
     default_base=/workspace/td20-runtime
@@ -64,6 +64,7 @@ print(cpu, memory // (1024**3))
 PY
     )
     local cpu=${TD20_CPU_WORKERS:-$detected_cpu}
+    if [[ $module == checker ]]; then default_lookup=262144; fi
     local default_heap=$((detected_memory * 5 / 8))
     (( default_heap > max_heap )) && default_heap=$max_heap
     local heap=${TD20_HEAP_GIB:-$default_heap}
@@ -132,7 +133,11 @@ PY
     else
         jvm+=("-R-Dtd20.checkerWorkers=$cpu" -R-Dtd20.checkerStatsPeriodSeconds=10
             "-R-Dtd20.certificateLookupBatchSize=${TD20_LOOKUP_BATCH_KEYS:-$default_lookup}"
-            "-R-Dtd20.certificateLookupPipelines=${TD20_LOOKUP_PIPELINES:-$default_pipelines}")
+            "-R-Dtd20.certificateReadWorkers=${TD20_READ_WORKERS:-$cpu}"
+            "-R-Dtd20.certificateProducerBatchKeys=${TD20_PRODUCER_BATCH_KEYS:-4096}"
+            "-R-Dtd20.certificateBufferedMB=${TD20_CERTIFICATE_BUFFER_MB:-4096}"
+            "-R-Dtd20.certificateReadCacheMB=${TD20_READ_CACHE_MB:-4096}"
+            "-R-Dtd20.certificateMaxOpenFiles=${TD20_READ_MAX_OPEN_FILES:-512}")
         invocation+=(verify --phase=all)
     fi
     invocation+=("--database=$database" "--work=$work")

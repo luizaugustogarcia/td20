@@ -157,8 +157,9 @@ launchers share a runtime lock. The local emitter uses up to 8 persistence write
 4,194,304 aggregate buffer keys, 512 queued batches, a 262,144-key certificate
 queue and 32,768-key lookups. Its prefetch uses 4 preparation workers,
 16 prepared batches, 32 input batches and a 262,144-key recent-key cache.
-The local checker uses the same bounded state persistence, 32,768-key lookups
-and 4 lookup pipelines.
+The local checker uses the same bounded state persistence and a separate
+certificate read pool. Native lookup batches default to 262,144 keys, with
+memory-based admission for asynchronous encoding, reading and witness replay.
 Before a restart, the maintained launchers hold their runtime lock and remove
 recorded abandoned interrupted work and temporary files. Cleanup preserves
 the certificate database, the validated `--resume-work` source and every
@@ -168,7 +169,8 @@ settings retain execution history. No deletion occurs during `--dry-run`.
 Override `TD20_RUN_ROOT`, `TD20_CERTIFICATE_DB`, `TD20_CPU_WORKERS`,
 `TD20_HEAP_GIB`, `TD20_WRITERS`, `TD20_BUFFER_KEYS`, `TD20_QUEUE_BATCHES`,
 `TD20_GENERATED_BATCH_KEYS`, `TD20_SCAN_BATCH_KEYS`, `TD20_LOOKUP_BATCH_KEYS`,
-`TD20_LOOKUP_PIPELINES`, `TD20_GPU_SLOTS`, `TD20_GPU_BUDGET_MB`,
+`TD20_READ_WORKERS`, `TD20_PRODUCER_BATCH_KEYS`, `TD20_CERTIFICATE_BUFFER_MB`,
+`TD20_READ_CACHE_MB`, `TD20_READ_MAX_OPEN_FILES`, `TD20_GPU_SLOTS`, `TD20_GPU_BUDGET_MB`,
 `TD20_GPU_QUEUE_CAPACITY`, `TD20_CERTIFICATE_WRITERS` or `TD20_MIN_FREE_GIB`
 when required by the executing machine. Changing the local run root relocates
 work, logs and settings; database and native paths keep their repository defaults.
@@ -387,14 +389,38 @@ bounded. Class keys and disk iteration are deterministic at persistence
 boundaries. `certificates/`, `data/`, work databases and ordinary logs are untracked.
 Completed execution logs and settings also remain untracked.
 
-The checker defaults to an aggregate certificate lookup batch of
-`262144 * min(checkerWorkers, 32)` keys. It splits this batch across CPU workers
-for native reads and independent replay, giving 262,144 keys per `multiGet`
-when there are at most 32 workers and the batch is full. The local checker
-launcher uses the same default; `TD20_LOOKUP_BATCH_KEYS` or
-`td20.certificateLookupBatchSize` overrides the aggregate size. The aggregate
-default is capped at 8,388,608 keys, and up to four batches may overlap.
+The checker defaults to 262,144 keys per native `multiGet`;
+`td20.certificateLookupBatchSize` or `TD20_LOOKUP_BATCH_KEYS` changes that
+actual call size. CPU encoding and witness replay use `td20.checkerWorkers`;
+native reads have a separate bounded pool sized by `td20.certificateReadWorkers`,
+which defaults to the detected CPU worker count. Producer workers own private
+buffers of `td20.certificateProducerBatchKeys` keys (default 4,096), and publish
+them to a bounded dispatcher queue without waiting inside a shared buffer lock.
+The dispatcher assembles native batches and overlaps encoding, reading and replay.
 Partial batches and reconstruction scan limits can produce smaller calls.
+
+Admission uses `td20.certificateBufferedMB`, defaulting to one third of maximum
+Java heap, bounded between 128 and 4,096 MiB. Each admitted pair is conservatively
+accounted as 512 bytes until its witness replay and missing-result callback finish.
+This is an estimate of Java work retained by the pipeline, not an exact heap limit;
+producer-private tails and generation/storage allocations are additional.
+The budget must hold at least one native batch. All private tails and asynchronous
+results drain before a phase completes, and count mismatches or failures reject
+verification. Progress distinguishes regenerated, submitted, checked, witness-hit
+and pending counts, and reports active native reads and completed read keys.
+
+Witness and obstruction column families share an explicit RocksDB block cache.
+`td20.certificateReadCacheMB` defaults to one quarter of maximum Java heap,
+bounded between 64 and 4,096 MiB; `td20.certificateMaxOpenFiles` defaults to 512.
+By default, index and filter blocks stay with cached table readers rather than
+competing with data blocks in the block cache. Table-reader metadata therefore
+uses native RAM outside the block-cache target.
+`td20.certificateCacheIndexAndFilterBlocks=true` moves them into the block cache
+with high priority; large simultaneous reads can pin this metadata and repeatedly
+reload evicted indexes, so this setting requires measurement on the actual database.
+The cache capacity is a soft target: pinned blocks can transiently exceed it,
+and native allocations outside the cache require additional RAM. Runtime profiles
+record the effective heap, read concurrency, buffering and cache settings.
 
 Each handoff file has format `td-reconstruction-queue-v1`, a route/domain/budget
 header, fixed-size records containing versioned canonical class keys and their

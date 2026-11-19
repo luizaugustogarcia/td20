@@ -9,10 +9,29 @@ public final class CheckerParallelism {
     }
 
     public static int lookupBatchSize() {
-        // CertificateStore splits each batch across CPU workers before multiGet.
-        // Keep about 262K keys per native call, with a bounded aggregate batch.
-        return positiveProperty("td20.certificateLookupBatchSize",
-                Math.multiplyExact(Math.min(workers(), 32), 262_144));
+        return positiveProperty("td20.certificateLookupBatchSize", 262_144);
+    }
+
+    public static int readWorkers() {
+        return positiveProperty("td20.certificateReadWorkers", workers());
+    }
+
+    public static int producerBatchSize() {
+        return positiveProperty("td20.certificateProducerBatchKeys", 4096);
+    }
+
+    public static long bufferedBytes() {
+        long defaultMB = Math.max(128, Math.min(4096, Runtime.getRuntime().maxMemory() / (3L << 20)));
+        return Math.multiplyExact(positiveLongProperty("td20.certificateBufferedMB", defaultMB), 1L << 20);
+    }
+
+    public static long readCacheBytes() {
+        long defaultMB = Math.max(64, Math.min(4096, Runtime.getRuntime().maxMemory() / (4L << 20)));
+        return Math.multiplyExact(positiveLongProperty("td20.certificateReadCacheMB", defaultMB), 1L << 20);
+    }
+
+    public static int maxOpenFiles() {
+        return positiveProperty("td20.certificateMaxOpenFiles", 512);
     }
 
     public static int reconstructionBufferKeys() {
@@ -27,8 +46,10 @@ public final class CheckerParallelism {
         return entries;
     }
 
-    public static int lookupPipelines() {
-        return positiveProperty("td20.certificateLookupPipelines", Math.min(4, workers()));
+    private static long positiveLongProperty(String name, long defaultValue) {
+        long value = Long.parseLong(System.getProperty(name, Long.toString(defaultValue)));
+        if (value < 1) throw new IllegalArgumentException(name + " must be positive");
+        return value;
     }
 
     private static int positiveProperty(final String name, final int defaultValue) {

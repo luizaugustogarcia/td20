@@ -57,6 +57,24 @@ class CertificateStoreTest {
             assertTrue(store.require(PAIR,1).isEmpty());
         }
     }
+
+    @Test void asynchronousSlicesPreserveDuplicateMissingAndCanonicalReplayPositions(@TempDir Path path) throws Exception {
+        String property = "td20.certificateLookupBatchSize", previous = System.getProperty(property);
+        System.setProperty(property, "2");
+        try {
+            database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.complete(List.of(Cycle.of(0,1,2)))),true);
+            var missing=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2,3,4)),Cycle.of(0,1,2,3,4));
+            var rotated=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(1,2,0));
+            var pairs=List.of(PAIR,missing,PAIR,rotated,missing).stream().map(LegacyPairs::fromLegacy).toList();
+            try (var store=new CertificateStore(path.resolve("db"))) {
+                assertArrayEquals(new boolean[]{true,false,true,true,false},store.findAllPrimitiveAsync(pairs,1).join());
+                assertArrayEquals(new boolean[5],store.findAllPrimitiveAsync(pairs,0).join());
+                assertArrayEquals(store.findAllPrimitive(pairs,1),store.findAllPrimitiveAsync(pairs,1).join());
+            }
+        } finally {
+            if (previous==null) System.clearProperty(property); else System.setProperty(property,previous);
+        }
+    }
     @Test void invalidResultKindIsRejected(@TempDir final Path path) throws Exception {
         database(path.resolve("db"),new byte[]{2,0},true);
         try(final var store=new CertificateStore(path.resolve("db"))) {

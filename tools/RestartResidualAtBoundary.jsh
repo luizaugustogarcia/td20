@@ -28,7 +28,7 @@ class RestartResidualAtBoundary {
         try {
             Files.write(temporary,List.of("td20-local-residual-boundary-restart-v1","status="+status,
                     "previousLauncher="+previousPid,"nextLauncher="+nextPid,"sourceWork="+source,
-                    "afterOneCount=pending-until-mandatory-expansion","proofInput=false","updated="+Instant.now()));
+                    "afterOneCount=required-before-final-expansion","proofInput=false","updated="+Instant.now()));
             Files.move(temporary,run.resolve("boundary-restart-v1.txt"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
         } finally {Files.deleteIfExists(temporary);}
     }
@@ -93,15 +93,19 @@ class RestartResidualAtBoundary {
             boolean running=false;
             Path latest=run.resolve("logs/emitter-latest.log");
             while(!running && next.isAlive() && System.nanoTime()<deadline) {
-                if(Files.exists(latest) && !latest.toRealPath().equals(log.toRealPath()))
-                    running=Files.readString(latest).contains("Inverse expansion after-one inverse states:");
+                if(Files.exists(latest) && !latest.toRealPath().equals(log.toRealPath())) {
+                    String startup=Files.readString(latest);
+                    running=startup.contains("State inventory after-one unique-class counting:")
+                            || startup.contains("Inverse expansion after-one inverse states:")
+                            || startup.contains("Inverse expansion after-one family-filtered inverse states:");
+                }
                 if(!running)Thread.sleep(1000);
             }
             if(!running) {
                 writeStatus(run,"restart-failed",pid,next.pid(),source);
-                throw new IllegalStateException("Updated emitter did not enter final inverse expansion; inspect console.log");
+                throw new IllegalStateException("Updated emitter did not enter intermediate counting or final inverse expansion; inspect console.log");
             }
-            event("Restarted intermediate expansion without a separate counting pass; launcher PID="+next.pid());
+            event("Restarted from the completed intermediate boundary; counting is required before final expansion; launcher PID="+next.pid());
             writeStatus(run,"restarted",pid,next.pid(),source);
         }
     }

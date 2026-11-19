@@ -101,7 +101,22 @@ gain and pair replay. All gaps, gains and both endpoints remain covered.
 `ErikssonAvoidance` performs three disk-backed waves: reverse gain two, reverse
 both gains two/three, then reverse gains one/zero. Lookups and searches use each
 state's explicit domain and budget; both after-one domains have budget 10.
-Every final root uses 11. CPU sorting prefixes and intermediate GPU searches
+Every final root uses 11. In both execution modes, `FinalInverseReconstruction`
+checks the paper's support-family lemma before restoring each retained support
+in every gap. `ImmediateRootClosure` replays a two-sided gain-at-least-two
+closure on remaining parents before canonicalization. The persisted final set
+contains exactly the roots outside these elementary closures. The independent
+checker uses `FinalInverseCover`, with path/cycle minimum-cover formulas and
+direct block exchange rather than the emitter's cover recursion and successor
+traversal. All source classes remain mandatory; there is no budget-ten lookup.
+Version-four ROOTS checkpoints identify `rootInventory=ELEMENTARY_RESIDUALS`;
+they retain their original `FULL_SEARCH` or `RESIDUAL_EXPANSION` mode. Fresh
+emission and residual resumes therefore share the same filtered final cover.
+Production passes `writer::flush` to the reconstruction persistence barrier
+before downstream checkpoints are published. A failure leaves the previous
+completed source boundary intact and prevents a new checkpoint.
+checker reports use `inverse-coverage-v3.txt` and account for every source and
+support/gap slot. CPU sorting prefixes and intermediate GPU searches
 are heuristics: a miss, depth limit or timeout preserves every inverse obligation.
 CPU prefix workers, GPU dispatch workers and CPU inverse workers are independent.
 A versioned disk queue feeds GPU searches; a second queues every GPU miss for

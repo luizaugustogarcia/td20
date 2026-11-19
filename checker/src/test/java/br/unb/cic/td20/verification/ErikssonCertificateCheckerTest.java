@@ -5,6 +5,8 @@ import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.certificate.CertificateValidator;
 import br.unb.cic.td20.certificate.SortingCertificate;
 import br.unb.cic.td20.joint.ErikssonInverseReconstruction;
+import br.unb.cic.td20.joint.FinalInverseCover;
+import br.unb.cic.td20.joint.CyclicTargetMoves;
 import br.unb.cic.td20.model.ExtendedToricClassKey;
 import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.permutation.Cycle;
@@ -96,20 +98,58 @@ class ErikssonCertificateCheckerTest {
         put(database,twenty,CertificateCodec.resultFor(twentyResult),false);
         put(database,twentyOne,CertificateCodec.resultFor(twentyOneResult),false);
         Set<ExtendedToricClassKey> expected=ConcurrentHashMap.newKeySet(),actual=ConcurrentHashMap.newKeySet();
-        ErikssonInverseReconstruction.preimages(twenty,1,parent->expected.add(parent.extendedToricClassKey()));
-        ErikssonInverseReconstruction.preimages(twentyOne,0,parent->expected.add(parent.extendedToricClassKey()));
-        assertFalse(expected.isEmpty());
+        ErikssonInverseReconstruction.preimages(twenty,1,parent->{if(!immediate(parent)) expected.add(parent.extendedToricClassKey());});
+        ErikssonInverseReconstruction.preimages(twentyOne,0,parent->{if(!immediate(parent)) expected.add(parent.extendedToricClassKey());});
         try(var certificates=new CertificateStore(database);
             var afterOne=new CheckerStateSet(path.resolve("after-one"));
             var roots=new CheckerStateSet(path.resolve("roots"))) {
             assertTrue(certificates.find(twenty,10).isPresent());assertTrue(certificates.find(twentyOne,10).isPresent());
             afterOne.add(new SearchState(10,twenty));afterOne.add(new SearchState(10,twentyOne));assertEquals(2,afterOne.seal().count());
-            ErikssonCertificateChecker.expandFirstMovePreimages(afterOne,roots);
+            var cover=ErikssonCertificateChecker.expandFirstMovePreimages(afterOne,roots);
+            assertEquals(2,cover.sources());assertEquals(4,cover.sourceSides());
+            assertEquals(7600+2660,cover.candidateSlots());
             assertEquals(expected.size(),roots.seal().count());
             roots.forEachConcurrently(2,state->{assertEquals(21,state.pair().getBeta().size());assertEquals(11,state.maximumMoves());actual.add(state.pair().extendedToricClassKey());});
             assertEquals(expected,actual);
+            if(expected.isEmpty()) ErikssonCertificateChecker.verifyFinalRoots(certificates,roots);
+            else assertThrows(IllegalStateException.class,()->ErikssonCertificateChecker.verifyFinalRoots(certificates,roots));
+        }
+    }
+    @Test void anUnclosedFinalRootStillRequiresItsDatabaseWitnessWithoutAMarker(@TempDir Path path) throws Exception {
+        var omega=new MulticyclePermutation();
+        int[] cycle=new int[21];for(int i=0;i<21;i++) cycle[i]=19*i%21;
+        omega.add(Cycle.of(cycle));
+        var root=CyclicTargetPair.ofOwned(omega,Cycle.of(IntStream.range(0,21).toArray()));
+        assertFalse(immediate(root));
+        Path database=path.resolve("certificates");emptyDatabase(database);
+        try(var certificates=new CertificateStore(database);var roots=new CheckerStateSet(path.resolve("roots"))) {
+            roots.add(new SearchState(11,root));assertEquals(1,roots.seal().count());
+            assertFalse(certificates.hasObstruction(root));
             assertThrows(IllegalStateException.class,()->ErikssonCertificateChecker.verifyFinalRoots(certificates,roots));
         }
+    }
+    @Test void emptyCoverReportHasExplicitResidualSemanticsAndCannotOmitSources(@TempDir Path path) throws Exception {
+        var empty=FinalInverseCover.Counts.empty();
+        var report=new ErikssonCertificateChecker.InverseCoverage(0,0,0,0,0,0,empty);
+        ErikssonCertificateChecker.publishInverseCoverage(path,report);
+        var lines=Files.readAllLines(path.resolve("inverse-coverage-v3.txt"));
+        assertEquals("td20-independent-inverse-coverage-v3",lines.getFirst());
+        assertTrue(lines.contains("rootInventory=ELEMENTARY_RESIDUALS"));
+        assertTrue(lines.contains("budgetTenLookup=false"));
+        assertTrue(lines.contains("candidateSlots=0"));
+        assertTrue(lines.contains("residualOccurrences=0"));
+        assertThrows(IllegalArgumentException.class,()->new ErikssonCertificateChecker.InverseCoverage(0,0,0,0,1,0,empty));
+        assertThrows(IllegalArgumentException.class,()->new ErikssonCertificateChecker.InverseCoverage(0,0,0,0,0,1,empty));
+    }
+    private static boolean immediate(CyclicTargetPair pair) {
+        int n=pair.getBeta().size();int[] original=CyclicTargetMoves.images(pair),inverse=new int[n];
+        for(int i=0;i<n;i++) inverse[original[i]]=i;
+        for(int side=0;side<2;side++) {
+            int[] images=side==0?original:inverse;var order=side==0?pair.getBeta():pair.getRho();
+            for(int a=0;a<n-2;a++) for(int b=a+1;b<n-1;b++) for(int c=b+1;c<n;c++)
+                if(CyclicTargetMoves.fixed(CyclicTargetMoves.apply(images,order.get(a),order.get(b),order.get(c)))>=2) return true;
+        }
+        return false;
     }
     private static CyclicTargetPair pairWithOrientedThreeCycles(int symbols) {
         var omega=new MulticyclePermutation();int cursor=0;

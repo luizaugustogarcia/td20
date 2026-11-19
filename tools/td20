@@ -18,6 +18,9 @@ CPU validation:
   audit-roots  Independently regenerate every root count via checker JShell
   audit-import  Independently replay copied TD18 results and check residual equality
   bench-permutations  Compare four small experimental primitive CPU populations
+  bench-reconstruction  Compare experimental final-root closure strategies on read-only samples
+  bench-reconstruction-long  Validate and time bounded source windows with residual persistence
+  bench-inverse-gpu  Compare experimental CUDA inverse expansion with all-core Java
 
 Computation:
   emit         Emit sorting results via JShell (build native CUDA first)
@@ -82,6 +85,9 @@ case "$command" in
     audit-roots) module=checker; script=tools/audit/CountErikssonRoots.jsh ;;
     audit-import) module=checker; entry=br.unb.cic.td20.verification.ImportedTd18Verifier ;;
     bench-permutations) script=tools/bench/PrimitivePermutations.jsh ;;
+    bench-reconstruction) script=tools/bench/ReconstructionAlternatives.jsh ;;
+    bench-reconstruction-long) script=tools/bench/LongReconstruction.jsh ;;
+    bench-inverse-gpu) script=tools/bench/InverseGpu.jsh ;;
     count|census) entry=br.unb.cic.td20.CountEriksson ;;
     count-reconstruction) entry=br.unb.cic.td20.avoidance.CountReconstructionWave ;;
     emit) entry=br.unb.cic.td20.WitnessEmitter ;;

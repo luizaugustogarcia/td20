@@ -13,6 +13,27 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActiveErikssonAvoidanceTest {
+    @Test void failedCertificateFlushCannotPublishADownstreamCheckpoint(@TempDir Path directory) throws Exception {
+        for(var stage:List.of(ErikssonCheckpoint.Stage.AFTER_TWO,ErikssonCheckpoint.Stage.AFTER_ONE)) {
+            Path source=Files.createDirectory(directory.resolve(stage.name()));
+            Path work=Files.createDirectory(directory.resolve(stage.name()+"-next"));
+            String wave=stage==ErikssonCheckpoint.Stage.AFTER_TWO?"after-two":"after-one";
+            var pair=stage==ErikssonCheckpoint.Stage.AFTER_TWO
+                    ? br.unb.cic.td20.compat.LegacyPairs.fromLegacy(pair(18))
+                    : FinalInverseReconstructionTest.reverseSource(21);
+            try(var states=new DiskStateSet(source.resolve(wave))) {
+                states.add(pair,stage==ErikssonCheckpoint.Stage.AFTER_TWO?9:10);assertEquals(1,states.seal());
+            }
+            var checkpoint=new ErikssonCheckpoint(stage,1,1,stage==ErikssonCheckpoint.Stage.AFTER_TWO?-1:1,-1);
+            checkpoint.write(source);
+            var failure=new IllegalStateException("certificate flush failed");
+            assertSame(failure,assertThrows(IllegalStateException.class,()->ErikssonAvoidance.resumePrimitive(
+                    source,work,(p,b)->true,(p,b)->true,null,(p,b)->true,()->{throw failure;})));
+            assertEquals(checkpoint,ErikssonCheckpoint.read(source));
+            assertFalse(Files.exists(work.resolve("eriksson-reconstruction-v1.txt")));
+        }
+    }
+
     @Test void everyResumedWaveChecksItsCountDuringProcessing(@TempDir Path directory) throws Exception {
         for (var stage:ErikssonCheckpoint.Stage.values()) {
             Path source=Files.createDirectory(directory.resolve(stage.name()));
@@ -39,9 +60,10 @@ class ActiveErikssonAvoidanceTest {
             var processed=new java.util.concurrent.atomic.AtomicInteger();
             Path work=Files.createDirectory(directory.resolve(stage.name()+"-work"));
             assertThrows(IllegalStateException.class,()->ErikssonAvoidance.resume(source,work,(p,b)->{
-                assertEquals(budget,b); processed.incrementAndGet(); return true;
+                assertEquals(stage==ErikssonCheckpoint.Stage.AFTER_ONE?11:budget,b); processed.incrementAndGet(); return true;
             },null));
-            assertEquals(1,processed.get(),"The mandatory scan must process records before rejecting the count mismatch: "+stage);
+            if(stage!=ErikssonCheckpoint.Stage.AFTER_ONE)
+                assertEquals(1,processed.get(),"The mandatory scan must process records before rejecting the count mismatch: "+stage);
             assertEquals(checkpoint,ErikssonCheckpoint.read(source));
             assertThrows(IllegalStateException.class,()->ErikssonCheckpoint.read(work));
         }
@@ -50,8 +72,8 @@ class ActiveErikssonAvoidanceTest {
     @Test void splitStagesPreserveEveryRootInBothInverseBranches(@TempDir Path directory) throws Exception {
         Path source=Files.createDirectory(directory.resolve("source"));
         try (var set=new DiskStateSet(source.resolve("after-one"))) {
-            set.add(pair(ErikssonRoute.ROOT_SYMBOLS-1),ErikssonRoute.ROOT_BUDGET-1);
-            set.add(pair(ErikssonRoute.ROOT_SYMBOLS),ErikssonRoute.ROOT_BUDGET-1);
+            set.add(br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(20)),10);
+            set.add(br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(21)),10);
             assertEquals(2,set.seal());
         }
         new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1).write(source);
@@ -78,26 +100,27 @@ class ActiveErikssonAvoidanceTest {
         Set<Integer> domains=ConcurrentHashMap.newKeySet();
         var result=ErikssonAvoidance.resume(source,work,(p,b)->{
             if (b==ErikssonRoute.ROOT_BUDGET-2) return false;
-            assertEquals(ErikssonRoute.ROOT_BUDGET-1,b); domains.add(p.getBeta().size()); return true;
+            assertEquals(ErikssonRoute.ROOT_BUDGET,b);return true;
         },null);
+        try(var states=DiskStateSet.openSealed(work.resolve("after-one"),result.afterOne())) {
+            states.forEach(state -> domains.add(state.primitivePair().size()));
+        }
         assertEquals(Set.of(ErikssonRoute.ROOT_SYMBOLS-1,ErikssonRoute.ROOT_SYMBOLS),domains);
-        assertTrue(result.afterOne()>1); assertEquals(0,result.roots()); assertEquals(0,result.unresolved());
-        var resumed=ErikssonAvoidance.resume(work,Files.createDirectory(directory.resolve("again")),(p,b)->{fail("Empty sealed root wave must not generate work");return false;},null);
+        assertTrue(result.afterOne()>1);assertEquals(0,result.unresolved());
+        var resumed=ErikssonAvoidance.resume(work,Files.createDirectory(directory.resolve("again")),(p,b)->{assertEquals(11,b);return true;},null);
         assertEquals(result,resumed);
     }
     @Test void resumedMixedAfterOneWaveReversesGainOneAndGainZero(@TempDir Path directory) throws Exception {
         Path source=Files.createDirectory(directory.resolve("source")),work=Files.createDirectory(directory.resolve("next"));
         try (var set=new DiskStateSet(source.resolve("after-one"))) {
-            set.add(pair(ErikssonRoute.ROOT_SYMBOLS-1),ErikssonRoute.ROOT_BUDGET-1);
-            set.add(pair(ErikssonRoute.ROOT_SYMBOLS),ErikssonRoute.ROOT_BUDGET-1); assertEquals(2,set.seal());
+            set.add(br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(20)),10);
+            set.add(br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(21)),10);assertEquals(2,set.seal());
         }
         new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1).write(source);
-        Set<Integer> domains=ConcurrentHashMap.newKeySet();
         var result=ErikssonAvoidance.resume(source,work,(p,b)->{
-            if (b==ErikssonRoute.ROOT_BUDGET-1) { domains.add(p.getBeta().size()); return false; }
             assertEquals(ErikssonRoute.ROOT_BUDGET,b); assertEquals(ErikssonRoute.ROOT_SYMBOLS,p.getBeta().size()); return true;
         },null);
-        assertEquals(Set.of(ErikssonRoute.ROOT_SYMBOLS-1,ErikssonRoute.ROOT_SYMBOLS),domains);
+        assertEquals(2,result.afterOne());
         assertTrue(result.roots()>0); assertEquals(0,result.unresolved());
     }
     @Test void oldCheckpointsMissingSetsAndWrongBudgetsCannotResume(@TempDir Path directory) throws Exception {

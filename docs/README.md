@@ -13,6 +13,7 @@ Eriksson-plus-third-move route.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Independent modules, generators and three inverse waves. |
 | [KNOWLEDGE.md](KNOWLEDGE.md) | Pair conventions, encoding, symmetry and counting. |
 | [td20-burnside-counting.md](td20-burnside-counting.md) | Burnside derivation and the complete endpoint census. |
+| [RECONSTRUCTION_OPTIMIZATION.md](RECONSTRUCTION_OPTIMIZATION.md) | Experimental reconstruction alternatives, measurements, and required coverage safeguards. |
 
 Update the paper before changing the route, then align both implementations,
 counts, tests, guides and completion artifacts. Generated databases and work sets remain

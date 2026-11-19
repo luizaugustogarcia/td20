@@ -21,7 +21,8 @@ cyclic-target pair. Domains have 21 symbols and root budget 11.
 Unselected roots are generated directly. The endpoint cover consists of all
 143 fixed-point-free even annotated types on 16 symbols, with budget
 8. The checker independently regenerates roots, endpoints, and all inverse
-waves and replays intrinsic sorting certificates. The conditional proof combines this
+waves, checks elementary final-root closure families, and replays intrinsic
+sorting certificates for the remaining classes. The conditional proof combines this
 exhaustive computational coverage with the reverse-permutation lower bound.
 The upper bound remains conditional: no TD18 execution record or historical
 joint-2 count supplies TD20 coverage. Every exit criterion in
@@ -562,36 +563,166 @@ three-symbol support, producing 21 symbols with budget 10. Reverse
 the first gain-zero move using every support of three original symbols, without
 restoring a fixed point.
 \end{enumerate}
-Every reverse operation is performed on both endpoints, preserving their
-identity by swapping back after a target-side inverse. Actual forward replay
-must recover the restored child and exact fixed-point gain. No qualifying
-odd-length-cycle condition is imposed on gain-zero or gain-one first moves.
-Every remaining root needs a budget-11 result.
+Every reverse operation is covered on both endpoints, preserving their
+identity by swapping back after a target-side inverse. Every explicitly
+constructed parent must recover the restored child and exact fixed-point gain
+by actual forward replay. The final-wave elementary families proved below
+may instead be checked as a whole before constructing their members. No
+qualifying odd-length-cycle condition is imposed on gain-zero or gain-one
+first moves. Every remaining root needs a budget-11 result.
 The budget-ten after-one states are generated and deduplicated, but no sorting
 search or certificate lookup at that stage suppresses a final inverse branch.
 The completed emitter key inventory of 19 November 2026 contains
 $4\,010\,256\,622$ distinct budget-ten after-one states. This is a completed
 emitter inventory count; independent regeneration and final-root witness
 coverage remain pending.
-Thus every class in $B$ is expanded through both remaining inverse waves to
-its final 21-symbol root obligations. Their total is unknown until generation.
+Thus every class in $B$ is covered through both remaining inverse waves to
+its final 21-symbol root obligations. Define $C$ to be the complete set of
+budget-ten after-one classes and $P$ to be the union of their valid final
+preimages, including both endpoints and the gain appropriate to their domain.
+Define $D_{11}$ to be the 21-symbol fixed-point-free classes having an
+immediate gain-at-least-two move on either endpoint, and set
+$R=P\setminus D_{11}$. The active optimized final inventory is $R$; its exact
+count remains unknown until generation and the mandatory deduplicated scan.
+Neither $|P|$ nor $|P\cap D_{11}|$ is inferred from occurrence counters.
 
 Completeness follows by restoring the actual removed fixed symbols in their
 actual gaps. A transposition changes only three images, so its created fixed
 symbols belong to its support; enumeration includes the actual old symbols.
 Permuting only restored labels transports supports and does not change the
 represented class. Repeating this argument in the relevant branch reaches
-every compatible root. Moves on either endpoint give the same distance upper
+every compatible root before elementary closures. Moves on either endpoint give the same distance upper
 bound by the triangle inequality, and quotient representatives transport all
 supports and gaps bijectively. Replayed budget-nine results close their paths
-within the stated budget. All other after-two classes retain every compatible
-second and first inverse branch, including classes lacking obstruction markers.
-The active residual-expansion mode performs no budget-nine or budget-ten
-sorting searches. Historical full-search checkpoints remain distinguishable
-from residual-expansion checkpoints by their versioned mode and input counts;
-they cannot be used interchangeably. Final roots still require checked budget-11 results;
-their searches use full exploration depth eleven with no time cutoff. The actual obligation budget continues to
+within the stated budget. All other after-two classes retain coverage of every
+compatible second and first inverse branch, including classes lacking
+obstruction markers. Residual-expansion mode performs no budget-nine sorting
+searches; full-search mode retains its existing budget-nine searches. Both
+modes expand every budget-ten source without sorting or certificate pruning
+at that budget. Final filtering replaces construction of proved final-root
+elementary families by the verification below. Historical complete-root
+checkpoints and filtered final-root checkpoints have different versions and
+inventory meanings; they cannot be used interchangeably. Final residual roots
+still require checked budget-11 results; their searches use full exploration
+depth eleven with no time cutoff. The actual obligation budget continues to
 govern every diameter closure.
+
+\subsection{Elementary closure of final inverse families}
+\label{sec:inverse-families}
+The following optimization changes which final roots are materialized, not
+the sets $E,A,H,B,C$, the two inverse branches, or the budget-ten search rule.
+It applies the first elementary closure of the joint-selection argument to
+overlap introduced by the inverse cover.
+
+\begin{lemma}[A surviving move on the untouched endpoint]
+\label{lem:inverse-family}
+Let $(\Omega,\beta)$ be a valid fixed-point-free source on a set $X$ of
+$m\in\{20,21\}$ symbols, let $g=21-m$, let $\rho=\Omega\beta$, and set
+$v=\Omega^{-1}$. For an old symbol $x\in X$, define $y=v(x)$ and $z=v(y)$.
+Suppose $x,y,z$ are distinct and occur in cyclic order $(x,y,z)$ in $\rho$.
+Restore $g$ fixed symbols in any cyclic gaps, extend $\Omega$ by the identity
+on those symbols, and consider an applicable inverse transposition $\tau$
+with support $S$ containing every restored symbol. If
+$S\cap\{y,z\}=\varnothing$, then every valid fixed-point-free resulting
+21-symbol parent has transposition distance at most eleven.
+\end{lemma}
+\begin{proof}
+Write $\bar\Omega,\bar\beta,\bar\rho=\bar\Omega\bar\beta$ for the restored
+pair and its target. Inserting a fixed symbol $t$ into a current edge
+$a\mapsto b$ replaces that edge by $a\mapsto t\mapsto b$. The corresponding
+target edge $a\mapsto\Omega(b)$ becomes
+$a\mapsto t\mapsto\Omega(b)$. Hence both restored cycles retain the
+relative cyclic order of all old symbols. This also proves the assertion for
+successive insertions, although this final wave restores at most one symbol.
+
+The inverse parent is
+$(\bar\Omega\tau^{-1},\tau\bar\beta)$, with unchanged target $\bar\rho$.
+After interchanging endpoints, its algebraic permutation is
+$q=\tau\bar\Omega^{-1}$ and its current cycle is $\bar\rho$. Since $\tau$
+fixes $y$ and $z$, one has $q(x)=y$ and $q(y)=z$. The transposition
+$\mu=(x\ y\ z)$ is applicable around $\bar\rho$, and
+$(q\mu^{-1})(y)=q(x)=y$ and $(q\mu^{-1})(z)=q(y)=z$. The parent has no
+fixed points, so this creates at least two fixed symbols. Contracting them
+leaves at most nineteen cyclic symbols, and
+$1+\TD(18)=11$ proves the bound. It is not necessary for $\tau$ to fix $x$.
+Endpoint interchange costs nothing in the symmetric distance, so this is
+also a bound for the original parent.
+\end{proof}
+
+For a current-endpoint inverse, define the \emph{witness masks} to be all
+two-element sets $\{v(x),v^2(x)\}$ satisfying the distinctness and cyclic-order
+conditions of Lemma~\ref{lem:inverse-family}. For a target-endpoint inverse,
+interchange the source endpoints first: the masks use $v=\Omega$ and the
+cyclic order $\beta$. This is a separate inverse branch, not a new class
+equivalence. All masks contain old symbols only.
+
+Let $G$ be the graph on $X$ whose edges are the witness masks. A final inverse
+support has exactly $3-g$ old symbols. If those symbols do not meet every
+edge of $G$, Lemma~\ref{lem:inverse-family} closes all its valid parents over
+all restored gaps. Therefore only vertex covers of $G$ of size $3-g$ need
+explicit expansion. If no cover of size at most $3-g$ exists, the entire
+source-endpoint family closes. To decide this, select an uncovered edge and
+branch on its two endpoints; the depth is at most $3-g\leq3$. Each edge must
+be met, so the branches cover every possibility. A cover of smaller size can
+be enlarged to the required size because $|X|\geq3-g$. Alternatively, inspect
+every old support once and retain it exactly when it meets all masks.
+These are sufficient closure tests: surviving supports may close in other
+ways and are never declared hard merely by passing this filter.
+
+The checker may independently decide the whole-family condition by connected
+components. Each mask is an edge between consecutive symbols in a cycle of
+$v$, so $G$ is a disjoint union of paths, cycles and isolated vertices; its
+nonzero degrees are one or two. A path on $L$ vertices has minimum cover
+$\lfloor L/2\rfloor$: disjoint alternating edges give that lower bound and
+alternating vertices attain it. A cycle on $L$ vertices has minimum
+cover $\lceil L/2\rceil$: each vertex covers at most two of its $L$ edges,
+and an alternating selection, with one extra vertex for odd $L$, attains the
+bound. Isolated vertices contribute zero, and disconnected components add.
+The implementation checks the component degrees and endpoint counts before
+using these formulas; an unexpected graph is an error, not a closure.
+
+Every retained support is expanded through every gap and checked by actual
+forward gain and pair replay. For every valid fixed-point-free parent, test
+all consecutive algebraic triples on each endpoint. The earlier
+consecutive-triple characterization makes this an exact test for membership
+in $D_{11}$. A successful test checks applicability and the created fixed
+symbols, then uses $1+\TD(18)\leq11$; all other parents enter the canonical
+disk-backed set $R$.
+
+\begin{proposition}[Completeness of the filtered final inventory]
+\label{prop:filtered-final-inventory}
+The family filter followed by the exact two-sided immediate-gain test
+generates precisely $R=P\setminus D_{11}$ after class deduplication. Checking
+every class in $R$ within eleven moves discharges every class in $P$.
+\end{proposition}
+\begin{proof}
+Every skipped support family lies in $D_{11}$ by
+Lemma~\ref{lem:inverse-family}, and every individually skipped parent lies in
+$D_{11}$ by its applicable transposition and fixed-symbol test. Thus no
+member of $P\setminus D_{11}$ is removed from the complete inverse cover.
+Every emitted parent is in $P$ by forward replay and outside $D_{11}$ by the
+exact two-sided test. These tests and the existence of a closing move are
+invariant under the relabelings and twisted dihedral action defining the
+valid-pair class, so canonical deduplication gives exactly $R$. Classes in
+$P\cap D_{11}$ have the established elementary bound; the assumed checks of
+$R$ cover the rest.
+\end{proof}
+
+The checker independently regenerates every source in $C$, validates both
+source cycles and fixed-point freedom, reconstructs the masks from the
+actual algebraic images and opposite cyclic order, and independently checks
+the support-cover condition. It covers both inverse endpoints and both
+domain-dependent gains. It uses the universal lemma only for those families;
+every other accepted parent retains exact inverse replay and the two-sided
+immediate-gain check before canonicalization. Every class in its independently
+generated set $R$ requires a persisted intrinsic result replayed at budget
+eleven. No per-source family certificate or obstruction marker is a proof
+input: these are directly verified elementary closures, just as in initial
+root generation. Missing source work or a missing result in $R$ prevents
+completion. Small-domain validation compares this filtered set, including
+class multiplicities before deduplication, with complete unfiltered inverse
+enumeration followed by an independent arbitrary-support closure oracle.
+
 
 Within one sorting search, the target $\rho$ is fixed, so the full algebraic
 permutation $\omega$ determines the current cycle
@@ -658,12 +789,17 @@ domains and counts, and rejects missing data. Large inverse sets are disk-backed
 asynchronous certificate persistence uses bounded queues. A witness proves an
 upper bound only for its represented class. Sorting uses separate CPU and
 GPU worker pools communicating through a versioned disk queue. Full-search
-emission transfers GPU misses to a CPU inverse pool through a second queue;
-every transferred case is processed before sealing the next wave. Active
-residual-expansion emission instead generates both remaining inverse waves
-directly on CPU, without budget-nine or budget-ten sorting queues. Every source
+emission transfers budget-nine GPU misses to a CPU inverse pool through a
+second queue; every transferred case is processed before sealing the next wave. Active
+residual-expansion emission instead generates the complete budget-ten wave
+and covers the final inverse wave on CPU, using the elementary families in
+Section~\ref{sec:inverse-families} and no budget-nine or budget-ten sorting queues. Every source
 class is accounted for and all generation and persistence workers join before
-the next wave is ready for processing. After budget-ten generation completes,
+the next wave is ready for processing. Both modes use the filtered final
+inverse wave. Production flushes the proof-scoped certificate writer before
+publishing a downstream completed checkpoint: results used to omit upstream
+sources must persist before that downstream subset can be resumed. A failed
+flush prevents checkpoint publication. After budget-ten generation completes,
 a key-only scan counts the distinct classes through RocksDB's merged
 logical keys and records the exact count in the emitter checkpoint
 before final inverse generation begins. Parallel iterators use disjoint
@@ -675,7 +811,17 @@ identify distinct classes, so this scan neither decodes or validates states
 nor performs a further in-memory deduplication or advisory search. Legacy
 version-three checkpoints with a deferred count remain readable for completed
 residual generation; resume counts that stored set and atomically upgrades
-the checkpoint before final generation. Independent proof checking is unchanged.
+the checkpoint before final generation. The source inventory and independent
+derivation of the second-level residuals are unchanged by final filtering.
+The filtered final-root checkpoint uses version four, retains either
+\nolinkurl{mode=FULL_SEARCH} or \nolinkurl{mode=RESIDUAL_EXPANSION}, and records
+\nolinkurl{rootInventory=ELEMENTARY_RESIDUALS}; its root count means $|R|$,
+not $|P|$. A completed historical after-two or after-one
+residual-expansion source may be explicitly adopted because these source sets
+are unchanged, after domain, budget, mode and inventory validation. Historical
+complete-root checkpoints cannot be adopted as filtered-root checkpoints.
+Neither full-search checkpoints nor TD18 checkpoints can supply filtered
+residual-expansion input merely because their numerical counts coincide.
 Interrupted queues are regenerated from their completed
 source wave. Final-root sorting retains the CPU/GPU pools and witness replay.
 Inverse outputs use deterministic writer shards with bounded queues. Shards
@@ -695,8 +841,12 @@ operational ETA estimated from the observed rate. Thread-safe accumulated
 counters also report generated, submitted and consumed output key occurrences
 and successfully ingested SST key occurrences. Repeated canonical keys can
 contribute to these operational counters across batches and tables; their
-values are not class inventories. The exact distinct final-root total remains
-unknown until the mandatory merged-database root scan completes.
+values are not class inventories. Family-closed support counts include all
+their prospective gap slots, even when some slots would not be accepted
+fixed-point-free inverse parents; these are candidate-work counts only.
+The exact distinct final residual-root total $|R|$ remains unknown until the
+mandatory merged-database root scan completes. No exact total of the
+unmaterialized elementary classes is needed or claimed.
 Advisory full-depth root searches with a positive time limit may run during
 generation through a
 bounded queue and the normal certificate-validation path. These early
@@ -715,8 +865,17 @@ or timeout certifies a distance lower bound. All these outcomes preserve the unr
 obligation; only a replayed witness or diameter closure discharges it.
 The CPU checker regenerates every
 root obligation, every endpoint class and every inverse wave, replays the
-budget-nine results to derive the second-level residuals, and checks every
-final root at budget eleven without budget-ten certificate pruning.
+budget-nine results to derive the second-level residuals, independently
+checks every elementary final-root family and individual immediate closure,
+and replays a budget-eleven result for every final residual class in $R$,
+without budget-ten certificate pruning. Its version-three report,
+\nolinkurl{inverse-coverage-v3.txt}, states
+\nolinkurl{rootInventory=ELEMENTARY_RESIDUALS} and
+\nolinkurl{elementaryClosure=two-sided-immediate-gain-at-least-two-v1},
+records the complete source count and exact residual-root count, and requires
+no unresolved result. Its support, candidate-slot and explicitly replayed
+parent counters describe separate exhaustive coverage stages, not distinct
+root counts.
 Stored obstruction lists are not proof inputs. Emitter checkpoints are performance
 state, not proof inputs. Checkpoint versions identify the exact route and state layout; checksums and sidecar manifests are not proof inputs.
 
@@ -737,8 +896,9 @@ that derived budget avoids a duplicate replay without weakening either check.
 The independent inverse implementation may reuse a known target in a fixed
 restored domain: $(\omega\tau^{-1})(\tau\beta)=\omega\beta$, and swapping
 endpoints has target $\omega^{-1}\rho=\beta$. Owned objects have fresh arrays;
-every accepted parent still passes its actual forward gain and pair replay.
-This changes construction cost without removing any support or gap.
+every explicitly constructed parent still passes its actual forward gain and
+pair replay. Family exclusions additionally require the elementary closure
+lemma; target reuse alone removes no support or gap.
 
 \begin{theorem}[Conditional transposition diameter]
 \label{thm:td20}
@@ -754,10 +914,12 @@ endpoint with eight moves remaining, or leaves a direct root obligation.
 The complete 83-partition root inventory and 143 annotated endpoint types cover
 these cases. The computational coverage discharges every direct root within eleven
 moves and every endpoint within eight moves or through its complete three-wave
-inverse reconstruction. Both inverse branches and both endpoints are included;
-every remaining reconstructed root is discharged within eleven moves. The
-independent checker regenerates the obligations and replays the persisted
-results at their actual budgets. Thus every root has distance at most eleven.
+inverse reconstruction. Both inverse branches and both endpoints are covered.
+Proposition~\ref{prop:filtered-final-inventory} discharges the elementary
+final parents and reduces the remaining requirement to $R$. The independent
+checker regenerates every source and residual obligation, verifies the
+elementary closures, and replays the persisted results at their actual
+budgets. Thus every root has distance at most eleven.
 The reverse root supplies the matching lower bound, giving $\TD(20)=11$.
 \end{proof}
 

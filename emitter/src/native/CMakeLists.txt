@@ -60,6 +60,13 @@ if(JNI_FOUND)
 endif()
 
 option(TD20_BUILD_NATIVE_TESTS "Build CUDA-dependent native regression tests (Linux linker)" OFF)
+option(TD20_BUILD_INVERSE_BENCHMARK "Build isolated experimental CUDA inverse benchmark" OFF)
+if(TD20_BUILD_INVERSE_BENCHMARK AND JNI_FOUND)
+    add_library(td20_inverse_benchmark SHARED experimental/inverse_benchmark.cu)
+    target_include_directories(td20_inverse_benchmark PRIVATE ${JNI_INCLUDE_DIRS})
+    target_link_libraries(td20_inverse_benchmark PRIVATE CUDA::cudart)
+    target_compile_options(td20_inverse_benchmark PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>)
+endif()
 if(TD20_BUILD_NATIVE_TESTS)
     enable_testing()
     add_executable(td20_slot_memory_test

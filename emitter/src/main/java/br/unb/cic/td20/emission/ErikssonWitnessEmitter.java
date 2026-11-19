@@ -116,10 +116,10 @@ public final class ErikssonWitnessEmitter {
                     var result=options.resumeWork==null
                             ? ErikssonAvoidance.resolvePrimitive(endpoints,work,ErikssonWitnessEmitter::settleReconstructedCpu,
                                     (pair,budget)->settleReconstructedGpu(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch,
-                                    ErikssonWitnessEmitter::settlePrefetchedGpu)
+                                    ErikssonWitnessEmitter::settlePrefetchedGpu,writer::flush)
                             : ErikssonAvoidance.resumePrimitive(options.resumeWork,work,ErikssonWitnessEmitter::settleReconstructedCpu,
                                     (pair,budget)->settleReconstructedGpu(pair,budget,writer),ErikssonWitnessEmitter::lookupReconstructionBatch,
-                                    ErikssonWitnessEmitter::settlePrefetchedGpu);
+                                    ErikssonWitnessEmitter::settlePrefetchedGpu,writer::flush);
                     writer.flush();
                     log.info("Final reconstruction: {}", result);
                     if (result.unresolved() != 0) throw new IllegalStateException("Unresolved reconstructed roots: " + result.unresolved());

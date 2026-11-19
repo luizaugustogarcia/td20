@@ -46,6 +46,9 @@ public final class DiskStateSet implements AutoCloseable {
     private final AtomicReference<Throwable> generationFailure = new AtomicReference<>();
     private final AtomicReference<Throwable> persistenceFailure = new AtomicReference<>();
     private final LongAdder generatedKeys = new LongAdder(), ingestedTables = new LongAdder(), ingestedKeys = new LongAdder();
+    private final LongAdder finalCandidateSlots = new LongAdder(), familyClosedSlots = new LongAdder(),
+            closedEndpointFamilies = new LongAdder(), replayedFinalParents = new LongAdder(),
+            immediateClosedParents = new LongAdder();
     private long size = -1;
     private boolean inventoryValidated;
     private boolean scanPrepared;
@@ -73,6 +76,15 @@ public final class DiskStateSet implements AutoCloseable {
             consumed += writer.consumedKeys(); submitted += writer.submittedKeys();
         }
         return new WriteProgress(generatedKeys.sum(), submitted, consumed, ingestedKeys.sum(), ingestedTables.sum());
+    }
+
+    /** Disjoint operational categories; none is a count of distinct closed root classes. */
+    public record FinalInverseProgress(long candidateSlots, long familyClosedSlots, long closedEndpointFamilies,
+                                       long replayedParents, long immediateClosedParents) { }
+
+    public FinalInverseProgress finalInverseProgress() {
+        return new FinalInverseProgress(finalCandidateSlots.sum(), familyClosedSlots.sum(),
+                closedEndpointFamilies.sum(), replayedFinalParents.sum(), immediateClosedParents.sum());
     }
 
     public static final class State {
@@ -234,8 +246,44 @@ public final class DiskStateSet implements AutoCloseable {
     private static final class InverseWorkspace {
         final PrimitiveInverseReconstruction inverse = new PrimitiveInverseReconstruction();
         final PrimitiveCanonicalizer canonicalizer = new PrimitiveCanonicalizer();
+        final FinalInverseReconstruction finalInverse = new FinalInverseReconstruction();
+        final ImmediateRootClosure rootClosure = new ImmediateRootClosure();
     }
     private static final ThreadLocal<InverseWorkspace> INVERSE = ThreadLocal.withInitial(InverseWorkspace::new);
+
+    /**
+     * Final budget-eleven wave: analytic support-family and replayed immediate
+     * closures precede canonicalization. Only elementary-residual roots persist.
+     * Every source is still expanded; there is no budget-ten certificate lookup.
+     */
+    public void addFinalInverseGenerated(PrimitivePair child) {
+        if (child.size() != 20 && child.size() != 21)
+            throw new IllegalArgumentException("Final inverse requires a 20/21-symbol source");
+        beginGeneration();
+        ProducerBatch batch = null;
+        try {
+            var work = INVERSE.get();
+            batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
+                    ignored -> new ProducerBatch(generatedBatchKeys));
+            var outputBatch = batch;
+            long[] closed = {0};
+            long parents = work.finalInverse.preimages(child, 21 - child.size(), (omega, beta, n) -> {
+                if (work.rootClosure.closes(omega, beta, n)) { closed[0]++; return; }
+                byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
+                key[0] = VERSION; key[1] = 11; key[2] = (byte) n;
+                appendGenerated(outputBatch, key);
+            });
+            finalCandidateSlots.add(work.finalInverse.candidateSlots());
+            familyClosedSlots.add(work.finalInverse.familyClosedSlots());
+            closedEndpointFamilies.add(work.finalInverse.closedEndpointFamilies());
+            replayedFinalParents.add(parents); immediateClosedParents.add(closed[0]);
+        } catch (RuntimeException | Error failure) {
+            generationFailure.compareAndSet(null, failure); throw failure;
+        } finally {
+            if (batch != null) publishGeneratedCount(batch);
+            admissions.decrementAndGet();
+        }
+    }
 
     /**
      * Inserts one synchronous generation into bounded, producer-thread key batches.

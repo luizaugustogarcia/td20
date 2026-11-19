@@ -5,6 +5,58 @@ is recorded here. TD18's completed reproduction and timings belong to TD18 and
 cannot establish TD20 coverage. The matching TD20 upper bound remains pending
 until every criterion in [RESEARCH_PLAN.md](RESEARCH_PLAN.md) has a checked artifact.
 
+The reverted final inverse-family optimization was restored on 19 November
+2026. Restoration checks passed: emitter 301 tests with 16 configured CUDA
+skips, checker 110 tests, cleanup 12 tests, production GPU smoke two tests,
+the optional SM 89 inverse-library build and the authoritative paper build.
+Both execution modes now use the same filtered final cover, and production
+flushes certificates before downstream checkpoints. The later automatic
+budget-nine CPU-search draft was excluded. At the operator's request, old
+reconstruction logs and obsolete outputs were removed, and reconstruction
+resumed at 05:31:59 UTC from the retained 4,010,256,622-source after-one set.
+See [SESSION_HANDOFF.md](SESSION_HANDOFF.md) for the current process and log.
+
+On 19 November 2026, bounded reconstruction optimization experiments completed
+on JDK 21.0.4 with 22 CPU workers and, separately, the local RTX 4070 Laptop
+GPU using an SM 89 experimental native build. Source: `552b5a9` plus the
+uncommitted experimental changes described in
+[RECONSTRUCTION_OPTIMIZATION.md](RECONSTRUCTION_OPTIMIZATION.md). The read-only
+Java experiment checked 3,824 nonuniformly sampled after-one sources and
+18,472,861 inverse occurrences; the family-pruned path preserved all 262
+immediate-test survivor occurrences. Both required CPU suites passed: emitter
+296 tests (16 configured CUDA skips), checker 105, zero failures/errors. The
+separate GPU experiment matched 62 complete CPU/CUDA output multisets.
+`local-runtime/reconstruction-optimized-benchmark.log` and
+`local-runtime/inverse-gpu-benchmark-distinct.log` contain the benchmark
+completion markers; both processes exited zero. These are performance and
+implementation checks, not proof artifacts. Production reconstruction was
+stopped at the operator's request, with last output at 03:25:53 UTC. The operator
+subsequently authorized longer benchmarking, production integration once
+validated, and restarting reconstruction.
+
+The production family-pruned path completed a larger persisted-source
+benchmark at 04:05:26–04:07:44 UTC: 11,994,613 20-symbol sources at 139,408/s
+and 12,560,097 21-symbol sources at 241,993/s. It used bounded 512-source tasks
+on all 22 detected CPUs, averaging 97.90% and 96.14% allocated CPU usage.
+Both exact residual-multiset oracle comparisons and reopened persisted-set
+checks passed. The deterministic disjoint windows are nonuniform; this does
+not establish a full-run ETA or measure final root settlement. Versioned
+results and source-window lists are in
+`local-runtime/work/reconstruction-long-benchmark-20261119-v2/`; the log is
+`local-runtime/reconstruction-long-benchmark-20261119-v2.log`.
+
+After production integration, both required complete CPU suites passed:
+emitter 299 tests (16 configured CUDA skips), checker 110 tests, zero
+failures/errors. The configured production CUDA sorting smoke suite passed
+both tests. Logs are `/tmp/td20-family-production-emitter-tests.log`,
+`/tmp/td20-family-production-checker-tests.log`, and
+`/tmp/td20-family-production-gpu-smoke.log`. The checkpoint-cleanup suite
+passed 12 tests, and the authoritative paper compiled successfully. The
+emitter and independently implemented checker now both define the final
+inventory as all inverse parents outside two-sided immediate-gain closures;
+filtered ROOTS checkpoints are v4 and independent inverse-coverage reports
+are v3. Full proof regeneration and replay remain pending.
+
 The maintained local launchers create per-run settings and logs under
 `local-runtime/logs/`, scratch work under `local-runtime/work/`,
 and use `certificates/` by default. They detect CPU affinity, quota and memory

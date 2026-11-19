@@ -220,8 +220,9 @@ The timer starts during first-move initialization on the device, includes device
 scheduling from that point, and excludes waiting in the host dispatch queue.
 CUDA checks it cooperatively between nodes and support batches, so the allowance
 is not a hard deadline for the host call to return. A timeout produces no
-certificate and leaves the class unresolved. All inverse parents are still
-enumerated; an unresolved final root remains an error. The obligation budget
+certificate and leaves the class unresolved. All inverse parents remain
+covered, either by the proved final-family elementary closure or explicit
+inverse replay; an unresolved final residual root remains an error. The obligation budget
 continues to govern admissible pruning and diameter closures. A depth-limited
 search returns an explicit unresolved status without moves. GPU statistics
 count depth-limited results among misses; timeouts remain a separate count.
@@ -277,11 +278,16 @@ The count can also be performed independently while reconstruction is stopped:
 bash -ic './tools/td20 count-reconstruction --source-work=/home/luiz/Projects/others/td20/local-runtime/work/emitter-20261118T024413Z-706373'
 ```
 
-The `Inverse expansion after-one inverse states` line reports completed
+The `Inverse expansion after-one family-filtered inverse states` line reports completed
 expanded source classes as `processed=X/N (P%)`, with the exact source total
 `N`, percentage `P=100 X/N` for a nonempty source, remaining classes, throughput
-and `etaAtAverageRate`. A completed source callback has enumerated its final-root
-outputs; asynchronous writers may still need to drain. That same line reports
+and `etaAtAverageRate`. A completed source callback has covered both inverse
+endpoints through analytic family closure or explicit replay and queued its
+non-elementary final-root outputs; asynchronous writers may still need to drain.
+`rootInventory=ELEMENTARY_RESIDUALS` identifies the output meaning.
+`candidateSlots`, `familyClosedSlots`, `closedEndpointFamilies`, `replayedParents`
+and `immediateClosedParents` separate coverage categories; slots may include
+invalid parents, and none counts distinct closed root classes. That same line reports
 `generatedKeyOccurrences`, `submittedKeyOccurrences`,
 `consumedKeyOccurrences`, `ingestedKeyOccurrences`, `queuedKeyOccurrences` and
 `ingestedTables` separately. These accumulated output and write counters can
@@ -290,7 +296,7 @@ the mandatory final-root database scan establishes the distinct total.
 Advisory prefetch reports handled, submitted-so-far and pending occurrences
 without an expansion completion percentage.
 
-The final root inventory is counted during the mandatory root-processing scan.
+The final residual-root inventory is counted during the mandatory root-processing scan.
 Persistence writers drain before that scan starts; there is no preliminary
 count-only traversal. Until the iterator completes, progress reports an unknown
 total. The iterator validates every record and its status, and processing still
@@ -391,6 +397,11 @@ the handoff from the latest complete sealed wave and replays stored certificates
 
 Each sealed-wave checkpoint has route ID `td20-eriksson-three-v1`, explicit
 budgets and counts, and its own versioned file `eriksson-reconstruction-v1.txt`.
+Filtered residual-mode `ROOTS` checkpoints use header
+`td-eriksson-reconstruction-v4` and `rootInventory=ELEMENTARY_RESIDUALS`;
+their root count excludes the independently checked elementary closures.
+Earlier completed after-one inputs remain compatible, while old all-parent
+root checkpoints retain their different explicit inventory meaning.
 Resuming validates every record of the latest sealed set and its exact count.
 Changing the GPU time allowance does not change the route or state format.
 The checker requires fresh work outside the certificate database and never trusts

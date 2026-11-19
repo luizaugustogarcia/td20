@@ -7,20 +7,27 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResidualExpansionTest {
-    @Test void residualAfterOneExpandsBothBranchesWithoutAnyBudgetTenSearch(@TempDir Path directory) throws Exception {
+    private static boolean elementary(br.unb.cic.td20.model.CyclicTargetPair pair) {
+        var primitive=br.unb.cic.td20.compat.LegacyPairs.fromLegacy(pair);
+        return FinalInverseReconstructionTest.arbitraryClosure(primitive.omegaImages(),primitive.betaSymbols(),primitive.size());
+    }
+    @ParameterizedTest @EnumSource(ErikssonCheckpoint.Mode.class)
+    void afterOneExpandsBothBranchesWithoutAnyBudgetTenSearch(ErikssonCheckpoint.Mode mode,@TempDir Path directory) throws Exception {
         Path source=Files.createDirectory(directory.resolve("source"));
-        var twenty=ActiveErikssonAvoidanceTest.pair(20);
-        var twentyOne=ActiveErikssonAvoidanceTest.pair(21);
+        var twenty=br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(20));
+        var twentyOne=br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(21));
         Set<ExtendedToricClassKey> expected=ConcurrentHashMap.newKeySet(),actual=ConcurrentHashMap.newKeySet();
-        ErikssonInverseReconstruction.preimages(twenty,1,p -> expected.add(p.extendedToricClassKey()));
-        ErikssonInverseReconstruction.preimages(twentyOne,0,p -> expected.add(p.extendedToricClassKey()));
+        ErikssonInverseReconstruction.preimages(twenty,1,p -> { if (!elementary(p)) expected.add(p.extendedToricClassKey()); });
+        ErikssonInverseReconstruction.preimages(twentyOne,0,p -> { if (!elementary(p)) expected.add(p.extendedToricClassKey()); });
         try(var set=new DiskStateSet(source.resolve("after-one"))) {
             set.add(twenty,10);set.add(twentyOne,10);assertEquals(2,set.seal());
         }
-        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1,ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION).write(source);
+        new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,1,1,2,-1,mode).write(source);
         var result=ErikssonAvoidance.resume(source,Files.createDirectory(directory.resolve("work")),(p,b) -> {
             assertEquals(11,b,"Only final roots may enter CPU search");actual.add(p.extendedToricClassKey());return true;
         },(p,b) -> {assertEquals(11,b,"Only final roots may enter GPU search");return true;},batch -> {
@@ -28,8 +35,9 @@ class ResidualExpansionTest {
         });
         assertFalse(expected.isEmpty());assertEquals(expected,actual);assertEquals(expected.size(),result.roots());assertEquals(0,result.unresolved());
         var checkpoint=ErikssonCheckpoint.read(directory.resolve("work"));
-        assertEquals(ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION,checkpoint.mode());
+        assertEquals(mode,checkpoint.mode());
         assertEquals(ErikssonCheckpoint.Stage.ROOTS,checkpoint.stage());
+        assertEquals(ErikssonCheckpoint.RootInventory.ELEMENTARY_RESIDUALS,checkpoint.rootInventory());
     }
 
     @Test void residualAfterTwoChecksInventoryWithoutAnyBudgetNineSearch(@TempDir Path directory) throws Exception {
@@ -53,11 +61,11 @@ class ResidualExpansionTest {
 
     @Test void completedUncountedIntermediateWaveCountsBeforeFinalExpansion(@TempDir Path directory) throws Exception {
         Path source=Files.createDirectory(directory.resolve("source"));
-        var twenty=ActiveErikssonAvoidanceTest.pair(20);
-        var twentyOne=ActiveErikssonAvoidanceTest.pair(21);
+        var twenty=br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(20));
+        var twentyOne=br.unb.cic.td20.compat.LegacyPairs.toLegacy(FinalInverseReconstructionTest.reverseSource(21));
         Set<ExtendedToricClassKey> expected=ConcurrentHashMap.newKeySet(),actual=ConcurrentHashMap.newKeySet();
-        ErikssonInverseReconstruction.preimages(twenty,1,p -> expected.add(p.extendedToricClassKey()));
-        ErikssonInverseReconstruction.preimages(twentyOne,0,p -> expected.add(p.extendedToricClassKey()));
+        ErikssonInverseReconstruction.preimages(twenty,1,p -> { if (!elementary(p)) expected.add(p.extendedToricClassKey()); });
+        ErikssonInverseReconstruction.preimages(twentyOne,0,p -> { if (!elementary(p)) expected.add(p.extendedToricClassKey()); });
         try(var set=new DiskStateSet(source.resolve("after-one"))) {
             set.add(twenty,10);set.add(twentyOne,10);set.add(twenty,10);
             assertEquals(-1,set.prepareScan());

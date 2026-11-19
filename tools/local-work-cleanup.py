@@ -21,7 +21,8 @@ def resume_source(path):
     legacy = len(lines) == 9 and lines[0] == 'td-eriksson-reconstruction-v1'
     current = len(lines) == 10 and lines[0] == 'td-eriksson-reconstruction-v2'
     deferred = len(lines) == 10 and lines[0] == 'td-eriksson-reconstruction-v3'
-    if not (legacy or current or deferred) or lines[1:4] != [
+    filtered = len(lines) == 11 and lines[0] == 'td-eriksson-reconstruction-v4'
+    if not (legacy or current or deferred or filtered) or lines[1:4] != [
             'route=td20-eriksson-three-v1', 'rootSymbols=21', 'rootBudget=11']:
         raise ValueError('Missing or incompatible resume checkpoint')
     fields = {}
@@ -37,6 +38,9 @@ def resume_source(path):
         if lines[9] not in ('mode=FULL_SEARCH', 'mode=RESIDUAL_EXPANSION'):
             raise ValueError('Missing or incompatible resume mode')
         mode = lines[9][5:]
+    if filtered and (stage != 'ROOTS' or
+                     lines[10] != 'rootInventory=ELEMENTARY_RESIDUALS'):
+        raise ValueError('Missing or incompatible filtered root inventory')
     inventories = [fields[name] for name in ('endpoints', 'afterTwo', 'afterOne', 'roots')]
     if any(re.fullmatch(r'[+-]?[0-9]+', value) is None for value in inventories):
         raise ValueError('Malformed resume inventory')

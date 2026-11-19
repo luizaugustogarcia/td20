@@ -38,6 +38,13 @@ public final class ErikssonAvoidance {
                                  BiPredicate<PrimitivePair,Integer> gpu,
                                  Function<List<DiskStateSet.State>,boolean[]> lookup,
                                  BiPredicate<PrimitivePair,Integer> prefetchGpu) {
+        return resolvePrimitive(endpoints,work,cpu,gpu,lookup,prefetchGpu,() -> {});
+    }
+    public static Result resolvePrimitive(DiskStateSet endpoints,Path work,BiPredicate<PrimitivePair,Integer> cpu,
+                                 BiPredicate<PrimitivePair,Integer> gpu,
+                                 Function<List<DiskStateSet.State>,boolean[]> lookup,
+                                 BiPredicate<PrimitivePair,Integer> prefetchGpu,Runnable persistenceBarrier) {
+        java.util.Objects.requireNonNull(persistenceBarrier);
         long count=endpoints.seal();
         var completed = new LongAdder();
         try (var afterTwo=new DiskStateSet(work.resolve("after-two"))) {
@@ -50,7 +57,7 @@ public final class ErikssonAvoidance {
             }
             var checkpoint=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_TWO,count,afterTwo.seal(),-1,-1);
             checkpoint.write(work);
-            return afterTwo(checkpoint,afterTwo,work,cpu,gpu,lookup,prefetchGpu);
+            return afterTwo(checkpoint,afterTwo,work,cpu,gpu,lookup,prefetchGpu,persistenceBarrier);
         }
     }
     public static Result resume(Path source,Path work,BiPredicate<CyclicTargetPair,Integer> discharge,
@@ -72,6 +79,13 @@ public final class ErikssonAvoidance {
                                 BiPredicate<PrimitivePair,Integer> gpu,
                                 Function<List<DiskStateSet.State>,boolean[]> lookup,
                                 BiPredicate<PrimitivePair,Integer> prefetchGpu) {
+        return resumePrimitive(source,work,cpu,gpu,lookup,prefetchGpu,() -> {});
+    }
+    public static Result resumePrimitive(Path source,Path work,BiPredicate<PrimitivePair,Integer> cpu,
+                                BiPredicate<PrimitivePair,Integer> gpu,
+                                Function<List<DiskStateSet.State>,boolean[]> lookup,
+                                BiPredicate<PrimitivePair,Integer> prefetchGpu,Runnable persistenceBarrier) {
+        java.util.Objects.requireNonNull(persistenceBarrier);
         var checkpoint=ErikssonCheckpoint.read(source);
         String name=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? "after-two":checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? "after-one":"roots";
         long count=checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_TWO ? checkpoint.afterTwo():checkpoint.stage()==ErikssonCheckpoint.Stage.AFTER_ONE ? checkpoint.afterOne():checkpoint.roots();
@@ -79,8 +93,8 @@ public final class ErikssonAvoidance {
         try (var states=checkpoint.afterOneCountPending()?DiskStateSet.openCompletedForScan(source.resolve(name))
                 :DiskStateSet.openSealedForScan(source.resolve(name),count)) {
             return switch (checkpoint.stage()) {
-                case AFTER_TWO -> afterTwo(checkpoint,states,work,cpu,gpu,lookup,prefetchGpu);
-                case AFTER_ONE -> afterOne(checkpoint,states,source,work,cpu,gpu,lookup,prefetchGpu);
+                case AFTER_TWO -> afterTwo(checkpoint,states,work,cpu,gpu,lookup,prefetchGpu,persistenceBarrier);
+                case AFTER_ONE -> afterOne(checkpoint,states,source,work,cpu,gpu,lookup,prefetchGpu,persistenceBarrier);
                 case ROOTS -> roots(checkpoint,states,work,cpu,gpu,lookup);
             };
         }
@@ -88,7 +102,7 @@ public final class ErikssonAvoidance {
     private static Result afterTwo(ErikssonCheckpoint checkpoint,DiskStateSet states,Path work,
                                     BiPredicate<PrimitivePair,Integer> cpu,BiPredicate<PrimitivePair,Integer> gpu,
                                     Function<List<DiskStateSet.State>,boolean[]> lookup,
-                                    BiPredicate<PrimitivePair,Integer> prefetchGpu) {
+                                    BiPredicate<PrimitivePair,Integer> prefetchGpu,Runnable persistenceBarrier) {
         try (var afterOne=new DiskStateSet(work.resolve("after-one"))) {
             Consumer<DiskStateSet.State> expand=state -> {
                 require(state,1);
@@ -97,17 +111,20 @@ public final class ErikssonAvoidance {
             if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-two residuals",checkpoint.afterTwo(),expand,() -> writeProgress(afterOne));
             else ReconstructionPipeline.processPrimitive(states,work.resolve("after-two-search.queue"),workers(),
                     ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,1),cpu,gpu,expand,() -> {},() -> writeProgress(afterOne));
+            // Results that discharge upstream sources must be durable before
+            // a completed downstream subset becomes a resumable checkpoint.
+            persistenceBarrier.run();
             // RocksDB already deduplicates canonical keys. Count the completed
             // logical set without decoding or searching before the next wave.
             long afterOneCount=afterOne.countKeys();
             var next=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),checkpoint.afterTwo(),afterOneCount,-1,checkpoint.mode());
-            next.write(work); return afterOne(next,afterOne,work,work,cpu,gpu,lookup,prefetchGpu);
+            next.write(work); return afterOne(next,afterOne,work,work,cpu,gpu,lookup,prefetchGpu,persistenceBarrier);
         }
     }
     private static Result afterOne(ErikssonCheckpoint checkpoint,DiskStateSet states,Path checkpointSource,Path work,
                                     BiPredicate<PrimitivePair,Integer> cpu,BiPredicate<PrimitivePair,Integer> gpu,
                                     Function<List<DiskStateSet.State>,boolean[]> lookup,
-                                    BiPredicate<PrimitivePair,Integer> prefetchGpu) {
+                                    BiPredicate<PrimitivePair,Integer> prefetchGpu,Runnable persistenceBarrier) {
         checkpoint=countAfterOneIfPending(checkpoint,states,checkpointSource);
         var layout=new GpuDeviceLayout(
                 GpuDeviceLayout.parseDevices(System.getProperty("td20.gpuDevices","0")),
@@ -117,12 +134,9 @@ public final class ErikssonAvoidance {
             prefetch.activate();
             Consumer<DiskStateSet.State> expand=state -> {
                 require(state,2);
-                int gain=state.primitivePair().size()==ErikssonRoute.ROOT_SYMBOLS-1 ? 1:0;
-                roots.addInverseGenerated(state.primitivePair(),ErikssonRoute.ROOT_BUDGET,gain);
+                roots.addFinalInverseGenerated(state.primitivePair());
             };
-            if(checkpoint.mode()==ErikssonCheckpoint.Mode.RESIDUAL_EXPANSION) expandOnly(states,"after-one inverse states",checkpoint.afterOne(),expand,() -> writeProgress(roots));
-            else ReconstructionPipeline.processPrimitive(states,work.resolve("after-one-search.queue"),workers(),
-                    ReconstructionPipeline.configuredGpuWorkers(),checked(lookup,2),cpu,gpu,expand,() -> {},() -> writeProgress(roots));
+            expandOnly(states,"after-one family-filtered inverse states",checkpoint.afterOne(),expand,() -> finalProgress(roots));
             long afterOneCount=states.knownSize();
             if(afterOneCount!=checkpoint.afterOne()) throw new IllegalStateException("Final expansion did not process the counted intermediate inventory");
             var counted=new ErikssonCheckpoint(ErikssonCheckpoint.Stage.AFTER_ONE,checkpoint.endpoints(),
@@ -132,8 +146,10 @@ public final class ErikssonAvoidance {
             // Count while processing roots; publish a counted checkpoint only
             // after the exhaustive scan and all search workers have joined.
             var result = roots(counted,roots,work,cpu,gpu,lookup);
+            persistenceBarrier.run();
             new ErikssonCheckpoint(ErikssonCheckpoint.Stage.ROOTS,checkpoint.endpoints(),
-                    checkpoint.afterTwo(),afterOneCount,result.roots(),checkpoint.mode()).write(work);
+                    checkpoint.afterTwo(),afterOneCount,result.roots(),checkpoint.mode(),
+                    ErikssonCheckpoint.RootInventory.ELEMENTARY_RESIDUALS).write(work);
             return result;
         }
     }
@@ -164,6 +180,14 @@ public final class ErikssonAvoidance {
                 +", queuedKeyOccurrences="+writes.queuedKeyOccurrences()
                 +", ingestedTables="+writes.ingestedTables()
                 +", outputUniqueClasses=unknown until counted scan";
+    }
+    private static String finalProgress(DiskStateSet output) {
+        var proof=output.finalInverseProgress();
+        return "rootInventory=ELEMENTARY_RESIDUALS, candidateSlots="+proof.candidateSlots()
+                +", familyClosedSlots="+proof.familyClosedSlots()
+                +", closedEndpointFamilies="+proof.closedEndpointFamilies()
+                +", replayedParents="+proof.replayedParents()
+                +", immediateClosedParents="+proof.immediateClosedParents()+", "+writeProgress(output);
     }
     private static ErikssonCheckpoint countAfterOneIfPending(ErikssonCheckpoint checkpoint,DiskStateSet states,Path source) {
         if(!checkpoint.afterOneCountPending()) return checkpoint;

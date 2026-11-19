@@ -1,6 +1,48 @@
 # TD20 computational handoff — 19 November 2026
 
-## Active production
+## Restored reconstruction optimization; production running
+
+On 19 November 2026 the operator requested recovery of the reverted final
+inverse-family optimization, verification, commit and push. The implementation
+was recovered from its recorded successful patches and the original
+24,554,710-source benchmark. It filters proved support families before gap
+expansion and replays remaining parents before canonicalization. The emitter
+and independent checker generate the same elementary residual cover. Both
+fresh FULL_SEARCH runs and residual resumes now use the filtered final wave.
+The later automatic nine-move CPU-search draft was not restored.
+
+Production resumed at 05:31:59 UTC on 19 November 2026, launcher PID 2472982,
+from the retained completed budget-ten source, in fresh work at
+`local-runtime/work/emitter-20261119T053156Z-2472982`. Its log is
+`local-runtime/logs/emitter-20261119T053156Z-2472982.log`; persistent terminal
+session 32432. It uses all 22 allocated CPUs, a 16 GiB Java heap, scan batches
+of 512 source classes and generated-key batches of 4,096. WAL remains disabled.
+The log confirms `rootInventory=ELEMENTARY_RESIDUALS` against the exact
+4,010,256,622-source denominator. Early rates are not a full-run estimate.
+
+The preceding optimized run ended at 04:36 UTC,
+after expanding 307,872,455 of 4,010,256,622 sources. Its interrupted output
+was removed at the operator's request along with old reconstruction logs and
+superseded experimental work. Runtime settings, benchmark evidence, the
+certificate database and the completed budget-ten source remain. Historical
+log paths below describe records removed by that cleanup.
+
+The retained completed source is
+`local-runtime/work/emitter-20261118T024413Z-706373/after-one`; its exact
+count remains 4,010,256,622. The original 970,331-class after-two residual
+source is `fleet/production-td20-20261117/td18-after-two-reuse-v1/residuals`.
+The measured speedup is final inverse-family filtering, not a reduction of
+that after-two count. Preserve project-root `certificates/`; no pilot
+certificate database was imported. See
+[RECONSTRUCTION_OPTIMIZATION.md](RECONSTRUCTION_OPTIMIZATION.md) for the
+derivation, benchmark scope and remaining proof obligations.
+
+Restoration validation: both required CPU suites passed (emitter 301 tests,
+16 configured CUDA skips; checker 110 tests), with zero failures or errors.
+The cleanup suite passed 12 tests, production CUDA smoke passed two tests,
+and the authoritative paper compiled. No new performance benchmark was run.
+
+The following records describe historical launches and inventories.
 
 Local reconstruction restarted at 03:17:48 UTC on 19 November 2026 as PID
 2109221 (persistent terminal session 48344). Its work directory is
@@ -107,8 +149,8 @@ budget eleven.
 The 2,036 original endpoint markers remain informational. The historical fleet
 configuration selected this residual input as 3,791 batches of at most 256
 states, with 91 states in the last batch. Those remote batches were not
-started; the active local reconstruction resumes the completed global
-budget-ten set. Its exact source count is pending, and the final unique-root
+started; the last local reconstruction resumed the completed global
+budget-ten set. Its exact source count is 4,010,256,622, and the final unique-root
 total remains unknown until the mandatory root scan.
 
 Work belongs to /home/luiz/Projects/others/td20. TD18 is closed and restored;

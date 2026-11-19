@@ -5,6 +5,7 @@ import br.unb.cic.td20.certificate.CertificateStore;
 import br.unb.cic.td20.joint.ErikssonRootGenerator;
 import br.unb.cic.td20.joint.ErikssonRoute;
 import br.unb.cic.td20.joint.ErikssonInverseReconstruction;
+import br.unb.cic.td20.joint.FinalInverseCover;
 import br.unb.cic.td20.joint.ErikssonInventory;
 import br.unb.cic.td20.joint.SupportClearing;
 import br.unb.cic.td20.model.CyclicTargetPair;
@@ -88,7 +89,15 @@ public final class ErikssonCertificateChecker {
         return true;
     }
     record AfterTwoInventory(long closed,long residual) { }
-    record InverseCoverage(long endpoints,long afterTwo,long afterTwoClosed,long afterTwoResiduals,long afterOne,long roots) { }
+    record InverseCoverage(long endpoints,long afterTwo,long afterTwoClosed,long afterTwoResiduals,long afterOne,long roots,
+                           FinalInverseCover.Counts finalCover) {
+        InverseCoverage {
+            if (endpoints<0 || afterTwo<0 || afterTwoClosed<0 || afterTwoResiduals<0
+                    || Math.addExact(afterTwoClosed,afterTwoResiduals)!=afterTwo
+                    || finalCover.sources()!=afterOne || roots<0 || roots>finalCover.residualParents())
+                throw new IllegalArgumentException("Incomplete residual-root coverage inventory");
+        }
+    }
     static InverseCoverage verifyAvoidance(final CertificateStore certificates,final CheckerStateSet endpoints,final Path work,final VerificationProgress progress) {
         int workers=CheckerParallelism.workers(),budget=ErikssonRoute.ROOT_BUDGET;
         try (var afterTwo=new CheckerStateSet(work.resolve("after-two"));
@@ -109,14 +118,14 @@ public final class ErikssonCertificateChecker {
             progress.phase("expanding second-level residuals through both second-move inverse branches");
             expandSecondMovePreimages(secondLevel,afterOne);
             long oneCount=afterOne.seal().count();
-            progress.phase("reversing every gain-zero/one first move without budget-ten certificate lookup");
-            expandFirstMovePreimages(afterOne,roots);
+            progress.phase("covering every gain-zero/one first inverse by elementary closure or residual generation, without budget-ten lookup");
+            var finalCover=expandFirstMovePreimages(afterOne,roots);
             long rootCount=roots.seal().count();
-            progress.phase("verifying reconstructed roots");
+            progress.phase("verifying reconstructed roots outside elementary closures");
             verifyFinalRoots(certificates,roots);
-            var coverage=new InverseCoverage(endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount);
+            var coverage=new InverseCoverage(endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount,finalCover);
             publishInverseCoverage(work,coverage);
-            System.out.printf("Eriksson inverse coverage verified: endpoints=%d afterTwo=%d afterTwoClosed=%d afterTwoResiduals=%d afterOne=%d roots=%d budgetTenLookup=false%n",
+            System.out.printf("Eriksson inverse coverage verified: endpoints=%d afterTwo=%d afterTwoClosed=%d afterTwoResiduals=%d afterOne=%d residualRoots=%d rootInventory=ELEMENTARY_RESIDUALS budgetTenLookup=false%n",
                     endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount);
             return coverage;
         }
@@ -140,13 +149,24 @@ public final class ErikssonCertificateChecker {
         });
     }
     /** Budget-ten states are generation obligations; none is suppressed by a certificate lookup. */
-    static void expandFirstMovePreimages(final CheckerStateSet afterOne,final CheckerStateSet roots) {
+    static FinalInverseCover.Counts expandFirstMovePreimages(final CheckerStateSet afterOne,final CheckerStateSet roots) {
+        long expectedSources=afterOne.seal().count();
+        var instances=new java.util.concurrent.ConcurrentLinkedQueue<FinalInverseCover>();
+        var local=ThreadLocal.withInitial(()->{var cover=new FinalInverseCover();instances.add(cover);return cover;});
         afterOne.forEachConcurrently(CheckerParallelism.workers(),state->{
             requireStage(state,2);
             int gain=state.pair().getBeta().size()==ErikssonRoute.ROOT_SYMBOLS-1?1:0;
-            ErikssonInverseReconstruction.preimages(state.pair(),gain,
+            local.get().forEachResidual(state.pair(),gain,
                     parent->roots.add(new SearchState(ErikssonRoute.ROOT_BUDGET,parent)));
         });
+        var result=FinalInverseCover.Counts.empty();
+        for(var cover:instances) result=result.plus(cover.counts());
+        if(result.sources()!=expectedSources) throw new IllegalStateException("Final inverse cover omitted a source class");
+        System.out.printf("Independent final inverse cover: sources=%d sourceSides=%d familyClosedSides=%d oldSupports=%d familyClosedSupports=%d candidateSlots=%d familyClosedCandidateSlots=%d invalidCandidates=%d replayedParents=%d immediateClosedParents=%d residualOccurrences=%d distinctResidualRoots=unknown_until_scan%n",
+                result.sources(),result.sourceSides(),result.closedSides(),result.supportChoices(),result.closedSupports(),
+                result.candidateSlots(),result.closedCandidateSlots(),result.invalidCandidates(),result.replayedParents(),
+                result.immediateClosed(),result.residualParents());
+        return result;
     }
     static void verifyFinalRoots(final CertificateStore certificates,final CheckerStateSet roots) {
         roots.forEachConcurrently(CheckerParallelism.workers(),batch->{
@@ -154,17 +174,25 @@ public final class ErikssonCertificateChecker {
             return certificates.findAll(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET);
         },state->{},state->{throw missing(state.pair(),ErikssonRoute.ROOT_BUDGET);});
     }
-    private static void publishInverseCoverage(final Path work,final InverseCoverage result) {
+    static void publishInverseCoverage(final Path work,final InverseCoverage result) {
         Path temporary=null;
         try {
             temporary=Files.createTempFile(work,".inverse-coverage-",".tmp");
-            Files.write(temporary,List.of("td20-independent-inverse-coverage-v2","route="+ErikssonRoute.ID,
+            var cover=result.finalCover();
+            Files.write(temporary,List.of("td20-independent-inverse-coverage-v3","route="+ErikssonRoute.ID,
                     "rootSymbols="+ErikssonRoute.ROOT_SYMBOLS,"rootBudget="+ErikssonRoute.ROOT_BUDGET,
                     "status=complete","mode=residual-expansion","endpointBudget=8","afterTwoBudget=9",
-                    "afterOneBudget=10","budgetTenLookup=false","endpoints="+result.endpoints(),
+                    "afterOneBudget=10","budgetTenLookup=false","rootInventory=ELEMENTARY_RESIDUALS",
+                    "elementaryClosure=two-sided-immediate-gain-at-least-two-v1","endpoints="+result.endpoints(),
                     "afterTwo="+result.afterTwo(),"afterTwoClosed="+result.afterTwoClosed(),
-                    "afterTwoResiduals="+result.afterTwoResiduals(),"afterOne="+result.afterOne(),"roots="+result.roots(),"unresolved=0"));
-            Files.move(temporary,work.resolve("inverse-coverage-v2.txt"),StandardCopyOption.ATOMIC_MOVE);
+                    "afterTwoResiduals="+result.afterTwoResiduals(),"afterOne="+result.afterOne(),
+                    "sourceSides="+cover.sourceSides(),"familyClosedSides="+cover.closedSides(),
+                    "oldSupports="+cover.supportChoices(),"familyClosedSupports="+cover.closedSupports(),
+                    "candidateSlots="+cover.candidateSlots(),"familyClosedCandidateSlots="+cover.closedCandidateSlots(),
+                    "invalidCandidates="+cover.invalidCandidates(),"replayedParents="+cover.replayedParents(),
+                    "immediateClosedParents="+cover.immediateClosed(),"residualOccurrences="+cover.residualParents(),
+                    "roots="+result.roots(),"unresolved=0"));
+            Files.move(temporary,work.resolve("inverse-coverage-v3.txt"),StandardCopyOption.ATOMIC_MOVE);
         } catch(Exception error) { throw new IllegalStateException("Cannot publish independent inverse coverage",error); }
         finally { if(temporary!=null) try { Files.deleteIfExists(temporary); } catch(Exception ignored) { } }
     }

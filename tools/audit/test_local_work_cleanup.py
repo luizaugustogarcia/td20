@@ -76,6 +76,26 @@ class LocalWorkCleanupTest(unittest.TestCase):
         self.assertEqual([abandoned], cleanup.cleanup(self.base, self.database, dry_run=True))
         self.assertTrue(abandoned.exists())
 
+    def test_filtered_root_checkpoint_preserves_its_inventory_semantics(self):
+        source = self.work('filtered')
+        (source / 'roots' / 'CURRENT').write_text('kept')
+        checkpoint = source / 'eriksson-reconstruction-v1.txt'
+        valid = ('td-eriksson-reconstruction-v4\nroute=td20-eriksson-three-v1\n'
+                 'rootSymbols=21\nrootBudget=11\nstage=ROOTS\nendpoints=2036\n'
+                 'afterTwo=970331\nafterOne=4010256622\nroots=42\n'
+                 'mode=RESIDUAL_EXPANSION\nrootInventory=ELEMENTARY_RESIDUALS\n')
+        checkpoint.write_text(valid)
+        self.assertEqual(source.resolve(), cleanup.resume_source(source))
+        checkpoint.write_text(valid.replace('mode=RESIDUAL_EXPANSION', 'mode=FULL_SEARCH'))
+        self.assertEqual(source.resolve(), cleanup.resume_source(source))
+        for altered in (valid.replace('rootInventory=ELEMENTARY_RESIDUALS\n', ''),
+                        valid.replace('ELEMENTARY_RESIDUALS', 'ALL_PARENTS'),
+                        valid.replace('stage=ROOTS', 'stage=AFTER_ONE'),
+                        valid.replace('reconstruction-v4', 'reconstruction-v2')):
+            checkpoint.write_text(altered)
+            with self.assertRaises(ValueError):
+                cleanup.resume_source(source)
+
     def test_foreign_resume_route_rejects_cleanup_before_any_deletion(self):
         abandoned = self.work('old')
         source = self.work('source', checkpoint=True)

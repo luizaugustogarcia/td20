@@ -355,7 +355,7 @@ public final class CheckerStateStorage implements AutoCloseable {
         forEachConcurrently(workers, null, state -> { }, consumer);
     }
 
-    public static int lookupBatchSize() { return positiveProperty("td20.certificateLookupBatchSize", 262144); }
+    public static int lookupBatchSize() { return CheckerParallelism.lookupBatchSize(); }
 
     private static int positiveProperty(String name, int defaultValue) {
         int value = Integer.getInteger(name, defaultValue);

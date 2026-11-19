@@ -387,6 +387,15 @@ bounded. Class keys and disk iteration are deterministic at persistence
 boundaries. `certificates/`, `data/`, work databases and ordinary logs are untracked.
 Completed execution logs and settings also remain untracked.
 
+The checker defaults to an aggregate certificate lookup batch of
+`262144 * min(checkerWorkers, 32)` keys. It splits this batch across CPU workers
+for native reads and independent replay, giving 262,144 keys per `multiGet`
+when there are at most 32 workers and the batch is full. The local checker
+launcher uses the same default; `TD20_LOOKUP_BATCH_KEYS` or
+`td20.certificateLookupBatchSize` overrides the aggregate size. The aggregate
+default is capped at 8,388,608 keys, and up to four batches may overlap.
+Partial batches and reconstruction scan limits can produce smaller calls.
+
 Each handoff file has format `td-reconstruction-queue-v1`, a route/domain/budget
 header, fixed-size records containing versioned canonical class keys and their
 explicit budgets, and a final record count. An unfinished file keeps count -1.

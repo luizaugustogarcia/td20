@@ -64,6 +64,9 @@ print(cpu, memory // (1024**3))
 PY
     )
     local cpu=${TD20_CPU_WORKERS:-$detected_cpu}
+    if [[ $module == checker ]]; then
+        default_lookup=$(((cpu < 32 ? cpu : 32) * 262144))
+    fi
     local default_heap=$((detected_memory * 5 / 8))
     (( default_heap > max_heap )) && default_heap=$max_heap
     local heap=${TD20_HEAP_GIB:-$default_heap}

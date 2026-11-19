@@ -9,7 +9,10 @@ public final class CheckerParallelism {
     }
 
     public static int lookupBatchSize() {
-        return positiveProperty("td20.certificateLookupBatchSize", 262_144);
+        // CertificateStore splits each batch across CPU workers before multiGet.
+        // Keep about 262K keys per native call, with a bounded aggregate batch.
+        return positiveProperty("td20.certificateLookupBatchSize",
+                Math.multiplyExact(Math.min(workers(), 32), 262_144));
     }
 
     public static int reconstructionBufferKeys() {

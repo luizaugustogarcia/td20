@@ -144,6 +144,7 @@ final class CertificateBatchVerifier implements Consumer<PrimitivePair>, AutoClo
     }
     private void fail(Throwable error) { failure.compareAndSet(null, error); synchronized (memory) { memory.notifyAll(); } }
     void check() { var error = failure.get(); if (error != null) throw propagate(error); }
+    long checkedCount() { return checked.sum(); }
     String progress() {
         long bytes; synchronized (memory) { bytes = retainedBytes; }
         return "submitted=" + submitted.sum() + " checked=" + checked.sum() + " witnessHits=" + hits.sum()

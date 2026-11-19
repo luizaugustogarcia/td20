@@ -18,6 +18,14 @@ public final class ErikssonRootGenerator {
     public static Counts count(int[] partition,int workers,LongAdder progress) throws Exception {
         return execute(partition,workers,()->{},null,progress);
     }
+    /** Operational counters; none controls generation or certificate coverage. */
+    public static final class Progress {
+        private final LongAdder nodes = new LongAdder(), completedPrefixes = new LongAdder();
+        private volatile long totalPrefixes = -1;
+        public long prefixNodes() { return nodes.sum(); }
+        public long completedPrefixes() { return completedPrefixes.sum(); }
+        public long totalPrefixes() { return totalPrefixes; }
+    }
     public static Counts generate(int[] partition,int workers,Runnable cancellation,Consumer<CyclicTargetPair> output) throws Exception {
         return generatePrimitive(partition,workers,cancellation,pair -> output.accept(LegacyPairs.toLegacy(pair).canonicalRepresentative()));
     }
@@ -26,6 +34,13 @@ public final class ErikssonRootGenerator {
         return execute(partition, workers, cancellation, output, new LongAdder());
     }
     private static Counts execute(int[] partition,int workers,Runnable cancellation,Consumer<PrimitivePair> output,LongAdder progress) throws Exception {
+        return execute(partition, workers, cancellation, output, progress, null);
+    }
+    public static Counts generatePrimitive(int[] partition, int workers, Runnable cancellation,
+                                           Consumer<PrimitivePair> output, Progress progress) throws Exception {
+        return execute(partition, workers, cancellation, output, progress.nodes, progress);
+    }
+    private static Counts execute(int[] partition,int workers,Runnable cancellation,Consumer<PrimitivePair> output,LongAdder progress,Progress operational) throws Exception {
         if (workers<1) throw new IllegalArgumentException("Positive worker count required");
         AtomicReference<Throwable> failure=new AtomicReference<>();
         Runnable check=()->{ if (failure.get()!=null) throw new CancellationException("Regeneration failed: "+failure.get()); cancellation.run(); };
@@ -38,8 +53,10 @@ public final class ErikssonRootGenerator {
             template.frontier=branch -> jobs.add(pool.submit(()->{
                 try { Enumeration worker=new Enumeration(template,branch); worker.place(branch.rank(),branch.used()); return worker.result(); }
                 catch (RuntimeException|Error error) { failure.compareAndSet(null,error); throw error; }
+                finally { if (operational != null) operational.completedPrefixes.increment(); }
             }));
             template.run(); Counts result=template.result();
+            if (operational != null) operational.totalPrefixes = jobs.size();
             for (var job:jobs) result=result.plus(job.get());
             check.run(); return result;
         } finally {

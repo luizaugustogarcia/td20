@@ -17,6 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -55,37 +57,49 @@ public final class ErikssonCertificateChecker {
     }
     static void verifyRoot(final ErikssonInventory.Root row,final CertificateStore certificates,final VerificationProgress progress) {
         row.requireCompleteCounts();
-        progress.phase("independent Eriksson root partition "+row.number());
+        final String type = "root type " + row.number() + "/83 partition=" + Arrays.toString(row.partition());
+        final var generation = new ErikssonRootGenerator.Progress();
         try (var verifier=required(certificates,ErikssonRoute.ROOT_BUDGET)) {
-            progress.phase(() -> "independent Eriksson root partition " + row.number() + " "
-                    + verifier.progress() + " " + certificates.readProgress());
+            progress.phase(() -> type + " prefixes=" + fraction(generation.completedPrefixes(), generation.totalPrefixes())
+                    + (Boolean.getBoolean("td20.checkerVerboseProgress")
+                        ? " " + verifier.progress() + " " + certificates.readProgress() : ""),
+                    generation::prefixNodes, "nodes");
             var counts=ErikssonRootGenerator.generatePrimitive(row.partition(),CheckerParallelism.workers(),verifier::check,pair->{
                 if (!SupportClearing.closes(pair)) verifier.accept(pair);
-            });
+            }, generation);
             if (counts.unoriented()!=row.unoriented() || counts.oriented()!=row.oriented() || counts.supportCleared()!=row.supportCleared())
                 throw new IllegalStateException("Independent active root counts disagree at partition "+row.number());
         } catch (RuntimeException|Error error) { throw error; }
         catch (Exception error) { throw new IllegalStateException("Independent root regeneration failed",error); }
+        progress.phase(type + " complete; certificateClasses=" + row.directClasses());
     }
     static void verifyEndpoint(final ErikssonInventory.Endpoint endpoint, final CertificateStore certificates,
                                final CheckerStateSet residuals, final VerificationProgress progress) {
-        if (endpoint.elementaryClosure()) return;
-        progress.phase("independent Burnside count for endpoint " + endpoint.number());
+        final String type = "endpoint type " + endpoint.number() + "/143 partition=" + Arrays.toString(endpoint.partition());
+        if (endpoint.elementaryClosure()) { progress.phase(type + " complete; elementary closure"); return; }
+        progress.phase(type + " counting total classes");
         final long expected = DirectTwistedBraceletGenerator.countRepresentativesByBurnside(
                 endpoint.partition(),endpoint.orientedByPart());
         final var generated = new LongAdder(); final var residual = new LongAdder();
         try (final var verifier = new CertificateBatchVerifier(certificates, ErikssonRoute.ENDPOINT_BUDGET, pair -> {
             residuals.add(new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair)); residual.increment();
         })) {
-            progress.phase(() -> "endpoint " + endpoint.number() + ": regenerated=" + generated.sum()
-                    + " residual=" + residual.sum() + " " + verifier.progress() + " " + certificates.readProgress());
+            progress.phase(() -> type + " checked=" + fraction(verifier.checkedCount(), expected)
+                    + (Boolean.getBoolean("td20.checkerVerboseProgress")
+                        ? " regenerated=" + generated.sum() + " " + verifier.progress() + " " + certificates.readProgress() : ""),
+                    verifier::checkedCount, "classes");
             DirectTwistedBraceletGenerator.generatePrimitiveRepresentativesConcurrently(endpoint.partition(),endpoint.orientedByPart(),
                     verifier::check, pair -> { generated.increment(); verifier.accept(pair); });
         }
         if (generated.sum() != expected) throw new IllegalStateException(
                 "Endpoint generation count disagrees with Burnside: endpoint=" + endpoint.number()
                         + " generated=" + generated.sum() + " expected=" + expected);
-        System.out.printf("endpoint %d checked: generated=%d residuals=%d%n",endpoint.number(),generated.sum(),residual.sum());
+        progress.phase(type + " complete; checked=" + generated.sum() + " residuals=" + residual.sum());
+    }
+    private static String fraction(long count, long total) {
+        if (total < 0) return count + "/unknown";
+        return count + "/" + total + (total == 0 ? ""
+                : String.format(Locale.ROOT, " (%.1f%%)", 100.0 * count / total));
     }
     /** Missing witnesses become regenerated obligations even without a stored marker. */
     static boolean checkEndpointPair(final CyclicTargetPair pair, final CertificateStore certificates,

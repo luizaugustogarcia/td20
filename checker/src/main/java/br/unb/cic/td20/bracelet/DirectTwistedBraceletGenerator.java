@@ -1,6 +1,7 @@
 package br.unb.cic.td20.bracelet;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
@@ -87,8 +88,22 @@ public final class DirectTwistedBraceletGenerator {
                                         final Runnable cancellationCheck,
                                         final Consumer<CyclicTargetPair> consumer) {
         validate(partition, orientedByPart);
-        new Generator(normalizedSpecs(partition, orientedByPart), consumer, null,
+        new Generator(normalizedSpecs(partition, orientedByPart), state -> consumer.accept(state.decodeWord()), null,
                 null, cancellationCheck).generate();
+    }
+
+    /** Production leaves use the emitter primitive representation without cycle decomposition. */
+    public static void generatePrimitiveRepresentatives(int[] partition, boolean[] orientedByPart,
+                                                        Consumer<PrimitivePair> consumer) {
+        validate(partition, orientedByPart);
+        new Generator(normalizedSpecs(partition, orientedByPart),
+                state -> consumer.accept(state.decodePrimitive()), null, null, NO_CANCELLATION_CHECK).generate();
+    }
+
+    public static void generatePrimitiveRepresentativesConcurrently(int[] partition, boolean[] orientedByPart,
+            Runnable cancellationCheck, Consumer<PrimitivePair> consumer) {
+        generateConcurrently(partition, orientedByPart, cancellationCheck,
+                state -> consumer.accept(state.decodePrimitive()), null);
     }
 
     /** Counts realizable representatives without decoding completed words. */
@@ -123,14 +138,14 @@ public final class DirectTwistedBraceletGenerator {
             final boolean[] orientedByPart,
             final Runnable cancellationCheck,
             final Consumer<CyclicTargetPair> consumer) {
-        generateConcurrently(partition, orientedByPart, cancellationCheck, consumer, null);
+        generateConcurrently(partition, orientedByPart, cancellationCheck, state -> consumer.accept(state.decodeWord()), null);
     }
 
     private static void generateConcurrently(
             final int[] partition,
             final boolean[] orientedByPart,
             final Runnable cancellationCheck,
-            final Consumer<CyclicTargetPair> consumer,
+            final Consumer<Generator> consumer,
             final Runnable countConsumer) {
         validate(partition, orientedByPart);
         final var specs = normalizedSpecs(partition, orientedByPart);
@@ -209,7 +224,7 @@ public final class DirectTwistedBraceletGenerator {
      */
     private static List<GenerationTask> buildFrontier(
             final CycleSpec[] specs,
-            final Consumer<CyclicTargetPair> consumer,
+            final Consumer<Generator> consumer,
             final Runnable countConsumer,
             final Runnable cancellationCheck,
             final int targetTaskCount) {
@@ -359,7 +374,7 @@ public final class DirectTwistedBraceletGenerator {
 
     private static final class Generator {
         private final CycleSpec[] specs;
-        private final Consumer<CyclicTargetPair> consumer;
+        private final Consumer<Generator> consumer;
         private final Consumer<int[]> wordConsumer;
         private final Runnable countConsumer;
         private final Runnable cancellationCheck;
@@ -444,7 +459,7 @@ public final class DirectTwistedBraceletGenerator {
         private Consumer<GenerationTask> continuationCollector;
 
         private Generator(final CycleSpec[] specs,
-                          final Consumer<CyclicTargetPair> consumer,
+                          final Consumer<Generator> consumer,
                           final Consumer<int[]> wordConsumer,
                           final Runnable countConsumer,
                           final Runnable cancellationCheck) {
@@ -1482,8 +1497,15 @@ public final class DirectTwistedBraceletGenerator {
                 countConsumer.run();
                 return;
             }
-            final var pair = decodeWord();
-            consumer.accept(pair);
+            consumer.accept(this);
+        }
+
+        private PrimitivePair decodePrimitive() {
+            final byte[] omega=new byte[n];
+            for (int x=0;x<n;x++) omega[x]=(byte)targetSuccessor[(x+n-1)%n];
+            // The recurrence already minimized the auxiliary encoding word.
+            // Reflection reverses positions and inverts oriented ranks.
+            return PrimitivePair.fromNormalizedImages(omega,true);
         }
 
         private CyclicTargetPair decodeWord() {

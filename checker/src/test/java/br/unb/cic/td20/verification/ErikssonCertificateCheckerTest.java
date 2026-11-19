@@ -109,7 +109,7 @@ class ErikssonCertificateCheckerTest {
             assertEquals(2,cover.sources());assertEquals(4,cover.sourceSides());
             assertEquals(7600+2660,cover.candidateSlots());
             assertEquals(expected.size(),roots.seal().count());
-            roots.forEachConcurrently(2,state->{assertEquals(21,state.pair().getBeta().size());assertEquals(11,state.maximumMoves());actual.add(state.pair().extendedToricClassKey());});
+            roots.forEachConcurrently(2,state->{assertEquals(21,state.pair().size());assertEquals(11,state.maximumMoves());actual.add(br.unb.cic.td20.compat.LegacyPairs.toLegacy(state.pair()).extendedToricClassKey());});
             assertEquals(expected,actual);
             if(expected.isEmpty()) ErikssonCertificateChecker.verifyFinalRoots(certificates,roots);
             else assertThrows(IllegalStateException.class,()->ErikssonCertificateChecker.verifyFinalRoots(certificates,roots));

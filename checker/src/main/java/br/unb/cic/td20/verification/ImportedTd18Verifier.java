@@ -84,7 +84,7 @@ public final class ImportedTd18Verifier {
                     byte[] residual = records.get(i);
                     byte[] encoded = results.get(i);
                     boolean covered = encoded != null && CertificateValidator.validatedRequiredBudget(
-                            states.get(i).pair(), CertificateCodec.decodeResult(encoded), KnownDiameters.MAX_BUDGET) <= BUDGET;
+                            states.get(i).pair(), CertificateCodec.decodePrimitiveResult(encoded), KnownDiameters.MAX_BUDGET) <= BUDGET;
                     if (covered) {
                         if (residual != null) throw new IllegalStateException("A replay-covered class remains in the residual state set");
                         hits.increment();
@@ -117,7 +117,7 @@ public final class ImportedTd18Verifier {
 
     private static CheckerStateStorage.State requireAfterTwoState(byte[] key) {
         var state = CheckerStateStorage.decode(key, new byte[0]);
-        if (state.maximumMoves() != BUDGET || state.pair().getBeta().size() != SYMBOLS)
+        if (state.maximumMoves() != BUDGET || state.pair().size() != SYMBOLS)
             throw new IllegalStateException("Imported scope requires fixed-point-free 18-symbol budget-nine states");
         if (!Arrays.equals(key, DirectStateKey.encode(state.pair(), BUDGET)))
             throw new IllegalStateException("Noncanonical or nondeterministic imported-scope state key");

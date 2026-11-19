@@ -1,6 +1,7 @@
 package br.unb.cic.td20.joint;
-import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -18,9 +19,13 @@ public final class ErikssonRootGenerator {
         return execute(partition,workers,()->{},null,progress);
     }
     public static Counts generate(int[] partition,int workers,Runnable cancellation,Consumer<CyclicTargetPair> output) throws Exception {
-        return execute(partition,workers,cancellation,output,new LongAdder());
+        return generatePrimitive(partition,workers,cancellation,pair -> output.accept(LegacyPairs.toLegacy(pair).canonicalRepresentative()));
     }
-    private static Counts execute(int[] partition,int workers,Runnable cancellation,Consumer<CyclicTargetPair> output,LongAdder progress) throws Exception {
+    public static Counts generatePrimitive(int[] partition, int workers, Runnable cancellation,
+                                           Consumer<PrimitivePair> output) throws Exception {
+        return execute(partition, workers, cancellation, output, new LongAdder());
+    }
+    private static Counts execute(int[] partition,int workers,Runnable cancellation,Consumer<PrimitivePair> output,LongAdder progress) throws Exception {
         if (workers<1) throw new IllegalArgumentException("Positive worker count required");
         AtomicReference<Throwable> failure=new AtomicReference<>();
         Runnable check=()->{ if (failure.get()!=null) throw new CancellationException("Regeneration failed: "+failure.get()); cancellation.run(); };
@@ -58,7 +63,7 @@ public final class ErikssonRootGenerator {
         final List<Rule>[] joint;
         final byte[] orders, transformed;
         final Runnable cancellationCheck;
-        final Consumer<CyclicTargetPair> consumer;
+        final Consumer<PrimitivePair> consumer;
         int edges;
         long unoriented,oriented,cleared,nodes,leaves;
         LongAdder progress=new LongAdder();
@@ -66,7 +71,7 @@ public final class ErikssonRootGenerator {
         Consumer<Branch> frontier;
         @SuppressWarnings("unchecked")
         Enumeration(final int[] partition, final Runnable cancellationCheck,
-                    final Consumer<CyclicTargetPair> consumer) {
+                    final Consumer<PrimitivePair> consumer) {
             this.parts = partition.clone(); Arrays.sort(parts);
             for (int i = 0; i < parts.length / 2; i++) {
                 final int value = parts[i]; parts[i] = parts[parts.length - 1 - i]; parts[parts.length - 1 - i] = value;
@@ -179,11 +184,10 @@ public final class ErikssonRootGenerator {
             if (rank == n) {
                 leaves++;
                 if (ErikssonMoves.closesOrHasPrefix(image,CyclicTargetMoves.identity(n))) return;
-                final byte[] encoded = new byte[(5*n+7)/8];
-                int bit = 0;
-                for (final int value : image) for (int shift = 4; shift >= 0; shift--, bit++)
-                    encoded[bit/8] |= (byte)(((value>>>shift)&1) << (7-bit%8));
-                var pair=CertificateCodec.pairForKey(encoded,n).canonicalRepresentative();
+                byte[] successors = new byte[n];
+                for (int x=0;x<n;x++) successors[x]=(byte)image[x];
+                // This recurrence minimizes image vectors, while certificates minimize encoding words.
+                var pair=PrimitivePair.fromNormalizedImages(successors,false);
                 if (CyclicTargetMoves.totallyUnoriented(image,CyclicTargetMoves.identity(n))) unoriented++;
                 else { oriented++; if (n==ErikssonRoute.ROOT_SYMBOLS && SupportClearing.closes(pair)) cleared++; }
                 if (consumer!=null) consumer.accept(pair);

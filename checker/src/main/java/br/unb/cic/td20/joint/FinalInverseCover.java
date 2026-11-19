@@ -1,8 +1,9 @@
 package br.unb.cic.td20.joint;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
-import br.unb.cic.td20.permutation.Cycle;
-import br.unb.cic.td20.permutation.MulticyclePermutation;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
+import br.unb.cic.td20.joint.PrimitiveInverseReconstruction.RawConsumer;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -66,9 +67,16 @@ public final class FinalInverseCover {
      * Domains below 21 support exhaustive oracle tests of the same predicate.
      */
     public void forEachResidual(CyclicTargetPair child, int gain, Consumer<CyclicTargetPair> output) {
+        Objects.requireNonNull(output);
+        forEachResidual(LegacyPairs.fromLegacy(child),gain,(omega,beta,n) ->
+                output.accept(LegacyPairs.toLegacy(PrimitivePair.of(Arrays.copyOf(omega,n),Arrays.copyOf(beta,n)))));
+    }
+
+    /** Borrowed residual arrays are packed by the persistence callback before workspace reuse. */
+    public void forEachResidual(PrimitivePair child, int gain, RawConsumer output) {
         Objects.requireNonNull(child); Objects.requireNonNull(output);
         if (busy || failed) throw new IllegalStateException("Final inverse workspace is busy or failed");
-        int m = child.getBeta().size(), n = m + gain;
+        int m = child.size(), n = m + gain;
         if (m < 3 || gain < 0 || gain > 1 || n > MAX)
             throw new IllegalArgumentException("Final inverse cover requires gain zero/one and at most 21 symbols");
         if (KnownDiameters.knownDiameter(n-2)>ErikssonRoute.ROOT_BUDGET-1)
@@ -83,10 +91,10 @@ public final class FinalInverseCover {
         finally { busy = false; }
     }
 
-    private void loadAndCheck(CyclicTargetPair child, int m) {
+    private void loadAndCheck(PrimitivePair child, int m) {
         int images = 0, betaSymbols = 0, rhoSymbols = 0;
         for (int i=0;i<m;i++) {
-            int image=child.getOmega().image(i), b=child.getBeta().get(i), r=child.getRho().get(i);
+            int image=child.omegaImage(i), b=child.betaAt(i), r=child.rhoAt(i);
             if (image < 0 || image >= m || b < 0 || b >= m || r < 0 || r >= m
                     || (images & (1<<image)) != 0 || (betaSymbols & (1<<b)) != 0 || (rhoSymbols & (1<<r)) != 0)
                 throw new IllegalArgumentException("Inverse source must be a valid pair on the complete normalized domain");
@@ -99,7 +107,7 @@ public final class FinalInverseCover {
             throw new IllegalArgumentException("Inverse source target does not equal omega * beta");
     }
 
-    private void coverEndpoint(int m, int n, int gain, boolean exchanged, Consumer<CyclicTargetPair> output) {
+    private void coverEndpoint(int m, int n, int gain, boolean exchanged, RawConsumer output) {
         sourceSides++;
         int oldCount=3-gain, gaps=gain==0?1:m;
         int choices=oldCount==2?m*(m-1)/2:m*(m-1)*(m-2)/6;
@@ -163,7 +171,7 @@ public final class FinalInverseCover {
         return false;
     }
 
-    private void consider(int[] sourceOrder,int m,int n,int gain,int gap,boolean exchanged,Consumer<CyclicTargetPair> output) {
+    private void consider(int[] sourceOrder,int m,int n,int gain,int gap,boolean exchanged,RawConsumer output) {
         for(int i=0,cursor=0;i<m;i++) {
             restoredOrder[cursor++]=sourceOrder[i];
             if(i==gap) restoredOrder[cursor++]=m;
@@ -208,7 +216,7 @@ public final class FinalInverseCover {
         }
         if(symbol!=0) throw new IllegalStateException("Reconstructed target cycle did not close");
         if(closesOn(parentInverse,targetPositions,n)) { immediateClosed++; return; }
-        output.accept(materialize(exchanged?parentInverse:parent,exchanged?targetOrder:parentOrder,n));
+        output.accept(exchanged?parentInverse:parent,exchanged?targetOrder:parentOrder,n);
         residualParents++;
     }
 
@@ -231,15 +239,5 @@ public final class FinalInverseCover {
     private static boolean cyclic(int a,int b,int c) { return a<b&&b<c || b<c&&c<a || c<a&&a<b; }
     private static void successors(int[] order,int n,int[] next,int[] positions) {
         for(int i=0;i<n;i++) { positions[order[i]]=i; next[order[i]]=order[(i+1)%n]; }
-    }
-    private static CyclicTargetPair materialize(int[] images,int[] order,int n) {
-        var omega=new MulticyclePermutation(); int seen=0;
-        for(int start=0;start<n;start++) {
-            if((seen&(1<<start))!=0) continue;
-            int[] cycle=new int[n];int length=0,x=start;
-            do { seen|=1<<x; cycle[length++]=x; x=images[x]; } while(x!=start);
-            omega.add(Cycle.of(Arrays.copyOf(cycle,length)));
-        }
-        return CyclicTargetPair.ofOwned(omega,Cycle.of(Arrays.copyOf(order,n)));
     }
 }

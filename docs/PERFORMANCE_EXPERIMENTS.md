@@ -1,4 +1,4 @@
-# Primitive emitter representation and benchmark
+# Primitive representations and emitter benchmark
 
 The previous emitter converted each accepted inverse state from image arrays
 into MulticyclePermutation and Cycle objects, canonicalizes an encoding,
@@ -21,6 +21,40 @@ version 3, certificate version 2, and WAL-disabled persistence are preserved.
 This intentionally changes the emitter representation compared with TD18;
 it does not change the mathematical obligations or establish the pending
 TD20 upper bound. Reconstruction was stopped for migration and verification.
+
+## Checker migration
+
+The checker now mirrors the emitter primitive representation from commit
+`387910b`: immutable `PrimitivePair` byte vectors, worker-owned
+`PrimitiveCanonicalizer` and inverse arrays, packed `PrimitiveCertificate`
+transpositions, and direct canonical-key packing into bounded inverse
+persistence batches. Its root and endpoint generators retain their checker
+recurrences and emit compact states. `FinalInverseCover` retains the independent
+family predicate and forward replay, and sends borrowed residual arrays to the
+same persistence boundary. The checker module has no emitter dependency.
+
+The previous checker permutation APIs remain comparison oracles. Persisted keys
+are decoded without granting canonicality; the import audit recomputes their
+canonical keys and rejects mismatches. Batched proof lookup computes keys from
+regenerated obligations, replays every hit in that canonical frame, rejects
+malformed records even when their move counts exceed the requested budget, and
+preserves missing witnesses as obligations. State version three, certificate
+version two, budgets 8/9/10/11, final coverage reports and WAL-disabled
+persistence remain unchanged.
+
+Checker validation compares canonical keys with the legacy orbit oracle for
+every valid normalized pair through seven symbols; inverse labeled multisets
+for gains zero through three through six-symbol sources; active inverse
+fixtures through 21 symbols; direct generation classes and counts; all packed
+witness boundaries; and arbitrary multi-move replay and prefix budgets across
+domains three through 21. These are bounded equivalence checks. The emitter
+benchmark numbers below do not measure checker speed or complete proof coverage.
+
+Migration validation passed: `mvn -pl checker -am test` ran 130 tests with no
+failures, errors or skips; `mvn -pl emitter -am test` ran 301 tests with no
+failures or errors and 16 configured CUDA skips. The JShell structural inventory
+check confirmed all 83 root partitions and 143 endpoint annotations. No checker
+speed benchmark or full proof-verification run was performed.
 
 ## Representation and equivalence
 

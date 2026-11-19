@@ -11,7 +11,10 @@ final class CheckerStateSet implements AutoCloseable {
     record Inventory(long count) { }
     CheckerStateSet(Path directory) { storage = new CheckerStateStorage(directory); }
     void add(SearchState state) {
-        storage.addGenerated(state.maximumMoves(), output -> output.accept(state.pair()));
+        storage.addGeneratedPairs(state.maximumMoves(), output -> output.accept(state.pair()));
+    }
+    void addGeneratedPrimitive(int maximumMoves, Consumer<br.unb.cic.td20.joint.PrimitiveInverseReconstruction.RawConsumer> generator) {
+        storage.addGeneratedPrimitive(maximumMoves,generator);
     }
     Inventory seal() { return new Inventory(storage.seal()); }
     boolean contains(SearchState state) {

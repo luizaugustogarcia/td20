@@ -6,14 +6,17 @@ The [paper](td20-reduction-count.tex) specifies the mathematics and
 `ErikssonWitnessEmitter` and `ErikssonCertificateChecker` implementations.
 The Maven modules remain independent: the checker has no emitter dependency.
 
-Production emission, reconstruction, import, merging, and certificate replay
-use immutable `PrimitivePair` byte vectors and packed `PrimitiveCertificate`
+Production emission, independent checker generation, reconstruction, import,
+merging, and certificate replay use immutable `PrimitivePair` byte vectors and packed `PrimitiveCertificate`
 transpositions. Worker-owned arrays perform inverse enumeration, canonicalization,
 CPU prefixes, and replay. Inverse callbacks pack canonical state keys directly
 into bounded persistence batches, without disjoint-cycle or encoding objects.
 The general mathematical APIs and comparison harness retain legacy adapters.
-The emitter representation change is intentional; the mathematical route,
-counter, scheduling, persisted formats, and independent checker are preserved.
+Both modules now use the same primitive representation, each compiled into its
+own artifact. The mathematical route, counter, scheduling, and persisted formats
+are preserved. The checker retains its legacy mathematical APIs as comparison
+oracles; production generation, inverse persistence and batched witness replay
+do not construct disjoint-cycle objects.
 The bounded comparison and correctness scope are documented in
 [PERFORMANCE_EXPERIMENTS.md](PERFORMANCE_EXPERIMENTS.md).
 
@@ -64,10 +67,10 @@ are versioned for TD20 and reject historical route checkpoints.
 
 Root, endpoint and inverse certificate lookups construct these keys before
 reading the database. A miss needs no materialized canonical pair. For a hit,
-the checker reuses a normalized input only after comparing its actual images
-with the computed canonical key; otherwise it constructs the canonical pair for
-replay. Persisted keys do not establish canonicality by themselves. Every hit
-still replays the complete witness, checks the project maximum and compares the
+the checker reuses a normalized primitive input only after comparing its actual
+images with the computed canonical key; otherwise it decodes the key into a
+compact primitive pair for replay. Persisted keys do not establish canonicality
+by themselves. Every hit still replays the complete witness, checks the project maximum and compares the
 derived budget with the requested budget. That replay-derived budget is reused
 instead of replaying the same witness twice.
 
@@ -87,10 +90,12 @@ the checked persistence path.
 
 `PrimitiveInverseReconstruction` enumerates inverse gains zero through three on
 both endpoints, restoring all deleted fixed symbols in all gaps. The emitter
-uses reusable image arrays and simultaneous gap choices. The checker uses permutation
-multiplication and sequential insertion. Small-domain tests compare complete
-predecessor class sets for every gain on both cycles.
-The checker retains its independent sequential insertion and arbitrary supports.
+and checker both use worker-owned image arrays and simultaneous gap choices,
+with borrowed output arrays packed directly into version-three state keys.
+The checker retains its independent permutation-multiplication, sequential
+insertion and arbitrary-support implementation as a test oracle. Small-domain
+tests compare exact labeled predecessor multisets, including multiplicities,
+for every gain on both cycles; active-domain fixtures also compare class sets.
 Within a fixed restored domain, inverse moves preserve the target because
 `(omega * tau^-1) * (tau * beta) = omega * beta`; swapping endpoints has target
 `omega^-1 * rho = beta`. Each inverse worker retains the known target in its

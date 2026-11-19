@@ -4,11 +4,12 @@ import br.unb.cic.td20.bracelet.DirectTwistedBraceletGenerator;
 import br.unb.cic.td20.certificate.CertificateStore;
 import br.unb.cic.td20.joint.ErikssonRootGenerator;
 import br.unb.cic.td20.joint.ErikssonRoute;
-import br.unb.cic.td20.joint.ErikssonInverseReconstruction;
 import br.unb.cic.td20.joint.FinalInverseCover;
 import br.unb.cic.td20.joint.ErikssonInventory;
 import br.unb.cic.td20.joint.SupportClearing;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.joint.PrimitiveInverseReconstruction;
 import br.unb.cic.td20.runtime.ProjectPaths;
 import br.unb.cic.td20.runtime.CheckerParallelism;
 import java.io.IOException;
@@ -54,7 +55,7 @@ public final class ErikssonCertificateChecker {
         row.requireCompleteCounts();
         progress.phase("independent Eriksson root partition "+row.number());
         try (var verifier=required(certificates,ErikssonRoute.ROOT_BUDGET)) {
-            var counts=ErikssonRootGenerator.generate(row.partition(),CheckerParallelism.workers(),verifier::check,pair->{
+            var counts=ErikssonRootGenerator.generatePrimitive(row.partition(),CheckerParallelism.workers(),verifier::check,pair->{
                 if (!SupportClearing.closes(pair)) verifier.accept(pair);
             });
             if (counts.unoriented()!=row.unoriented() || counts.oriented()!=row.oriented() || counts.supportCleared()!=row.supportCleared())
@@ -73,7 +74,7 @@ public final class ErikssonCertificateChecker {
         try (final var verifier = new CertificateBatchVerifier(certificates, ErikssonRoute.ENDPOINT_BUDGET, pair -> {
             residuals.add(new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair)); residual.increment();
         })) {
-            DirectTwistedBraceletGenerator.generateRepresentativesConcurrently(endpoint.partition(),endpoint.orientedByPart(),
+            DirectTwistedBraceletGenerator.generatePrimitiveRepresentativesConcurrently(endpoint.partition(),endpoint.orientedByPart(),
                     verifier::check, pair -> { generated.increment(); verifier.accept(pair); });
         }
         if (generated.sum() != expected) throw new IllegalStateException(
@@ -106,9 +107,10 @@ public final class ErikssonCertificateChecker {
              var roots=new CheckerStateSet(work.resolve("roots"))) {
             long endpointCount=endpoints.seal().count();
             progress.phase("regenerating third-move inverse supports");
+            var inverse=ThreadLocal.withInitial(PrimitiveInverseReconstruction::new);
             endpoints.forEachConcurrently(workers,state->{
                 requireStage(state,0);
-                ErikssonInverseReconstruction.preimages(state.pair(),2,parent->afterTwo.add(new SearchState(budget-2,parent)));
+                afterTwo.addGeneratedPrimitive(budget-2,output -> inverse.get().preimages(state.pair(),2,output));
             });
             long twoCount=afterTwo.seal().count();
             progress.phase("replaying budget-nine results and independently deriving second-level residuals");
@@ -135,17 +137,21 @@ public final class ErikssonCertificateChecker {
         var closed=new LongAdder();var missing=new LongAdder();
         afterTwo.forEachConcurrently(CheckerParallelism.workers(),batch->{
             batch.forEach(state->requireStage(state,1));
-            return certificates.findAll(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET-2);
+            return certificates.findAllPrimitive(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET-2);
         },state->closed.increment(),state->{residuals.add(state);missing.increment();});
         long count=residuals.seal().count();
         if(count!=missing.sum()) throw new IllegalStateException("Duplicate or missing independently regenerated second-level residual");
         return new AfterTwoInventory(closed.sum(),count);
     }
     static void expandSecondMovePreimages(final CheckerStateSet residuals,final CheckerStateSet afterOne) {
+        var inverse=ThreadLocal.withInitial(PrimitiveInverseReconstruction::new);
         residuals.forEachConcurrently(CheckerParallelism.workers(),state->{
             requireStage(state,1);
-            for(int gain:new int[]{2,3}) ErikssonInverseReconstruction.preimages(state.pair(),gain,
-                    parent->afterOne.add(new SearchState(ErikssonRoute.ROOT_BUDGET-1,parent)));
+            for(int gain=2;gain<=3;gain++) {
+                final int restored=gain;
+                afterOne.addGeneratedPrimitive(ErikssonRoute.ROOT_BUDGET-1,
+                        output -> inverse.get().preimages(state.pair(),restored,output));
+            }
         });
     }
     /** Budget-ten states are generation obligations; none is suppressed by a certificate lookup. */
@@ -155,9 +161,9 @@ public final class ErikssonCertificateChecker {
         var local=ThreadLocal.withInitial(()->{var cover=new FinalInverseCover();instances.add(cover);return cover;});
         afterOne.forEachConcurrently(CheckerParallelism.workers(),state->{
             requireStage(state,2);
-            int gain=state.pair().getBeta().size()==ErikssonRoute.ROOT_SYMBOLS-1?1:0;
-            local.get().forEachResidual(state.pair(),gain,
-                    parent->roots.add(new SearchState(ErikssonRoute.ROOT_BUDGET,parent)));
+            int gain=state.pair().size()==ErikssonRoute.ROOT_SYMBOLS-1?1:0;
+            roots.addGeneratedPrimitive(ErikssonRoute.ROOT_BUDGET,
+                    output -> local.get().forEachResidual(state.pair(),gain,output));
         });
         var result=FinalInverseCover.Counts.empty();
         for(var cover:instances) result=result.plus(cover.counts());
@@ -171,7 +177,7 @@ public final class ErikssonCertificateChecker {
     static void verifyFinalRoots(final CertificateStore certificates,final CheckerStateSet roots) {
         roots.forEachConcurrently(CheckerParallelism.workers(),batch->{
             batch.forEach(state->requireStage(state,3));
-            return certificates.findAll(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET);
+            return certificates.findAllPrimitive(batch.stream().map(SearchState::pair).toList(),ErikssonRoute.ROOT_BUDGET);
         },state->{},state->{throw missing(state.pair(),ErikssonRoute.ROOT_BUDGET);});
     }
     static void publishInverseCoverage(final Path work,final InverseCoverage result) {
@@ -197,7 +203,7 @@ public final class ErikssonCertificateChecker {
         finally { if(temporary!=null) try { Files.deleteIfExists(temporary); } catch(Exception ignored) { } }
     }
     private static void requireStage(SearchState state,int stage) {
-        int n=state.pair().getBeta().size(),budget=ErikssonRoute.ROOT_BUDGET;
+        int n=state.pair().size(),budget=ErikssonRoute.ROOT_BUDGET;
         boolean valid=switch(stage) {
             case 0 -> n==ErikssonRoute.ENDPOINT_SYMBOLS && state.maximumMoves()==budget-3;
             case 1 -> n==ErikssonRoute.ROOT_SYMBOLS-3 && state.maximumMoves()==budget-2;
@@ -210,9 +216,9 @@ public final class ErikssonCertificateChecker {
     private static CertificateBatchVerifier required(final CertificateStore certificates, final int maximumMoves) {
         return new CertificateBatchVerifier(certificates, maximumMoves, pair -> { throw missing(pair, maximumMoves); });
     }
-    private static IllegalStateException missing(final CyclicTargetPair pair, final int maximumMoves) {
+    private static IllegalStateException missing(final PrimitivePair pair, final int maximumMoves) {
         return new IllegalStateException("Missing sorting certificate: classKey="
-                + pair.extendedToricClassKey() + ", maximumMoves=" + maximumMoves);
+                + java.util.HexFormat.of().formatHex(pair.canonicalKey()) + ", maximumMoves=" + maximumMoves);
     }
     private static void usage() {
         System.out.println("CertificateChecker [--phase=roots|endpoints|avoidance|all] [--partitions=FIRST-LAST]"

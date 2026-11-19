@@ -1,6 +1,7 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 import br.unb.cic.td20.permutation.PermutationGroups;
@@ -11,6 +12,72 @@ import java.util.List;
 
 /** Replays a witness and verifies only intrinsic certificate obligations. */
 public final class CertificateValidator {
+    private static final ThreadLocal<ReplayWorkspace> WORKSPACE = ThreadLocal.withInitial(ReplayWorkspace::new);
+
+    /** Replays packed moves using one worker-owned workspace; the source pair is immutable. */
+    public static int requiredBudget(final PrimitivePair pair, final PrimitiveCertificate result) {
+        final int n = pair.size();
+        final var work = WORKSPACE.get();
+        final int[] omega = work.omega, beta = work.beta, positions = work.positions;
+        final int[] scratch = work.scratch, target = work.target;
+        for (int symbol = 0; symbol < n; symbol++) omega[symbol] = pair.omegaImage(symbol);
+        if (result.moveCount() != 0) {
+            for (int i = 0; i < n; i++) {
+                beta[i] = pair.betaAt(i);
+                positions[beta[i]] = i;
+                target[pair.rhoAt(i)] = pair.rhoAt(i + 1 == n ? 0 : i + 1);
+            }
+        }
+        for (int step = 0; step < result.moveCount(); step++) {
+            int move = result.moveAt(step);
+            final int a = move & 31, b = (move >>> 5) & 31, c = (move >>> 10) & 31;
+            if (a < 0 || b < 0 || c < 0 || a >= n || b >= n || c >= n)
+                throw new IllegalArgumentException("Move lies outside the current-cycle domain");
+            final int first = positions[a], second = positions[b], third = positions[c];
+            if (!(first < second && second < third))
+                throw new IllegalArgumentException("Move is not an ordered triple in the current cyclic order");
+
+            // omega' = omega * (a b c)^-1; swap beta's two adjacent blocks.
+            final int oldA = omega[a], oldB = omega[b];
+            omega[a] = omega[c];
+            omega[b] = oldA;
+            omega[c] = oldB;
+            System.arraycopy(beta, first, scratch, 0, third - first);
+            System.arraycopy(scratch, second - first, beta, first, third - second);
+            System.arraycopy(scratch, 0, beta, first + third - second, second - first);
+            for (int i = first; i < third; i++) positions[beta[i]] = i;
+
+            for (int i = 0; i < n; i++) {
+                if (omega[beta[i + 1 == n ? 0 : i + 1]] != target[beta[i]])
+                    throw new IllegalArgumentException("Certificate move does not preserve the cyclic target");
+            }
+        }
+        int nonfixed = 0;
+        for (int symbol = 0; symbol < n; symbol++) if (omega[symbol] != symbol) nonfixed++;
+        if (result.kind() == PrimitiveCertificate.Kind.COMPLETE) {
+            if (nonfixed != 0) throw new IllegalArgumentException("Certificate does not sort the algebraic permutation");
+            return result.moveCount();
+        }
+        int diameter = KnownDiameters.knownDiameter(nonfixed);
+        if (diameter == Integer.MAX_VALUE) throw new IllegalArgumentException("Closure uses an unknown diameter");
+        return Math.addExact(result.moveCount(), diameter);
+    }
+
+    public static int validatedRequiredBudget(PrimitivePair pair, PrimitiveCertificate result, int maximumMoves) {
+        if (maximumMoves < 0) throw new IllegalArgumentException("Negative move budget");
+        int required = requiredBudget(pair, result);
+        if (required > maximumMoves) throw new IllegalArgumentException("Sorting result does not close the requested move budget");
+        return required;
+    }
+
+    private static final class ReplayWorkspace {
+        final int[] omega = new int[KnownDiameters.ROOT_SYMBOLS];
+        final int[] beta = new int[KnownDiameters.ROOT_SYMBOLS];
+        final int[] positions = new int[KnownDiameters.ROOT_SYMBOLS];
+        final int[] scratch = new int[KnownDiameters.ROOT_SYMBOLS];
+        final int[] target = new int[KnownDiameters.ROOT_SYMBOLS];
+    }
+
     private CertificateValidator() {
     }
 

@@ -1,6 +1,7 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -110,6 +111,43 @@ public final class CertificateStore implements AutoCloseable {
         });
         return present;
     }
+    public boolean[] findAllPrimitive(final List<PrimitivePair> pairs, final int maximumMoves) {
+        if (maximumMoves < 0) throw new IllegalArgumentException("Negative move budget");
+        if (pairs.isEmpty()) return new boolean[0];
+        final var keys = new byte[pairs.size()][];
+        parallelRanges(pairs.size(), (first, last) -> {
+            for (int i = first; i < last; i++) {
+                keys[i] = pairs.get(i).canonicalKey();
+            }
+        });
+        final var encoded = new byte[pairs.size()][];
+        parallelRanges(pairs.size(), (first, last) -> {
+            final var keySlice = Arrays.asList(keys).subList(first, last);
+            final List<byte[]> values;
+            try {
+                values = database.multiGetAsList(
+                        Collections.nCopies(keySlice.size(), handles.get(0)), keySlice);
+            } catch (final RocksDBException failure) {
+                throw new IllegalStateException("Cannot bulk-read certificates", failure);
+            }
+            if (values.size() != keySlice.size())
+                throw new IllegalStateException("Incomplete certificate multiGet response");
+            for (int i = first; i < last; i++) encoded[i] = values.get(i - first);
+        });
+        final var present = new boolean[pairs.size()];
+        parallelRanges(pairs.size(), (first, last) -> {
+            for (int i = first; i < last; i++) {
+                final byte[] value = encoded[i];
+                if (value == null) continue;
+                final var result = CertificateCodec.decodePrimitiveResult(value);
+                final var pair = pairForReplay(pairs.get(i),keys[i]);
+                final int required = CertificateValidator.validatedRequiredBudget(
+                        pair, result, obligationBudget(pair.size()));
+                present[i] = required <= maximumMoves;
+            }
+        });
+        return present;
+    }
     public List<Optional<List<Cycle>>> find(final CyclicTargetPair[] pairs, final int maximumMoves) {
         final var result = new ArrayList<Optional<List<Cycle>>>(pairs.length);
         for (final var pair : pairs) result.add(find(pair, maximumMoves));
@@ -136,6 +174,10 @@ public final class CertificateStore implements AutoCloseable {
     private byte[] get(final ColumnFamilyHandle family, final byte[] key) {
         try { return database.get(family, reads, key); }
         catch (final RocksDBException failure) { throw new IllegalStateException("Cannot read certificate", failure); }
+    }
+    private static PrimitivePair pairForReplay(PrimitivePair pair, byte[] canonicalKey) {
+        return CertificateCodec.matchesNormalizedPair(canonicalKey,pair)
+                ? pair : PrimitivePair.fromCanonicalKey(canonicalKey,pair.size());
     }
     private static CyclicTargetPair pairForReplay(final CyclicTargetPair pair, final byte[] canonicalKey) {
         // A normalized persisted pair may already equal its computed orbit minimum.

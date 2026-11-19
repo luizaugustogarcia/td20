@@ -2,6 +2,9 @@ package br.unb.cic.td20.verification;
 
 import br.unb.cic.td20.certificate.CertificateCodec;
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitivePair;
+import br.unb.cic.td20.compat.LegacyPairs;
+import br.unb.cic.td20.joint.PrimitiveInverseReconstruction.RawConsumer;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.runtime.CheckerParallelism;
 import java.io.IOException;
@@ -49,14 +52,14 @@ public final class CheckerStateStorage implements AutoCloseable {
     private final boolean readOnly;
     private final long checkpointCount;
 
-    public record State(CyclicTargetPair pair, int maximumMoves) {
+    public record State(PrimitivePair pair, int maximumMoves) {
         public State {
-            if (maximumMoves < 1 || maximumMoves > br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET) throw new IllegalArgumentException("Budget must be 1..11");
-            for (int symbol : pair.getBeta().getSymbols()) {
-                if (pair.getOmega().image(symbol) == symbol)
-                    throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
-            }
+            java.util.Objects.requireNonNull(pair);
+            if (maximumMoves<1 || maximumMoves>br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET)
+                throw new IllegalArgumentException("Budget must be 1..11");
+            if (!pair.isFixedPointFree()) throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
         }
+        public State(CyclicTargetPair pair,int maximumMoves) { this(LegacyPairs.fromLegacy(pair),maximumMoves); }
     }
 
     public CheckerStateStorage(Path directory) {
@@ -146,7 +149,9 @@ public final class CheckerStateStorage implements AutoCloseable {
         catch (org.rocksdb.RocksDBException failure) { throw new IllegalStateException(failure); }
     }
 
-    public void add(CyclicTargetPair pair, int maximumMoves) {
+    public void add(CyclicTargetPair pair, int maximumMoves) { add(LegacyPairs.fromLegacy(pair),maximumMoves); }
+
+    public void add(PrimitivePair pair, int maximumMoves) {
         beginGeneration();
         try {
             submit(List.of(DirectStateKey.encode(pair, maximumMoves)));
@@ -174,6 +179,52 @@ public final class CheckerStateStorage implements AutoCloseable {
                     ignored -> new ArrayList<>(generatedBatchKeys));
             generator.accept(pair -> {
                 batch.add(DirectStateKey.encode(pair, maximumMoves));
+                if (batch.size() == generatedBatchKeys) {
+                    submit(batch);
+                    batch.clear();
+                }
+            });
+        } catch (RuntimeException | Error failure) {
+            generationFailure.compareAndSet(null, failure);
+            throw failure;
+        } finally { admissions.decrementAndGet(); }
+    }
+
+    /** Same bounded producer batching for immutable compact states. */
+    public void addGeneratedPairs(int maximumMoves, Consumer<Consumer<PrimitivePair>> generator) {
+        if (maximumMoves < 1 || maximumMoves > br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET) throw new IllegalArgumentException("Budget must be 1..11");
+        java.util.Objects.requireNonNull(generator);
+        beginGeneration();
+        try {
+            var batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
+                    ignored -> new ArrayList<>(generatedBatchKeys));
+            generator.accept(pair -> {
+                batch.add(DirectStateKey.encode(pair, maximumMoves));
+                if (batch.size() == generatedBatchKeys) {
+                    submit(batch);
+                    batch.clear();
+                }
+            });
+        } catch (RuntimeException | Error failure) {
+            generationFailure.compareAndSet(null, failure);
+            throw failure;
+        } finally { admissions.decrementAndGet(); }
+    }
+
+    /**
+     * Mirrors emitter inverse persistence: the generator supplies valid contracted
+     * pairs proved by forward replay. Borrowed arrays are packed before returning;
+     * callbacks must not be retained or used concurrently. Failures prevent sealing.
+     */
+    public void addGeneratedPrimitive(int maximumMoves, Consumer<RawConsumer> generator) {
+        if (maximumMoves < 1 || maximumMoves > br.unb.cic.td20.joint.KnownDiameters.MAX_BUDGET) throw new IllegalArgumentException("Budget must be 1..11");
+        java.util.Objects.requireNonNull(generator);
+        beginGeneration();
+        try {
+            var batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
+                    ignored -> new ArrayList<>(generatedBatchKeys));
+            generator.accept((omega,beta,n) -> {
+                batch.add(DirectStateKey.encodeKnownPair(omega,beta,n,maximumMoves));
                 if (batch.size() == generatedBatchKeys) {
                     submit(batch);
                     batch.clear();
@@ -405,7 +456,7 @@ public final class CheckerStateStorage implements AutoCloseable {
     static State decode(byte[] key, byte[] value) {
         if (key.length < 4 || key[0] != VERSION || value.length != 0)
             throw new IllegalStateException("Malformed reconstruction state");
-        return new State(CertificateCodec.pairForKey(Arrays.copyOfRange(key, 3, key.length),
+        return new State(CertificateCodec.primitivePairForKey(Arrays.copyOfRange(key, 3, key.length),
                 Byte.toUnsignedInt(key[2])), Byte.toUnsignedInt(key[1]));
     }
 

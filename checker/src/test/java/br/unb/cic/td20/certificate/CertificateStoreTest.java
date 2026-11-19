@@ -1,6 +1,7 @@
 package br.unb.cic.td20.certificate;
 
 import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,8 @@ class CertificateStoreTest {
             assertEquals(1,store.require(PAIR,1).size());
             final var missing=CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2,3,4)),Cycle.of(0,1,2,3,4));
             assertArrayEquals(new boolean[]{true,false,true},store.findAll(List.of(PAIR,missing,PAIR),1));
+            assertArrayEquals(new boolean[]{true,false,true},store.findAllPrimitive(List.of(
+                    LegacyPairs.fromLegacy(PAIR),LegacyPairs.fromLegacy(missing),LegacyPairs.fromLegacy(PAIR)),1));
             assertArrayEquals(new boolean[]{false,false},store.findAll(List.of(PAIR,missing),0));
             assertFalse(store.hasObstruction(PAIR));
         }
@@ -48,7 +51,9 @@ class CertificateStoreTest {
         database(path.resolve("db"),CertificateCodec.resultFor(SortingCertificate.closure(List.of())),true);
         try(final var store=new CertificateStore(path.resolve("db"))) {
             assertTrue(store.find(PAIR,0).isEmpty());
+            assertArrayEquals(new boolean[]{false},store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)),0));
             assertTrue(store.find(PAIR,1).isPresent());
+            assertArrayEquals(new boolean[]{true},store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)),1));
             assertTrue(store.require(PAIR,1).isEmpty());
         }
     }
@@ -57,6 +62,7 @@ class CertificateStoreTest {
         try(final var store=new CertificateStore(path.resolve("db"))) {
             assertThrows(IllegalArgumentException.class,()->store.find(PAIR,10));
             assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(PAIR),10));
+            assertThrows(IllegalArgumentException.class,()->store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)),10));
         }
     }
     @Test void longerValidWitnessIsUnavailableAtSmallerBudget(@TempDir final Path path) throws Exception {
@@ -64,6 +70,8 @@ class CertificateStoreTest {
         try(final var store=new CertificateStore(path.resolve("db"))) {
             assertTrue(store.find(PAIR,1).isEmpty());
             assertEquals(3,store.require(PAIR,3).size());
+            assertArrayEquals(new boolean[]{false},store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)),1));
+            assertArrayEquals(new boolean[]{true},store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)),3));
         }
     }
     @Test void malformedWitnessFailsEvenAboveRequestedBudget(@TempDir final Path path) throws Exception {
@@ -71,6 +79,7 @@ class CertificateStoreTest {
         try(final var store=new CertificateStore(path.resolve("db"))) {
             assertThrows(IllegalArgumentException.class,()->store.find(PAIR,1));
             assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(PAIR),1));
+            assertThrows(IllegalArgumentException.class,()->store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)),1));
         }
     }
 
@@ -82,6 +91,8 @@ class CertificateStoreTest {
         try(var store=new CertificateStore(path.resolve("db"))) {
             assertEquals(List.of(Cycle.of(0,1,2)),store.require(rotated,1));
             assertArrayEquals(new boolean[]{true,true,false},store.findAll(List.of(rotated,decoded,missing),1));
+            assertArrayEquals(new boolean[]{true,true,false},store.findAllPrimitive(
+                    List.of(rotated,decoded,missing).stream().map(LegacyPairs::fromLegacy).toList(),1));
         }
     }
 
@@ -94,6 +105,7 @@ class CertificateStoreTest {
         try(var store=new CertificateStore(path.resolve("db"))) {
             assertThrows(IllegalArgumentException.class,()->store.find(pair,20));
             assertThrows(IllegalArgumentException.class,()->store.findAll(List.of(pair),20));
+            assertThrows(IllegalArgumentException.class,()->store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(pair)),20));
         }
     }
     @Test void missingWitnessIsNotInventedFromInventory(@TempDir final Path path) throws Exception {

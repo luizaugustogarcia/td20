@@ -31,7 +31,7 @@ class CheckerStateSetTest {
             states.forEachBatch(recovered::addAll);
             assertEquals(2, recovered.size());
             assertEquals(pair.extendedToricClassKey(),
-                    recovered.getFirst().pair().extendedToricClassKey());
+                    br.unb.cic.td20.compat.LegacyPairs.toLegacy(recovered.getFirst().pair()).extendedToricClassKey());
             assertThrows(IllegalStateException.class, () -> states.add(first));
         }
         assertThrows(IllegalStateException.class,

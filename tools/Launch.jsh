@@ -23,12 +23,16 @@ class Td20Launch {
         var fields = new ArrayList<>(Arrays.asList(Files.readString(Path.of(System.getenv("TD20_LAUNCH_ARGS"))).split("\\x00", -1)));
         if (!fields.removeLast().isEmpty()) throw new IllegalArgumentException("Truncated launcher arguments");
         String entry = fields.removeFirst(), command = fields.removeFirst();
-        var arguments = new ArrayList<String>(); boolean seen = false;
+        var expanded = new ArrayList<String>(); boolean seen = false;
         for (String option : fields) {
             if (option.startsWith("-Dexec.args=") || option.startsWith("-Dtd20.args=")) {
                 if (seen) throw new IllegalArgumentException("Supply the Java argument property only once.");
-                seen = true; arguments.addAll(words(option.substring(option.indexOf('=') + 1)));
-            } else if (option.startsWith("-Dexec.mainClass=")) entry = option.substring(option.indexOf('=') + 1);
+                seen = true; expanded.addAll(words(option.substring(option.indexOf('=') + 1)));
+            } else expanded.add(option);
+        }
+        var arguments = new ArrayList<String>();
+        for (String option : expanded) {
+            if (option.startsWith("-Dexec.mainClass=")) entry = option.substring(option.indexOf('=') + 1);
             else if (option.startsWith("-D")) {
                 int separator = option.indexOf('=');
                 System.setProperty(separator < 0 ? option.substring(2) : option.substring(2, separator),

@@ -9,7 +9,7 @@ public final class CheckerParallelism {
     }
 
     public static int lookupBatchSize() {
-        return positiveProperty("td20.certificateLookupBatchSize", 262_144);
+        return positiveProperty("td20.certificateLookupBatchSize", 32_768);
     }
 
     public static int readWorkers() {

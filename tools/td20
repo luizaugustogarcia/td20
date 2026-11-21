@@ -41,8 +41,11 @@ Examples:
   tools/td20 count --phase=endpoints
   tools/td20 emit --phase=roots --partitions=1-1
   tools/td20 verify --phase=all
-Set TD20_JSHELL_OPTIONS for JVM options, for example:
-  TD20_JSHELL_OPTIONS='-R-Dtd20.gpuSlots=8 -R-Dtd20.gpuBudgetMB=768'
+Supply application properties and JVM options as execution arguments, for example:
+  tools/td20 verify -Dtd20.certificateReadWorkers=32 -R-Xmx24g
+  tools/td20 verify '-Dexec.args=--phase=all -Dtd20.certificateEndpointFillCache=true'
+Use --jvm-option=-XX:OPTION or -R-XX:OPTION for execution-VM options.
+TD20_JSHELL_OPTIONS remains supported; command-line options take precedence.
 Use tools/run-local-emitter.sh --build for the local SM 89 GPU build.
 Use tools/run-local-{emitter,checker}.sh for the bounded local runtime profile.
 Phases: roots, endpoints, avoidance, all (count supports roots/endpoints/all).
@@ -73,6 +76,10 @@ case "$command" in
         else exec mvn "${args[@]}" "$@"; fi
         exit ;;
 esac
+source "$td20_root/tools/launcher-options.sh"
+expanded_arguments=()
+td20_parse_words expanded_arguments arguments "$@"
+set -- "${expanded_arguments[@]}"
 module=emitter
 script=
 case "$command" in
@@ -109,7 +116,11 @@ fi
 classpath="$td20_root/$module/target/classes"
 if [[ -f $module/target/jshell-classpath ]]; then classpath+=":$(<"$module/target/jshell-classpath")"; fi
 jshell_options=()
-read -r -a jshell_options <<< "${TD20_JSHELL_OPTIONS:-}"
+td20_parse_words jshell_options options "${TD20_JSHELL_OPTIONS:-}"
+java_arguments=()
+td20_collect_jvm_options jshell_options java_arguments "$@"
+set -- "${java_arguments[@]}"
+td20_add_numa_option jshell_options
 if [[ $command == count-roots ]]; then jshell_options+=("-R-Dtd20.eriksson.publish=true"); fi
 invocation=(jshell "-R-Dtd20.countModule=$module" --feedback concise --class-path "$classpath" "-R-Djava.library.path=$td20_root/emitter/target/native" "${jshell_options[@]}")
 if "$dry_run"; then

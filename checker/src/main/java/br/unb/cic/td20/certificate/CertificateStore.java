@@ -46,8 +46,8 @@ public final class CertificateStore implements AutoCloseable {
     private final LRUCache cache = memory.cache();
     private final ColumnFamilyOptions witnessOptions = familyOptions();
     private final ColumnFamilyOptions obstructionOptions = familyOptions();
-    private final ReadOptions rootReads = memory.reads("td20.certificateRootFillCache", false);
-    private final ReadOptions endpointReads = memory.reads("td20.certificateEndpointFillCache", false);
+    private final ReadOptions rootReads = memory.reads("td20.certificateRootFillCache", true);
+    private final ReadOptions endpointReads = memory.reads("td20.certificateEndpointFillCache", true);
     private final ReadOptions reconstructionReads = memory.reads("td20.certificateReconstructionFillCache", true);
     private volatile ReadOptions reads = rootReads;
     private volatile String phase = "root";

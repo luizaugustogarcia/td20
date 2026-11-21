@@ -57,18 +57,20 @@ class RocksDbMemoryBudgetTest {
         assertThrows(IllegalArgumentException.class, RocksDbMemoryBudget::acquire);
         assertEquals("rocksDbMemory=closed", RocksDbMemoryBudget.progress());
     }
-    @Test void singlePassAndRepeatedReadPoliciesAreIndependentAndOverridable() {
+    @Test void phaseReadPoliciesAreIndependentAndOverridable() {
         try (var budget = RocksDbMemoryBudget.acquire();
-             var roots = budget.reads("td20.certificateRootFillCache", false);
-             var endpoints = budget.reads("td20.certificateEndpointFillCache", false);
+             var roots = budget.reads("td20.certificateRootFillCache", true);
+             var endpoints = budget.reads("td20.certificateEndpointFillCache", true);
              var reconstruction = budget.reads("td20.certificateReconstructionFillCache", true)) {
-            assertFalse(roots.fillCache());
-            assertFalse(endpoints.fillCache());
+            assertTrue(roots.fillCache());
+            assertTrue(endpoints.fillCache());
             assertTrue(reconstruction.fillCache());
             assertTrue(budget.tables().cacheIndexAndFilterBlocks());
-            System.setProperty("td20.certificateRootFillCache", "true");
-            try (var override = budget.reads("td20.certificateRootFillCache", false)) { assertTrue(override.fillCache()); }
-            assertFalse(roots.fillCache());
+            System.setProperty("td20.certificateRootFillCache", "false");
+            try (var override = budget.reads("td20.certificateRootFillCache", true)) { assertFalse(override.fillCache()); }
+            assertTrue(roots.fillCache());
+            System.setProperty("td20.rocksDbFillCache", "false");
+            try (var disabled = budget.reads("td20.certificateEndpointFillCache", true)) { assertFalse(disabled.fillCache()); }
         }
     }
 }

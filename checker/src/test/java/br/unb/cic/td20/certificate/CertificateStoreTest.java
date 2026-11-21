@@ -4,12 +4,16 @@ import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
+import br.unb.cic.td20.runtime.RocksDbMemoryBudget;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.rocksdb.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,11 +32,55 @@ class CertificateStoreTest {
                     new ColumnFamilyDescriptor("obstructions".getBytes(StandardCharsets.UTF_8),second)),handles);
                  final var writes = new WriteOptions().setDisableWAL(true);
                  final var flush = new FlushOptions().setWaitForFlush(true)) {
-                if(marker!=null) db.put(handles.get(0),writes,"td20-schema".getBytes(StandardCharsets.UTF_8),marker.getBytes(StandardCharsets.UTF_8));
+                if (marker != null) {
+                    db.put(handles.get(0), writes, "td20-schema".getBytes(StandardCharsets.UTF_8), marker.getBytes(StandardCharsets.UTF_8));
+                    // A separate SST lets cache tests observe the witness block's first read.
+                    db.flush(flush, handles);
+                }
                 if(value!=null) db.put(handles.get(0),writes,CertificateCodec.keyFor(pair),value);
                 db.flush(flush,handles);
                 handles.forEach(ColumnFamilyHandle::close);
             }
+        }
+    }
+    @ParameterizedTest
+    @CsvSource({"root,true", "endpoint,true", "reconstruction,true",
+            "root,false", "endpoint,false", "reconstruction,false"})
+    void phaseDefaultsCacheDataBlocksAndAllowExplicitOptOut(String phase, boolean cacheData,
+                                                           @TempDir Path path) throws Exception {
+        String phaseProperty = switch (phase) {
+            case "root" -> "td20.certificateRootFillCache";
+            case "endpoint" -> "td20.certificateEndpointFillCache";
+            case "reconstruction" -> "td20.certificateReconstructionFillCache";
+            default -> throw new IllegalArgumentException(phase);
+        };
+        var previous = new HashMap<String, String>();
+        for (String property : List.of(phaseProperty, "td20.rocksDbFillCache",
+                "td20.certificateCacheIndexAndFilterBlocks")) {
+            previous.put(property, System.getProperty(property));
+        }
+        try {
+            System.setProperty("td20.rocksDbFillCache", "true");
+            System.setProperty("td20.certificateCacheIndexAndFilterBlocks", "false");
+            if (cacheData) System.clearProperty(phaseProperty);
+            else System.setProperty(phaseProperty, "false");
+            database(path.resolve("db"), CertificateCodec.resultFor(
+                    SortingCertificate.complete(List.of(Cycle.of(0, 1, 2)))), true);
+            try (var store = new CertificateStore(path.resolve("db"));
+                 var memory = RocksDbMemoryBudget.acquire()) {
+                store.readPhase(phase);
+                long before = memory.cache().getUsage();
+                assertArrayEquals(new boolean[]{true},
+                        store.findAllPrimitive(List.of(LegacyPairs.fromLegacy(PAIR)), 1));
+                long after = memory.cache().getUsage();
+                if (cacheData) assertTrue(after > before, "Bulk reads must populate the data-block cache");
+                else assertEquals(before, after, "Bulk reads must honor the phase's explicit cache opt-out");
+            }
+        } finally {
+            previous.forEach((property, value) -> {
+                if (value == null) System.clearProperty(property);
+                else System.setProperty(property, value);
+            });
         }
     }
     @Test void acceptsReplayedWitness(@TempDir final Path path) throws Exception {

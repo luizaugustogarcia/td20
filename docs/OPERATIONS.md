@@ -39,8 +39,13 @@ SLF4J logs in both modules default to `showDateTime=true`, with timestamps in
 `yyyy-MM-dd'T'HH:mm:ss.SSSXXX` format (milliseconds and timezone offset).
 The classpath `simplelogger.properties` files apply to JShell and packaged runs.
 
-Set `TD20_JSHELL_OPTIONS` for execution-VM options, for example
-`-R-Xmx3g` or `-R-Dtd20.twistedBraceletWorkers=auto`. The launcher passes
+Pass execution options directly to `tools/td20`, including application
+properties such as `-Dtd20.certificateReadWorkers=32` and VM options such as
+`-R-Xmx24g` or `--jvm-option=-XX:ParallelGCThreads=16`. The same options
+can be grouped in a quoted `-Dexec.args=...` or `-Dtd20.args=...` argument.
+Application properties are applied before the execution JVM loads the entry
+point. `TD20_JSHELL_OPTIONS` also accepts shell-style quoting, and command-line
+JVM options take precedence. The launcher passes
 `-R-Dtd20.countModule=emitter|checker` to keep report ownership separate.
 Use `tools/run-local-emitter.sh --build` for the local SM 89 native library.
 The generic `tools/td20 build-gpu` includes SM 89 and SM 120 native code, with
@@ -158,7 +163,7 @@ launchers share a runtime lock. The local emitter uses up to 8 persistence write
 queue and 32,768-key lookups. Its prefetch uses 4 preparation workers,
 16 prepared batches, 32 input batches and a 262,144-key recent-key cache.
 The local checker uses the same bounded state persistence and a separate
-certificate read pool. Native lookup batches default to 262,144 keys, with
+certificate read pool. Native lookup batches default to 32,768 keys, with
 memory-based admission for asynchronous encoding, reading and witness replay.
 Before a restart, the maintained launchers hold their runtime lock and remove
 recorded abandoned interrupted work and temporary files. Cleanup preserves
@@ -389,7 +394,7 @@ bounded. Class keys and disk iteration are deterministic at persistence
 boundaries. `certificates/`, `data/`, work databases and ordinary logs are untracked.
 Completed execution logs and settings also remain untracked.
 
-The checker defaults to 262,144 keys per native `multiGet`;
+The checker defaults to 32,768 keys per native `multiGet`.
 `td20.certificateLookupBatchSize` or `TD20_LOOKUP_BATCH_KEYS` changes that
 actual call size. CPU encoding and witness replay use `td20.checkerWorkers`;
 native reads have a separate bounded pool sized by `td20.certificateReadWorkers`,
@@ -420,7 +425,13 @@ its configured threshold. Native resources stay alive until all database owners
 release them. The source certificate database remains read-only. All witness replay,
 generation, domain, budget, inventory and interruption checks remain unchanged.
 
-Every setting can be overridden per execution:
+Every setting can be overridden through execution arguments. The local
+launchers accept `--cpu-workers=N`, `--heap-gib=N`, `--run-root=PATH`, and
+`--database=PATH`. Use `-Dtd20.NAME=value` for any application property below
+and `--setting=TD20_NAME=value` for a launcher setting. JVM options use
+`-R...`, `-J...`, or `--jvm-option=...`. Quoted `-Dexec.args=...` and
+`-Dtd20.args=...` accept the same arguments. Run settings record the
+execution arguments, JVM options and effective application property values.
 
 | Environment override | JVM property / purpose |
 | --- | --- |
@@ -430,8 +441,8 @@ Every setting can be overridden per execution:
 | `TD20_ROCKSDB_STRICT_CAPACITY` | `td20.rocksDbStrictCapacity`, strict cache capacity |
 | `TD20_ROCKSDB_CACHE_METADATA` | `td20.certificateCacheIndexAndFilterBlocks`, charge indexes/filters |
 | `TD20_ROCKSDB_FILL_CACHE` | `td20.rocksDbFillCache`, populate cache during reads |
-| `TD20_ROOT_FILL_CACHE` | `td20.certificateRootFillCache`, root data-cache policy (default false) |
-| `TD20_ENDPOINT_FILL_CACHE` | `td20.certificateEndpointFillCache`, endpoint data-cache policy (default false) |
+| `TD20_ROOT_FILL_CACHE` | `td20.certificateRootFillCache`, root data-cache policy (default true) |
+| `TD20_ENDPOINT_FILL_CACHE` | `td20.certificateEndpointFillCache`, endpoint data-cache policy (default true) |
 | `TD20_RECONSTRUCTION_FILL_CACHE` | `td20.certificateReconstructionFillCache`, reconstruction data-cache policy (default true) |
 | `TD20_ROCKSDB_CACHE_SHARD_BITS` | `td20.rocksDbCacheShardBits`, cache shard configuration |
 | `TD20_ROCKSDB_CACHE_HIGH_PRIORITY_RATIO` | `td20.rocksDbCacheHighPriorityRatio`, priority pool fraction |
@@ -448,8 +459,9 @@ Every setting can be overridden per execution:
 The managed cache defaults to the existing `td20.certificateReadCacheMB` budget
 (one quarter of Java heap, between 64 and 4,096 MiB), and its memtable threshold
 defaults to one eighth of that managed budget. The maintained checker launcher
-defaults to 32,768-key lookups and one native reader per sixteen CPU workers
-(rounded up); generation and replay continue to use all configured CPU workers.
+defaults to 32,768-key lookups and the detected CPU worker count for native
+readers, generation and replay. Tune native readers and batch size together
+using sustained generation-and-replay measurements on the allocated server.
 Source/scratch table-reader limits default to 512/128, individual memtables to
 64 MiB with four buffers, and all limits have the overrides listed above.
 
@@ -460,10 +472,11 @@ separately. Strict-cache exhaustion fails verification instead of accepting miss
 data; write-buffer backpressure flushes existing memtables. Ten-second progress
 includes Java heap, managed cache usage, pinned cache usage, the memtable threshold
 and process RSS. Launch settings record all effective JVM options.
-Root and endpoint types have disjoint witness keys, read once during those phases.
-Their native read options therefore disable data-cache population by default;
-index/filter metadata still uses the bounded shared cache. Reconstruction can
-reread witness keys after wave deduplication and enables data caching by default.
+All three phases populate the bounded data-block cache by default. Distinct
+witness keys can share compressed SST blocks, so checking each key once still
+benefits from retaining decompressed blocks. Root, endpoint and reconstruction
+cache policies have independent execution overrides. Index/filter metadata
+also uses the bounded shared cache.
 Phase transitions occur after preceding reads and replays drain. Read options
 are immutable while in use, and both single and bulk lookups use the selected policy.
 

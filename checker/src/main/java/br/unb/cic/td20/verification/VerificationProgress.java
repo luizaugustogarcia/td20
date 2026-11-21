@@ -7,6 +7,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.function.LongSupplier;
+import br.unb.cic.td20.runtime.RocksDbMemoryBudget;
 
 /** Time-based reporting, including phases that do not query certificates. */
 public final class VerificationProgress implements AutoCloseable {
@@ -56,9 +57,18 @@ public final class VerificationProgress implements AutoCloseable {
             previousCount = count; previousNanos = now;
         }
         String diagnostics = "";
+        if (Boolean.parseBoolean(System.getProperty("td20.checkerMemoryProgress", "true"))) {
+            var runtime = Runtime.getRuntime();
+            diagnostics = " heapMiB=" + (runtime.totalMemory() - runtime.freeMemory()) / (1L << 20)
+                    + "/" + runtime.maxMemory() / (1L << 20) + " " + RocksDbMemoryBudget.progress();
+            try {
+                for (String line : java.nio.file.Files.readAllLines(java.nio.file.Path.of("/proc/self/status")))
+                    if (line.startsWith("VmRSS:")) diagnostics += " processRssMiB=" + Long.parseLong(line.split("\\s+")[1]) / 1024;
+            } catch (java.io.IOException ignored) { /* RSS is optional outside Linux. */ }
+        }
         if (Boolean.getBoolean("td20.checkerVerboseProgress")) {
             final var runtime = Runtime.getRuntime();
-            diagnostics = String.format(Locale.ROOT, " elapsed=%.1fs heapMiB=%d/%d",
+            diagnostics += String.format(Locale.ROOT, " elapsed=%.1fs heapMiB=%d/%d",
                     (now - started) / 1e9,
                     (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024),
                     runtime.maxMemory() / (1024 * 1024));

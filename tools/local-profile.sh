@@ -65,7 +65,7 @@ PY
     )
     local cpu=${TD20_CPU_WORKERS:-$detected_cpu}
     if [[ $module == checker ]]; then
-        default_lookup=262144
+        default_lookup=32768
     fi
     local default_heap=$((detected_memory * 5 / 8))
     (( default_heap > max_heap )) && default_heap=$max_heap
@@ -129,13 +129,31 @@ PY
         if [[ -n $resume ]]; then phase=avoidance; invocation+=(emit --phase=avoidance "--resume-work=$resume");
         else invocation+=(emit --phase=all); fi
     else
+        local read_workers=$(((cpu + 15) / 16))
+        local rocksdb_mb=${TD20_ROCKSDB_MEMORY_MB:-$checker_cache_mb}
+        local rocksdb_write_mb=${TD20_ROCKSDB_WRITE_BUFFER_MB:-$((rocksdb_mb / 8))}
         jvm+=("-R-Dtd20.checkerWorkers=$cpu" -R-Dtd20.checkerStatsPeriodSeconds=10
             "-R-Dtd20.certificateLookupBatchSize=${TD20_LOOKUP_BATCH_KEYS:-$default_lookup}"
-            "-R-Dtd20.certificateReadWorkers=${TD20_READ_WORKERS:-$cpu}"
+            "-R-Dtd20.certificateReadWorkers=${TD20_READ_WORKERS:-$read_workers}"
             "-R-Dtd20.certificateProducerBatchKeys=${TD20_PRODUCER_BATCH_KEYS:-4096}"
             "-R-Dtd20.certificateBufferedMB=${TD20_CERTIFICATE_BUFFER_MB:-$checker_buffer_mb}"
             "-R-Dtd20.certificateReadCacheMB=${TD20_READ_CACHE_MB:-$checker_cache_mb}"
-            "-R-Dtd20.certificateMaxOpenFiles=${TD20_READ_MAX_OPEN_FILES:-512}")
+            "-R-Dtd20.certificateMaxOpenFiles=${TD20_READ_MAX_OPEN_FILES:-512}"
+            "-R-Dtd20.rocksDbMemoryMB=$rocksdb_mb"
+            "-R-Dtd20.rocksDbWriteBufferMB=$rocksdb_write_mb"
+            "-R-Dtd20.rocksDbStrictCapacity=${TD20_ROCKSDB_STRICT_CAPACITY:-true}"
+            "-R-Dtd20.certificateCacheIndexAndFilterBlocks=${TD20_ROCKSDB_CACHE_METADATA:-true}"
+            "-R-Dtd20.rocksDbFillCache=${TD20_ROCKSDB_FILL_CACHE:-true}"
+            "-R-Dtd20.certificateRootFillCache=${TD20_ROOT_FILL_CACHE:-false}"
+            "-R-Dtd20.certificateEndpointFillCache=${TD20_ENDPOINT_FILL_CACHE:-false}"
+            "-R-Dtd20.certificateReconstructionFillCache=${TD20_RECONSTRUCTION_FILL_CACHE:-true}"
+            "-R-Dtd20.rocksDbWriteStall=${TD20_ROCKSDB_WRITE_STALL:-true}"
+            "-R-Dtd20.rocksDbCacheShardBits=${TD20_ROCKSDB_CACHE_SHARD_BITS:--1}"
+            "-R-Dtd20.rocksDbCacheHighPriorityRatio=${TD20_ROCKSDB_CACHE_HIGH_PRIORITY_RATIO:-0.5}"
+            "-R-Dtd20.rocksDbMemtableMB=${TD20_ROCKSDB_MEMTABLE_MB:-64}"
+            "-R-Dtd20.rocksDbMaxWriteBuffers=${TD20_ROCKSDB_MAX_WRITE_BUFFERS:-4}"
+            "-R-Dtd20.rocksDbScratchMaxOpenFiles=${TD20_ROCKSDB_SCRATCH_MAX_OPEN_FILES:-128}"
+            "-R-Dtd20.checkerMemoryProgress=${TD20_MEMORY_PROGRESS:-true}")
         invocation+=(verify --phase=all)
     fi
     invocation+=("--database=$database" "--work=$work")

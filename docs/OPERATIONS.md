@@ -413,18 +413,59 @@ scheduling. Endpoints report checked/total classes and classes per second. Each 
 a completion line. `td20.checkerVerboseProgress=true` additionally reports
 generation, buffering, witness hits, native reads, cache and heap diagnostics.
 
-Witness and obstruction column families share an explicit RocksDB block cache.
-`td20.certificateReadCacheMB` defaults to one quarter of maximum Java heap,
-bounded between 64 and 4,096 MiB; `td20.certificateMaxOpenFiles` defaults to 512.
-By default, index and filter blocks stay with cached table readers rather than
-competing with data blocks in the block cache. Table-reader metadata therefore
-uses native RAM outside the block-cache target.
-`td20.certificateCacheIndexAndFilterBlocks=true` moves them into the block cache
-with high priority; large simultaneous reads can pin this metadata and repeatedly
-reload evicted indexes, so this setting requires measurement on the actual database.
-The cache capacity is a soft target: pinned blocks can transiently exceed it,
-and native allocations outside the cache require additional RAM. Runtime profiles
-record the effective heap, read concurrency, buffering and cache settings.
+Witnesses, obstruction metadata and checker scratch databases share one execution-wide
+RocksDB cache. Its strict capacity includes index/filter blocks by default. A shared
+WriteBufferManager charges memtables to the same cache budget and stalls writes at
+its configured threshold. Native resources stay alive until all database owners
+release them. The source certificate database remains read-only. All witness replay,
+generation, domain, budget, inventory and interruption checks remain unchanged.
+
+Every setting can be overridden per execution:
+
+| Environment override | JVM property / purpose |
+| --- | --- |
+| `TD20_HEAP_GIB` | Java heap limit |
+| `TD20_ROCKSDB_MEMORY_MB` | `td20.rocksDbMemoryMB`, aggregate managed cache budget |
+| `TD20_ROCKSDB_WRITE_BUFFER_MB` | `td20.rocksDbWriteBufferMB`, memtable threshold inside that budget |
+| `TD20_ROCKSDB_STRICT_CAPACITY` | `td20.rocksDbStrictCapacity`, strict cache capacity |
+| `TD20_ROCKSDB_CACHE_METADATA` | `td20.certificateCacheIndexAndFilterBlocks`, charge indexes/filters |
+| `TD20_ROCKSDB_FILL_CACHE` | `td20.rocksDbFillCache`, populate cache during reads |
+| `TD20_ROOT_FILL_CACHE` | `td20.certificateRootFillCache`, root data-cache policy (default false) |
+| `TD20_ENDPOINT_FILL_CACHE` | `td20.certificateEndpointFillCache`, endpoint data-cache policy (default false) |
+| `TD20_RECONSTRUCTION_FILL_CACHE` | `td20.certificateReconstructionFillCache`, reconstruction data-cache policy (default true) |
+| `TD20_ROCKSDB_CACHE_SHARD_BITS` | `td20.rocksDbCacheShardBits`, cache shard configuration |
+| `TD20_ROCKSDB_CACHE_HIGH_PRIORITY_RATIO` | `td20.rocksDbCacheHighPriorityRatio`, priority pool fraction |
+| `TD20_ROCKSDB_WRITE_STALL` | `td20.rocksDbWriteStall`, memtable backpressure |
+| `TD20_ROCKSDB_MEMTABLE_MB` | `td20.rocksDbMemtableMB`, individual scratch memtable size |
+| `TD20_ROCKSDB_MAX_WRITE_BUFFERS` | `td20.rocksDbMaxWriteBuffers`, memtables per scratch database |
+| `TD20_ROCKSDB_SCRATCH_MAX_OPEN_FILES` | `td20.rocksDbScratchMaxOpenFiles`, scratch table-reader limit |
+| `TD20_READ_WORKERS` | `td20.certificateReadWorkers`, simultaneous native read limit |
+| `TD20_LOOKUP_BATCH_KEYS` | `td20.certificateLookupBatchSize`, keys per native read |
+| `TD20_READ_MAX_OPEN_FILES` | `td20.certificateMaxOpenFiles`, source table-reader limit |
+| `TD20_CERTIFICATE_BUFFER_MB` | `td20.certificateBufferedMB`, Java input admission |
+| `TD20_MEMORY_PROGRESS` | `td20.checkerMemoryProgress`, memory diagnostics |
+
+The managed cache defaults to the existing `td20.certificateReadCacheMB` budget
+(one quarter of Java heap, between 64 and 4,096 MiB), and its memtable threshold
+defaults to one eighth of that managed budget. The maintained checker launcher
+defaults to 32,768-key lookups and one native reader per sixteen CPU workers
+(rounded up); generation and replay continue to use all configured CPU workers.
+Source/scratch table-reader limits default to 512/128, individual memtables to
+64 MiB with four buffers, and all limits have the overrides listed above.
+
+The cache limit is not a hard cap on total RocksDB RSS: native read temporaries,
+table-reader objects, compression buffers and other allocations need headroom.
+Concurrent reads, lookup sizes and cached table counts therefore remain bounded
+separately. Strict-cache exhaustion fails verification instead of accepting missing
+data; write-buffer backpressure flushes existing memtables. Ten-second progress
+includes Java heap, managed cache usage, pinned cache usage, the memtable threshold
+and process RSS. Launch settings record all effective JVM options.
+Root and endpoint types have disjoint witness keys, read once during those phases.
+Their native read options therefore disable data-cache population by default;
+index/filter metadata still uses the bounded shared cache. Reconstruction can
+reread witness keys after wave deduplication and enables data caching by default.
+Phase transitions occur after preceding reads and replays drain. Read options
+are immutable while in use, and both single and bulk lookups use the selected policy.
 
 Each handoff file has format `td-reconstruction-queue-v1`, a route/domain/budget
 header, fixed-size records containing versioned canonical class keys and their

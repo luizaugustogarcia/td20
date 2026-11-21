@@ -44,12 +44,17 @@ public final class ErikssonCertificateChecker {
         }
         try (final var progress = new VerificationProgress(); final var certificates = new CertificateStore(options.database);
              final var residuals = new CheckerStateSet(options.work.resolve("endpoint-residuals"))) {
+            certificates.readPhase("root");
             if (options.roots()) for (final var row : inventory)
                 if (options.includesPartition(row.number())) verifyRoot(row,certificates,progress);
+            certificates.readPhase("endpoint");
             if (options.endpoints() || options.avoidance()) for (final var endpoint : endpoints)
                 if (options.includesEndpoint(endpoint.number())) verifyEndpoint(endpoint,certificates,residuals,progress);
             final long residualCount = residuals.seal().count();
-            if (options.avoidance()) verifyAvoidance(certificates,residuals,options.work,progress);
+            if (options.avoidance()) {
+                certificates.readPhase("reconstruction");
+                verifyAvoidance(certificates,residuals,options.work,progress);
+            }
             else if (residualCount > 0) System.out.printf("Endpoint failures requiring final avoidance: %d%n",residualCount);
             if (options.completeScope()) System.out.println("All regenerated obligations in the complete joint-selection scope are verified.");
             else System.out.println("Requested partial verification scope completed; this is not a complete TD(20) certificate check.");

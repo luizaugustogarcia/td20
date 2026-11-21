@@ -7,6 +7,7 @@ import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.joint.PrimitiveInverseReconstruction.RawConsumer;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.runtime.CheckerParallelism;
+import br.unb.cic.td20.runtime.RocksDbMemoryBudget;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -37,6 +38,7 @@ public final class CheckerStateStorage implements AutoCloseable {
     private final int bufferKeys = CheckerParallelism.reconstructionBufferKeys();
     private final int writeBatchEntries = CheckerParallelism.writeBatchEntries();
     private final Options options;
+    private final RocksDbMemoryBudget.Lease memory;
     private final Path stagingDirectory;
     private final RocksDB database;
     private final CheckerStateWriter[] writers;
@@ -101,10 +103,15 @@ public final class CheckerStateStorage implements AutoCloseable {
         int writerCount = readOnly ? 0 : Math.min(bufferKeys, positiveProperty("td20.reconstructionWriters",
                 Math.min(8, Runtime.getRuntime().availableProcessors())));
         int queueBatches = readOnly ? 0 : positiveProperty("td20.reconstructionQueueBatches", 1024);
-        options = new Options().setCreateIfMissing(true).setWriteBufferSize(256L << 20)
-                .setMaxWriteBufferNumber(4).setMaxBackgroundJobs(Math.max(2, Math.min(16, 2 * writerCount)))
+        long memtableMB = RocksDbMemoryBudget.positive("td20.rocksDbMemtableMB", 64);
+        int memtables = positiveProperty("td20.rocksDbMaxWriteBuffers", 4);
+        int openFiles = positiveProperty("td20.rocksDbScratchMaxOpenFiles", 128);
+        memory = RocksDbMemoryBudget.acquire();
+        options = new Options().setCreateIfMissing(true).setWriteBufferSize(Math.multiplyExact(memtableMB, 1L << 20))
+                .setWriteBufferManager(memory.writeBuffers()).setTableFormatConfig(memory.tables())
+                .setMaxWriteBufferNumber(memtables).setMaxBackgroundJobs(Math.max(2, Math.min(16, 2 * writerCount)))
                 .setMaxSubcompactions(Math.max(1, Math.min(8, writerCount)))
-                .setMaxOpenFiles(128);
+                .setMaxOpenFiles(openFiles);
         writers = new CheckerStateWriter[writerCount];
         RocksDB opened = null;
         try {
@@ -139,6 +146,7 @@ public final class CheckerStateStorage implements AutoCloseable {
             }
             if (opened != null) opened.close();
             options.close();
+            memory.close();
             throw new IllegalStateException("Cannot open reconstruction state set: " + directory, failure);
         }
     }
@@ -527,6 +535,6 @@ public final class CheckerStateStorage implements AutoCloseable {
         stopAdmissions();
         closed = true;
         try { finishWriters(); }
-        finally { database.close(); options.close(); }
+        finally { database.close(); options.close(); memory.close(); }
     }
 }

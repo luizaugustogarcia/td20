@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import br.unb.cic.td20.runtime.CheckerParallelism;
+import br.unb.cic.td20.runtime.RocksDbMemoryBudget;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
@@ -41,10 +42,15 @@ public final class CertificateStore implements AutoCloseable {
     private static final byte[] OBSTRUCTIONS = "obstructions".getBytes(StandardCharsets.UTF_8);
     static { RocksDB.loadLibrary(); }
     private final DBOptions options = new DBOptions().setMaxOpenFiles(CheckerParallelism.maxOpenFiles());
-    private final LRUCache cache = new LRUCache(CheckerParallelism.readCacheBytes(), -1, false, 0.5);
+    private final RocksDbMemoryBudget.Lease memory = RocksDbMemoryBudget.acquire();
+    private final LRUCache cache = memory.cache();
     private final ColumnFamilyOptions witnessOptions = familyOptions();
     private final ColumnFamilyOptions obstructionOptions = familyOptions();
-    private final ReadOptions reads = new ReadOptions().setFillCache(false);
+    private final ReadOptions rootReads = memory.reads("td20.certificateRootFillCache", false);
+    private final ReadOptions endpointReads = memory.reads("td20.certificateEndpointFillCache", false);
+    private final ReadOptions reconstructionReads = memory.reads("td20.certificateReconstructionFillCache", true);
+    private volatile ReadOptions reads = rootReads;
+    private volatile String phase = "root";
     private final ArrayList<ColumnFamilyHandle> handles = new ArrayList<>();
     private final int workers = CheckerParallelism.workers();
     private final int readers = CheckerParallelism.readWorkers();
@@ -57,14 +63,18 @@ public final class CertificateStore implements AutoCloseable {
     private final RocksDB database;
 
     private ColumnFamilyOptions familyOptions() {
-        return new ColumnFamilyOptions().setTableFormatConfig(new BlockBasedTableConfig()
-                // Large concurrent multiGet calls pin metadata while they run. Keep
-                // indexes in the bounded table-reader cache by default, so a soft
-                // data-block target cannot evict and repeatedly reload those indexes.
-                .setBlockCache(cache).setCacheIndexAndFilterBlocks(
-                        Boolean.getBoolean("td20.certificateCacheIndexAndFilterBlocks"))
-                .setCacheIndexAndFilterBlocksWithHighPriority(true)
-                .setPinL0FilterAndIndexBlocksInCache(false).setPinTopLevelIndexAndFilter(false));
+        return new ColumnFamilyOptions().setTableFormatConfig(memory.tables());
+    }
+    public void readPhase(String phase) {
+        reads = switch (phase) {
+            case "root" -> rootReads;
+            case "endpoint" -> endpointReads;
+            case "reconstruction" -> reconstructionReads;
+            default -> throw new IllegalArgumentException("Unknown certificate read phase: " + phase);
+        };
+        this.phase = phase;
+        System.out.printf("Certificate reads: phase=%s fillDataCache=%s readWorkers=%d lookupBatchKeys=%d %s%n",
+                phase, reads.fillCache(), readers, CheckerParallelism.lookupBatchSize(), RocksDbMemoryBudget.progress());
     }
 
     private static ExecutorService pool(int count, String name) {
@@ -207,7 +217,7 @@ public final class CertificateStore implements AutoCloseable {
         boolean acquired = false;
         try {
             nativeReads.acquire(); acquired = true; activeReads.incrementAndGet();
-            var values = database.multiGetAsList(Collections.nCopies(keys.size(), handles.get(0)), keys);
+            var values = database.multiGetAsList(reads, Collections.nCopies(keys.size(), handles.get(0)), keys);
             if (values.size() != keys.size()) throw new IllegalStateException("Incomplete certificate multiGet response");
             readKeys.add(keys.size());
             return values;
@@ -219,10 +229,8 @@ public final class CertificateStore implements AutoCloseable {
 
     public String readProgress() {
         synchronized (cache) {
-            return "readWorkers=" + readers + " activeReads=" + activeReads.get() + " readKeys=" + readKeys.sum()
-                    + (closed ? "" : " cacheMiB=" + cache.getUsage() / (1L << 20)
-                    + "/" + CheckerParallelism.readCacheBytes() / (1L << 20)
-                    + " pinnedCacheMiB=" + cache.getPinnedUsage() / (1L << 20));
+            return "readPhase=" + phase + " readWorkers=" + readers + " activeReads=" + activeReads.get() + " readKeys=" + readKeys.sum()
+                    + (closed ? "" : " " + RocksDbMemoryBudget.progress());
         }
     }
 
@@ -315,7 +323,8 @@ public final class CertificateStore implements AutoCloseable {
     private void closeOptions() {
         synchronized (cache) {
             closed = true;
-            reads.close(); witnessOptions.close(); obstructionOptions.close(); options.close(); cache.close();
+            rootReads.close(); endpointReads.close(); reconstructionReads.close();
+            witnessOptions.close(); obstructionOptions.close(); options.close(); memory.close();
         }
     }
 }

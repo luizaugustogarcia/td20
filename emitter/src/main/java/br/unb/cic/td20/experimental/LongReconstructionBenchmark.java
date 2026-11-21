@@ -59,7 +59,7 @@ public final class LongReconstructionBenchmark {
         int oracleWindows = positive("td20.bench.longOracleWindows", 64);
         int oracleNeighbors = positive("td20.bench.longOracleNeighbors", 4);
         Path source = Path.of(System.getProperty("td20.bench.afterOne",
-                "local-runtime/work/emitter-20261118T024413Z-706373/after-one")).toRealPath();
+                "local-runtime/work/benchmark-source/after-one")).toRealPath();
         if (!Files.isRegularFile(source.resolve("CURRENT")))
             throw new IllegalArgumentException("Missing completed after-one database");
         Path work = Path.of(System.getProperty("td20.bench.longWork",

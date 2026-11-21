@@ -8,28 +8,11 @@ two-sided Eriksson-plus-third-move route. TD(16) = 9 and TD(18) = 10 are
 established results using the same computational methodology and explicit
 completed premises, alongside the smaller established bounds.
 
-The user authorized replacement of joint-2 on 16 November 2026. Its completed
-U/J/C/O/R counts and 214-annotation endpoint census describe a superseded route;
-they cannot supply counts or sorting coverage for the active route.
-
-On 17 November 2026 the user authorized reuse of the completed TD18
-budget-nine results and reconstruction directly from the remaining 18-symbol
-second-level residuals. The two-sided mathematical route and all inventories
-remain unchanged. Runtime reconstruction no longer starts from the stored
-16-symbol obstruction markers and performs no budget-nine or budget-ten
-sorting searches. Independent proof checking still derives every obligation
-from complete endpoint generation and actual witness replay.
-
-On 19 November 2026 the user authorized longer validation, production
-integration and reconstruction restart once the support-family method is
-sound. The source paper now proves elementary final-root family closures.
-The complete endpoint, after-two and after-one source sets remain unchanged.
-The final persisted inventory contains only reconstructed roots with no
-immediate gain-at-least-two move on either endpoint; elementary roots are
-checked directly by the independent regeneration algorithm. This changes the
-final inventory meaning and requires a distinct checkpoint/report version.
-It neither resumes budget-ten sorting nor treats benchmark results as proof
-coverage. Deployment and completed execution evidence are recorded separately.
+The source paper proves elementary final-root family closures. The final
+persisted inventory contains reconstructed roots with no immediate
+gain-at-least-two move on either endpoint. Independent regeneration checks
+elementary roots directly and replays every residual witness. Checkpoints and
+reports identify this inventory meaning explicitly.
 
 ## 1. Check mathematical coverage and small domains
 
@@ -123,26 +106,12 @@ eight-move witnesses. Reverse its third gain-two move by restoring two fixed
 symbols in all gaps and testing every compatible support on both endpoints.
 The resulting complete 18-symbol after-two inventory has budget nine.
 
-The completed read-only TD18 reuse probe checked 5,032,950 after-two classes:
-4,062,619 have replayable current-endpoint diameter-prefix certificates within
-nine moves, and 970,331 have no matching result under either endpoint key.
-The matching versioned records have now been copied into project-root
-`certificates/`, and every residual has been persisted with its 18-symbol
-domain, budget nine and exact count under
-`fleet/production-td20-20261117/td18-after-two-reuse-v1/residuals`.
-The completed `td18-after-two-import-v1.txt` records source and destination
-replay. The checker-only `independent-import-scope-v1.txt` additionally
-replayed every copied result and checked that the persisted residual set
-equals exactly the missing classes, including all residual markers.
-The independent checker must replay the TD20 results and derive the complete
-residual set itself; neither a stored obstruction list nor a probe/import
-report is a proof input. The probe is completed lookup evidence, not a
-completed TD20 proof-verification report. The independent import audit also
-does not regenerate the endpoint inventory or replace full proof checking.
+Stored witnesses may close after-two classes only after replay within budget
+nine. The independent checker regenerates the complete after-two inventory
+and derives every residual itself. Stored obstruction lists, emitter
+checkpoints and import reports cannot replace regenerated obligations.
 
-Active emitter reconstruction starts from these second-level residuals.
-The 2,036 stored 16-symbol obstruction markers are informational and are not
-runtime reconstruction inputs. Every unclosed 18-symbol state reverses a
+Every unclosed 18-symbol state reverses a
 gain-two second move to obtain 20 symbols with budget ten, or a gain-three
 second move to obtain 21 symbols with budget ten. Cover every such state
 without budget-ten sorting or certificate lookup. Reverse respectively the

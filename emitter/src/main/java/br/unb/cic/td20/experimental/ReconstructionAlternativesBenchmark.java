@@ -80,7 +80,7 @@ public final class ReconstructionAlternativesBenchmark {
 
     public static void run() throws Exception {
         Path source = Path.of(System.getProperty("td20.bench.afterOne",
-                "local-runtime/work/emitter-20261118T024413Z-706373/after-one")).toAbsolutePath();
+                "local-runtime/work/benchmark-source/after-one")).toAbsolutePath();
         int workers = positive("td20.bench.workers", Runtime.getRuntime().availableProcessors());
         int ranges = positive("td20.bench.seekRanges", 32);
         int perRange = positive("td20.bench.samplesPerSeek", 4);

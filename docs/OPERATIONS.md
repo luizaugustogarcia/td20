@@ -53,39 +53,20 @@ SM 120 forward PTX; this combined default requires CUDA Toolkit 12.8 or newer.
 GPU sorting is entered only after applicable CPU prefixes and known-diameter
 checks fail.
 
-For instance 61025877 (one RTX 4080 Super, 128 allocated CPU threads and a
-256 GB volume under `/workspace`), use the separate emission launcher:
+Instance 61821972 (host 51010, machine 153507) has two EPYC 9654 sockets,
+384 allocated CPU threads and about 257 GB RAM. Its checker launcher uses
+automatic allocation-aware CPU and reader counts, NUMA-aware G1 allocation,
+a 32 GiB heap, a 128 GiB shared RocksDB budget and 4 GiB of input admission.
+The 16 GiB memtable threshold is inside that shared budget. Native lookup
+batches contain 4,096 keys, the cache uses 256 shards, and 16 writers persist
+bounded reconstruction batches. These initial settings use the supplied
+server specifications. Throughput on this instance
+requires a measured run.
 
-```bash
-bash -ic './tools/run-4080s-emitter.sh --build'
-bash -ic './tools/run-4080s-emitter.sh --dry-run'
-bash -ic './tools/run-4080s-emitter.sh'
-```
-
-This builds SM 89 native code and PTX in `emitter/target/native-4080s`; the
-single-architecture build requires CUDA Toolkit 11.8 or newer. CPU workers
-follow affinity and quota. Heap sizing uses five eighths of detected RAM,
-capped at 320 GiB; the remainder supports native storage and filesystem cache.
-Sixteen GPU slots share automatically sized queues: after a 2 GiB reserve,
-90 percent of free VRAM is available for queues and per-slot cache allowance.
-Actual VRAM is queried rather than assuming the advertised 32 GB. Explicit
-`TD20_GPU_BUDGET_MB`, `TD20_GPU_SLOTS`, `TD20_HEAP_GIB`, `TD20_CPU_WORKERS`,
-and other resource overrides retain the launcher preflight checks.
-
-The bounded profile has 96 GPU callers, 16 persistence writers, 4,194,304-key
-shard windows, 64 queued batches per writer and 8,192-key producer batches.
-Certificates use `/workspace/td20-certificates`; scratch, logs, settings and
-temporary files use `/workspace/td20-runtime`. A workspace filesystem of at
-least 128 GiB and 64 GiB free at launch are required. These checks do not
-establish that 256 GB suffices for all inverse waves.
-
-These settings provide capacity for high utilization; they are not measured
-throughput results. Inspect the ten-second CPU/GPU progress logs alongside
-`bash -ic 'nvidia-smi dmon -s um -d 10'`,
-`bash -ic 'pidstat -u -r -d -t 10'` and `bash -ic 'df -h /workspace'` on the
-instance. Increase scheduling granularity if useful prefix work leaves CPU
-workers idle; compare completed searches before changing GPU slot counts.
-All resource settings and completion status are recorded in untracked logs.
+Run `tools/run-61821972-checker.sh --build`, inspect the execution arguments
+with `--dry-run`, then launch `tools/run-61821972-checker.sh`. It accepts the
+shared launcher options, including a quoted `-Dexec.args=...`. Caller arguments
+override the instance defaults. The runtime records the effective settings.
 
 Root emission skips generation when a complete published inventory row has
 `U3 + O3 - C3 = 0`, including rows closed entirely by support clearing.
@@ -282,7 +263,7 @@ merged-key iteration. Logs show effective workers, completed ranges and keys.
 The count can also be performed independently while reconstruction is stopped:
 
 ```bash
-bash -ic './tools/td20 count-reconstruction --source-work=/home/luiz/Projects/others/td20/local-runtime/work/emitter-20261118T024413Z-706373'
+bash -ic './tools/td20 count-reconstruction --source-work=/path/to/completed-emitter-work'
 ```
 
 The `Inverse expansion after-one family-filtered inverse states` line reports completed

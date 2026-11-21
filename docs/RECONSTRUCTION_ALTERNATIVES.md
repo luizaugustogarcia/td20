@@ -1,8 +1,6 @@
 # Reconstruction family closures and further alternatives
 
-On 19 November 2026 the user authorized production integration and restart
-after mathematical review and longer validation. The family closure below is
-now proved in [the source paper](td20-reduction-count.tex), which remains
+The family closure below is proved in [the source paper](td20-reduction-count.tex), which remains
 authoritative, and is required by [the research plan](RESEARCH_PLAN.md). The
 final inventory consists of the non-elementary reconstructed roots; the
 checker derives the elementary family closures independently. Every explicit

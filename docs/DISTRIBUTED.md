@@ -6,9 +6,8 @@ budgets are 9 and 10. TD(16) = 9 and TD(18) = 10 are completed premises; this
 distributed computation does not establish TD(20) = 11 until every required
 independent verification and evidence criterion succeeds.
 
-The active reconstruction input is the sealed set of 970,331 fixed-point-free
-18-symbol classes still lacking a budget-nine result after replaying and copying
-4,062,619 TD18 results into TD20. Supply
+The active reconstruction input is the complete sealed set of fixed-point-free
+18-symbol classes still lacking a budget-nine result after witness replay. Supply
 `--reconstruction-input=RUN/td18-after-two-reuse-v1/residuals`; the coordinator
 also detects this conventional location automatically. The 2,036 endpoint
 misses remain informational and do not seed production reconstruction.
@@ -248,7 +247,7 @@ The work has these boundaries:
    `--reconstruction-batch-size` sets the maximum classes per batch (default 64). A smaller
    size creates more independent tasks, with more repeated downstream work.
    This first-wave preparation is the legacy `FULL_SEARCH` route. With the
-   active sealed residual input, the coordinator instead splits its 970,331
+   active sealed residual input, the coordinator instead splits its complete set of
    after-two keys directly into counted batches under
    `RUN/reconstruction-residuals-v1`, without reconstructing the endpoint misses.
    The input path, count and mode are pinned in `reconstruction-input-v1.txt`.

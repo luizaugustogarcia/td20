@@ -184,7 +184,7 @@ public final class ImportedTd18Verifier {
     }
 
     static Scope parse(String[] arguments, Path root) {
-        Path run = root.resolve("fleet/production-td20-20261117");
+        Path run = root.resolve("local-runtime/import-audit");
         Path source = run.resolve("reconstruction/waves/after-two"), certificates = root.resolve("certificates"),
                 residuals = run.resolve("td18-after-two-reuse-v1/residuals/after-two"),
                 report = run.resolve("td18-after-two-reuse-v1/independent-import-scope-v1.txt");

@@ -6,8 +6,6 @@ that TD(20) = 11. The established reverse-permutation lower bound is 11;
 **the matching upper bound remains conditional on checked computational coverage**.
 TD(16) = 9 and TD(18) = 10 are established results using the same computational
 methodology and are explicit completed premises of this project.
-[TD18's independent reference verification](https://github.com/luizaugustogarcia/td18/blob/22042d8d2274ce05ce1c7868cedab66937eb3ebe/docs/REFERENCE_SIMULATION.md)
-completed on 16 November 2026 with full regenerated coverage and exit zero.
 [The source paper](docs/td20-reduction-count.tex) specifies the proof route.
 
 The active Eriksson-plus-third-move route searches both the current and target
@@ -18,9 +16,8 @@ is justified by the triangle inequality; it does not add a class equivalence.
 The inventory has **83 root partitions on 21 symbols** and **143 endpoint
 annotations on 16 symbols**. All 83 emitter root-count rows are published:
 U3 = 0 retained unoriented roots, O3 = 8 retained oriented roots and C3 = 2
-support-cleared roots, leaving six direct obligations. The first 24 independent
-root-count rows agree; 59 rows remain to check. Both modules independently agree
-on all 143 endpoint rows:
+support-cleared roots, leaving six direct obligations. The paper records all
+143 endpoint rows with
 14,098,353,328 classes, including 11,523,939,269 outside elementary closures.
 Historical joint-2 counts and TD18 results cannot supply TD20 coverage.
 Direct roots require budget 11; endpoints require

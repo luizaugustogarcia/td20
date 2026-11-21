@@ -20,7 +20,7 @@ The independent checker, budgets, exhaustive branches, scheduling, state
 version 3, certificate version 2, and WAL-disabled persistence are preserved.
 This intentionally changes the emitter representation compared with TD18;
 it does not change the mathematical obligations or establish the pending
-TD20 upper bound. Reconstruction was stopped for migration and verification.
+TD20 upper bound.
 
 ## Checker migration
 
@@ -47,14 +47,7 @@ every valid normalized pair through seven symbols; inverse labeled multisets
 for gains zero through three through six-symbol sources; active inverse
 fixtures through 21 symbols; direct generation classes and counts; all packed
 witness boundaries; and arbitrary multi-move replay and prefix budgets across
-domains three through 21. These are bounded equivalence checks. The emitter
-benchmark numbers below do not measure checker speed or complete proof coverage.
-
-Migration validation passed: `mvn -pl checker -am test` ran 130 tests with no
-failures, errors or skips; `mvn -pl emitter -am test` ran 301 tests with no
-failures or errors and 16 configured CUDA skips. The JShell structural inventory
-check confirmed all 83 root partitions and 143 endpoint annotations. No checker
-speed benchmark or full proof-verification run was performed.
+domains three through 21. These are bounded equivalence checks. Full independent proof verification remains pending.
 
 ## Representation and equivalence
 
@@ -128,66 +121,3 @@ A live comparison shares the machine with reconstruction. Wall times depend
 on scheduling. Per-thread CPU time and allocation distinguish implementation
 work from waiting, but a four-class sample establishes neither a production
 speedup nor a completed proof artifact. Generated logs remain untracked.
-
-## Initial live comparison, 18 November 2026
-
-The isolated JDK 21.0.4 run used one CPU core while production reconstruction
-continued. Each of the four cases had 16 sampled canonical classes, for 64
-total. All sampled keys and raw output counts/digests agreed. The seven focused
-correctness tests also passed, including complete full-length class sets.
-
-| Source symbols | Inverse gain | Raw outputs | Inverse CPU speedup | Key CPU speedup | Existing bytes/key | Primitive bytes/key |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 18 | 2 | 6,156 | 61.04x | 21.48x | 14,812.5 | 36.5 |
-| 18 | 3 | 2,280 | 22.75x | 9.69x | 15,756.5 | 36.5 |
-| 20 | 1 | 6,960 | 20.78x | 9.89x | 15,085.0 | 36.5 |
-| 21 | 0 | 2,093 | 28.34x | 4.75x | 15,562.0 | 36.5 |
-
-Existing inverse enumeration allocated 7,530..8,179 bytes per raw output.
-The primitive inverse workspace allocated under one byte per output amortized
-over a source call; its support loop allocates nothing. Key allocation includes
-small amortized benchmark/measurement overhead as well as the packed byte array.
-These deliberately tiny timings have limited JIT warmup and share CPU/cache
-resources with production. They establish a promising implementation comparison,
-not the production bottleneck percentage or a forecast for total reconstruction
-time. No live reconstruction implementation was replaced.
-
-After the operator stopped reconstruction, the same bounded benchmark was
-repeated with total-duration reporting. It finished in 1.703 seconds, excluding
-JShell startup. Every sampled key and measured output still agreed; allocations
-were unchanged. Median per-thread CPU speedups were:
-
-| Source symbols | Inverse gain | Inverse CPU speedup | Key CPU speedup |
-| ---: | ---: | ---: | ---: |
-| 18 | 2 | 12.01x | 2.94x |
-| 18 | 3 | 7.75x | 6.29x |
-| 20 | 1 | 11.35x | 5.80x |
-| 21 | 0 | 11.31x | 4.72x |
-
-The timing variation between these tiny runs is a reason to treat speed ratios
-as preliminary. The stable allocation difference and exact output agreement
-are stronger evidence for continuing with the specialized representation.
-
-The required CPU suites passed in the isolated temporary Git checkout with
-normal CPU detection: emitter ran 252 tests with zero failures/errors and
-15 GPU tests skipped; checker ran 105 with zero failures/errors and no skips.
-The initial single-core source-archive validation environment was unsuitable
-for an existing parallel-scan test and a Git-dependent fleet test; rerunning
-in a real temporary Git checkout with normal workers resolved both environment
-failures. No production source was changed to accommodate those tests.
-
-## Production migration verification, 18 November 2026
-
-After integration, `mvn -pl emitter -am test` reported 280 tests with zero
-failures/errors and 16 gated CUDA tests skipped. `mvn -pl checker -am test`
-passed all 105 tests with no skips. These include exhaustive small-domain
-inverse and canonical-key comparisons, full-length class-set fixtures,
-byte-identical state/certificate persistence, batched imports, CPU-before-GPU
-ordering, and completed-wave resume.
-
-The separately enabled Maven `GPUSortingSearchSmokeTest` passed both tests
-on the local RTX 4070 Laptop GPU using the existing native library. It checks
-concurrent bounded dispatch and a 21-symbol primitive state with an arbitrary
-current-cycle anchor, then replays the returned packed witness. This is a
-bridge smoke check, not an exhaustive CUDA validation or production throughput
-measurement. No larger benchmark was run for this migration.

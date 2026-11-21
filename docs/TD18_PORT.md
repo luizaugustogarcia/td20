@@ -96,8 +96,7 @@ runtime algorithms, tests or upstream launchers. The only additional TD20 tools
 are this port's audit, its regression tests, the isolated root-publication
 regression and the reviewed adapter specifications.
 
-The execution adapter records the separate RTX 4080 Super launcher, SM 89
-build support and the emitter's published-zero root and endpoint scheduling
+The execution adapter records SM 89 build support and the emitter's published-zero root and endpoint scheduling
 shortcuts. The endpoint reader requires the complete versioned paper census
 and retains generated-count checks for every nonempty type.
 Every added launcher is compared byte for byte with its frozen adapter and
@@ -126,15 +125,9 @@ revisions, unaccounted commits and surviving tools retired anywhere in the
 reviewed history. Documentation and the proof paper are reviewed separately
 because their inventories, premises and completion status belong to TD20.
 
-The final upstream commit records a separate-machine checker finishing on
-16 November 2026 at 10:11:21 Lisbon time, in 1 h 45 min 43 s, with exit zero
-and 1,349,910,890 reconstructed TD18 roots verified. Its
-[revision-pinned record](https://github.com/luizaugustogarcia/td18/blob/22042d8d2274ce05ce1c7868cedab66937eb3ebe/docs/REFERENCE_SIMULATION.md)
-retains both execution configurations and logs. Tests were skipped for that
-verification run and standalone census reports were not republished; those
-remain separate checklist items. The TD20 checklist retains every corresponding
-requirement, with generated artifacts untracked. TD(16) = 9 and TD(18) = 10
-are established results using the same computational methodology.
+TD(16) = 9 and TD(18) = 10 are established results using the same
+computational methodology. The TD20 checklist retains every corresponding
+verification requirement, with generated artifacts untracked.
 
 ## Distributed extension moved to TD20 (17 November 2026)
 

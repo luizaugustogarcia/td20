@@ -16,6 +16,14 @@ public final class CheckerParallelism {
         return positiveProperty("td20.certificateReadWorkers", workers());
     }
 
+    public static int scanWorkers() {
+        return positiveProperty("td20.reconstructionScanWorkers", workers());
+    }
+
+    public static int scanRangesPerWorker() {
+        return positiveProperty("td20.reconstructionScanRangesPerWorker", 4);
+    }
+
     public static int producerBatchSize() {
         return positiveProperty("td20.certificateProducerBatchKeys", 4096);
     }

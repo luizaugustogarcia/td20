@@ -5,7 +5,6 @@ import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.compat.LegacyPairs;
 import br.unb.cic.td20.joint.PrimitiveInverseReconstruction.RawConsumer;
-import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.runtime.CheckerParallelism;
 import br.unb.cic.td20.runtime.RocksDbMemoryBudget;
 import java.io.IOException;
@@ -358,7 +357,7 @@ public final class CheckerStateStorage implements AutoCloseable {
         synchronized (this) { size = scanned; }
     }
 
-    /** Reads deterministic keys with bounded parallel callbacks, waiting for all work to finish. */
+    /** Reads every key with bounded parallel callbacks, without global callback ordering. */
     public void forEachConcurrently(int workers, Consumer<State> consumer) {
         forEachConcurrently(workers, null, state -> { }, consumer);
     }
@@ -388,8 +387,9 @@ public final class CheckerStateStorage implements AutoCloseable {
 
     /**
      * Workers decode bounded key batches, replay their bulk lookups, then process
-     * misses directly. The iterator submits encoded batches rather than per-state
-     * tasks; bounded-queue backpressure lets it help workers when they are busy.
+     * misses directly. Each worker owns a snapshot iterator over a disjoint
+     * range; a shared bounded task queue distributes ranges without a serial
+     * iterator feeding all workers. There is no global callback ordering.
      * Callbacks and lookups must support concurrent calls. Every worker joins
      * before the exact inventory becomes available, including the final batch.
      */
@@ -414,51 +414,22 @@ public final class CheckerStateStorage implements AutoCloseable {
         synchronized (this) { size = scanned; }
     }
 
-    /** The single RocksDB iterator owns ordering; bounded batches own all costly work. */
+    /** Worker-owned snapshot iterators feed bounded callbacks over disjoint key ranges. */
     private long scanEncodedConcurrently(int workers, long expected, String phase,
                                          Consumer<List<byte[]>> consumer) {
         if (workers < 1) throw new IllegalArgumentException("Positive scan worker count required");
         int batchKeys = Math.min(lookupBatchSize(), positiveProperty("td20.reconstructionScanBatchKeys", 4096));
-        int parallelism = Math.min(workers, Runtime.getRuntime().availableProcessors());
-        // Small inverse inventories can have expensive callbacks. Supply many
-        // independent batches per worker instead of leaving a handful of long
-        // inverse tasks running after the rest of the pool has drained.
+        int parallelism = Math.min(workers, Math.min(CheckerParallelism.scanWorkers(),
+                Runtime.getRuntime().availableProcessors()));
+        // Small inverse inventories can have expensive callbacks. Keep their
+        // lookup batches small; independent ranges distribute the callback work.
         if (expected > 0) {
             long targetTasks = 32L * parallelism;
-            batchKeys = (int) Math.min(batchKeys, Math.max(1, (expected + targetTasks - 1) / targetTasks));
+            batchKeys = (int) Math.min(batchKeys, Math.max(1, Math.ceilDiv(expected, targetTasks)));
         }
-        long scanned = 0;
-        var completed = new LongAdder();
-        try (var progress = new CheckerStateProgress("State inventory " + stagingDirectory.getParent().getFileName() + " " + phase,
-                     expected, completed::sum);
-             var tasks = new BoundedTasks(parallelism, "reconstruction-");
-             var reads = new ReadOptions().setFillCache(false); var iterator = database.newIterator(reads)) {
-            var batch = new ArrayList<byte[]>(batchKeys);
-            for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
-                tasks.check();
-                if (iterator.value().length != 0) throw new IllegalStateException("Malformed reconstruction state");
-                batch.add(iterator.key());
-                scanned = Math.addExact(scanned, 1);
-                if (batch.size() == batchKeys) {
-                    submitScanBatch(tasks, batch, consumer, completed);
-                    batch.clear();
-                }
-            }
-            iterator.status();
-            if (!batch.isEmpty()) submitScanBatch(tasks, batch, consumer, completed);
-        } catch (RocksDBException failure) { throw new IllegalStateException("Cannot scan reconstruction states", failure); }
-        if (expected >= 0 && scanned != expected) throw new IllegalStateException("Reconstruction scan missed states");
-        if (completed.sum() != scanned) throw new IllegalStateException("Incomplete reconstruction scan callbacks");
-        return scanned;
-    }
-
-    private static void submitScanBatch(BoundedTasks tasks, List<byte[]> batch,
-                                         Consumer<List<byte[]>> consumer, LongAdder completed) {
-        var keys = List.copyOf(batch);
-        tasks.submit(() -> {
-            consumer.accept(keys);
-            completed.add(keys.size());
-        });
+        return ParallelStateScanner.scan(database, parallelism, CheckerParallelism.scanRangesPerWorker(),
+                batchKeys, expected, "State inventory " + stagingDirectory.getParent().getFileName()
+                        + " " + phase, consumer);
     }
 
     static State decode(byte[] key, byte[] value) {

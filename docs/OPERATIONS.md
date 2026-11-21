@@ -11,8 +11,10 @@ continues to regenerate its own obligations and never resumes emitter scratch
 sets. Certificate databases remain read-only. Scratch sizing uses
 `td20.reconstructionGeneratedBatchKeys`, `td20.reconstructionWriters`,
 `td20.reconstructionQueueBatches`, `td20.reconstructionBufferKeys`, and
-`td20.reconstructionScanBatchKeys`, with the same bounded batching approach as
-the emitter. A changed checker must restart with fresh work.
+`td20.reconstructionScanBatchKeys`, `td20.reconstructionScanWorkers`, and
+`td20.reconstructionScanRangesPerWorker`. Persistence retains the emitter's
+bounded batching approach; the checker independently implements snapshot-range
+scanning and validates every record. A changed checker must restart with fresh work.
 
 The checker packs canonical keys directly for certificate lookups and for
 residual and inverse-state writes. This applies to roots, endpoints, all three
@@ -95,16 +97,36 @@ lookup, parallel CPU prefixes on its misses, and GPU fallback only for CPU
 misses. Every new result still passes
 certificate validation before persistence.
 
-Concurrent reconstruction scans copy encoded RocksDB keys into bounded batches.
-Workers decode each batch, perform its certificate lookup and replay, then search
-its misses directly. This removes serial decoding/replay and per-class task
-submission from the iterator thread. At most the JVM's available CPU count runs
-these batches; the bounded task queue applies backpressure. The batch size is
+Concurrent checker reconstruction scans use one RocksDB snapshot and disjoint
+half-open byte ranges covering its entire keyspace, including malformed keys.
+Each worker owns an iterator, validates empty values without allocating value
+arrays, decodes bounded batches, replays certificate lookups, then processes
+misses directly. A shared bounded queue distributes ranges; there is no serial
+iterator feeding all workers. `td20.reconstructionScanWorkers` defaults to
+`td20.checkerWorkers` (all JVM-visible processors), capped by both the caller's
+worker limit and the JVM's processor count.
+`td20.reconstructionScanRangesPerWorker` defaults to four. More ranges can
+reduce the idle tail when callback costs vary. Approximate byte sizes guide
+range splitting only; equal estimates split breadth-first, including zero
+estimates for unflushed data. Every inventory count comes from exact merged-key
+iteration after successful callbacks. This replaces the serial iterator used
+by the older TD18 checker without introducing an emitter dependency.
+
+The batch size is
 `min(td20.reconstructionScanBatchKeys, td20.certificateLookupBatchSize)`, with
-defaults 4,096 and 262,144. Checkpoint inventory validation uses the same parallel
-decoding. Iterator errors, malformed records, incomplete lookup responses and
-worker failures abort the scan; an exact count is published only after every
-batch, including its final remainder, joins successfully.
+defaults 4,096 and 32,768; known small inventories further reduce lookup batch
+sizes. Each range drains its final partial batch. Callback order is globally
+unspecified; serial `forEach` and `forEachBatch` retain key order. Counting and
+checkpoint inventory validation use the same parallel decoding. Iterator
+errors, malformed records, incomplete lookup responses, count mismatches and
+worker failures abort the scan. The snapshot remains live until all workers
+join, and an exact count is published only after every range and callback succeeds.
+Set these properties directly through execution arguments, for example:
+
+```bash
+bash -ic './tools/td20 verify --phase=avoidance -Dtd20.reconstructionScanRangesPerWorker=16 -Dtd20.reconstructionScanBatchKeys=4096'
+```
+
 Resuming any sealed-wave checkpoint combines its validation with this mandatory
 processing scan. The checkpoint count is an expectation for progress and final
 coverage checks, never a completed inventory until the scan succeeds. A failed

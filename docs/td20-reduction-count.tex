@@ -828,6 +828,18 @@ Inverse outputs use deterministic writer shards with bounded queues. Shards
 sort distinct keys in unsigned byte order, build SST files independently,
 and ingest them with global sequence numbers enabled. Every repeated key
 has the same empty value, so overlapping tables represent one set entry.
+The independent checker additionally performs exact persisted-membership
+lookups in batches of at most $4096$ keys before building an SST, retaining
+only absent keys. Equal keys belong to one serial writer and each ingestion
+completes before that writer's next lookup; hence this filtering removes only
+entries already in the same set. Nonempty stored values, failed lookups and
+incomplete responses are rejected. Exhaustive inventory scans remain required.
+Bloom filters accelerate these exact lookups without determining membership.
+After a complete source scan and successful sealing of its successor, the
+checker closes and removes the source scratch set. Final residual roots are
+removed only after witness replay and coverage-report publication. These
+storage safeguards preserve generation and checking obligations while avoiding
+accumulation of repeated physical entries and completed scratch waves.
 Producer buffers retain output across successive callbacks. After every
 generator joins, every partial output batch is queued and every writer is
 drained and joined before

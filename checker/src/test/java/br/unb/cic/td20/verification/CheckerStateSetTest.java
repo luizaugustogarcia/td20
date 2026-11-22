@@ -6,16 +6,54 @@ import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.ArrayList;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CheckerStateSetTest {
+    @Test void reclaimsOnlyTheOwnedSourceAfterTheSuccessorHasSealed(@TempDir Path directory) throws Exception {
+        var sourcePath = directory.resolve("source");
+        var successorPath = directory.resolve("successor");
+        var outside = Files.createDirectory(directory.resolve("outside"));
+        var sentinel = Files.writeString(outside.resolve("keep"), "certificate data");
+        var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)), Cycle.of(0,1,2));
+        try (var source = new CheckerStateSet(sourcePath); var successor = new CheckerStateSet(successorPath)) {
+            source.add(new SearchState(8,pair));
+            source.seal();
+            source.forEachConcurrently(2, successor::add);
+            Files.createSymbolicLink(sourcePath.resolve("external-link"), outside);
+            source.retireAfter(successor);
+            assertFalse(Files.exists(sourcePath));
+            assertTrue(Files.isRegularFile(sentinel));
+            assertEquals(1,successor.seal().count());
+            assertTrue(successor.contains(new SearchState(8,pair)));
+        }
+        assertTrue(Files.isDirectory(successorPath), "Ordinary close preserves scratch after a failed boundary");
+    }
+
+    @Test void failedSuccessorGenerationKeepsTheSourceBoundary(@TempDir Path directory) {
+        var sourcePath = directory.resolve("source");
+        var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)), Cycle.of(0,1,2));
+        try (var source = new CheckerStateSet(sourcePath); var successor = new CheckerStateSet(directory.resolve("successor"))) {
+            var state = new SearchState(8,pair);
+            source.add(state); source.seal();
+            assertThrows(IllegalStateException.class, () -> successor.addGeneratedPrimitive(9, output -> {
+                throw new IllegalStateException("Failed inverse generation");
+            }));
+            assertThrows(IllegalStateException.class, () -> source.retireAfter(successor));
+            assertTrue(Files.isRegularFile(sourcePath.resolve("CURRENT")));
+            assertTrue(source.contains(state));
+        }
+        assertTrue(Files.isRegularFile(sourcePath.resolve("CURRENT")));
+    }
+
     @Test
     void deduplicatesByClassAndKeepsBudgetsDistinct(@TempDir final Path directory) {
         final var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)),

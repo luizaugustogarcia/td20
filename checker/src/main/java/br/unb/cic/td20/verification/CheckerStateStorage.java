@@ -31,12 +31,14 @@ public final class CheckerStateStorage implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(CheckerStateStorage.class);
     static final byte VERSION = 3;
     private static final byte[] EMPTY = {};
+    private static final int MEMBERSHIP_BATCH_KEYS = 4096;
     private final int generatedBatchKeys = positiveProperty("td20.reconstructionGeneratedBatchKeys", 65536);
     private static final int ADMISSION_STOPPED = Integer.MIN_VALUE;
     static { RocksDB.loadLibrary(); }
     private final int bufferKeys = CheckerParallelism.reconstructionBufferKeys();
     private final int writeBatchEntries = CheckerParallelism.writeBatchEntries();
     private final Options options;
+    private final BloomFilter membershipFilter;
     private final RocksDbMemoryBudget.Lease memory;
     private final Path stagingDirectory;
     private final RocksDB database;
@@ -46,12 +48,19 @@ public final class CheckerStateStorage implements AutoCloseable {
     private final AtomicInteger admissions = new AtomicInteger();
     private final AtomicReference<Throwable> generationFailure = new AtomicReference<>();
     private final AtomicReference<Throwable> persistenceFailure = new AtomicReference<>();
-    private final LongAdder ingestedTables = new LongAdder(), ingestedKeys = new LongAdder();
+    private final LongAdder ingestedTables = new LongAdder(), ingestedKeys = new LongAdder(), duplicateKeys = new LongAdder();
     private long size = -1;
     private boolean scanPrepared;
     private volatile boolean closed;
     private final boolean readOnly;
     private final long checkpointCount;
+
+    /** Successful persistence work; duplicate totals count occurrences, not distinct classes. */
+    record WriteProgress(long ingestedKeys, long duplicateKeys, long ingestedTables) { }
+
+    WriteProgress writeProgress() {
+        return new WriteProgress(ingestedKeys.sum(), duplicateKeys.sum(), ingestedTables.sum());
+    }
 
     public record State(PrimitivePair pair, int maximumMoves) {
         public State {
@@ -106,8 +115,10 @@ public final class CheckerStateStorage implements AutoCloseable {
         int memtables = positiveProperty("td20.rocksDbMaxWriteBuffers", 4);
         int openFiles = positiveProperty("td20.rocksDbScratchMaxOpenFiles", 128);
         memory = RocksDbMemoryBudget.acquire();
+        membershipFilter = new BloomFilter(10);
         options = new Options().setCreateIfMissing(true).setWriteBufferSize(Math.multiplyExact(memtableMB, 1L << 20))
-                .setWriteBufferManager(memory.writeBuffers()).setTableFormatConfig(memory.tables())
+                .setWriteBufferManager(memory.writeBuffers())
+                .setTableFormatConfig(memory.tables().setFilterPolicy(membershipFilter).setWholeKeyFiltering(true))
                 .setMaxWriteBufferNumber(memtables).setMaxBackgroundJobs(Math.max(2, Math.min(16, 2 * writerCount)))
                 .setMaxSubcompactions(Math.max(1, Math.min(8, writerCount)))
                 .setMaxOpenFiles(openFiles);
@@ -145,6 +156,7 @@ public final class CheckerStateStorage implements AutoCloseable {
             }
             if (opened != null) opened.close();
             options.close();
+            membershipFilter.close();
             memory.close();
             throw new IllegalStateException("Cannot open reconstruction state set: " + directory, failure);
         }
@@ -282,6 +294,13 @@ public final class CheckerStateStorage implements AutoCloseable {
         int index = 0;
         for (var key : pending) keys[index++] = key.array();
         Arrays.sort(keys, Arrays::compareUnsigned);
+        try {
+            int retained = retainAbsentKeys(keys);
+            if (retained == 0) { pending.clear(); return; }
+            keys = Arrays.copyOf(keys, retained);
+        } catch (RocksDBException failure) {
+            throw new IllegalStateException("Cannot check persisted reconstruction keys", failure);
+        }
         try (var environment = new EnvOptions();
              var table = new SstFileWriter(environment, options);
              var ingest = new IngestExternalFileOptions().setMoveFiles(true)
@@ -291,8 +310,9 @@ public final class CheckerStateStorage implements AutoCloseable {
             for (byte[] key : keys) table.put(key, EMPTY);
             table.finish();
             long bytes = table.fileSize();
-            // Overlapping keys have the same empty value. Global sequence
-            // numbers preserve one exact set entry across successive tables.
+            // Each key belongs to one serial writer for this set's lifetime.
+            // Its preceding ingest completes before the next membership check,
+            // so absent keys cannot race with another writer of the same key.
             database.ingestExternalFile(List.of(path.toString()), ingest);
             Files.deleteIfExists(path);
             pending.clear();
@@ -302,6 +322,28 @@ public final class CheckerStateStorage implements AutoCloseable {
         } catch (IOException | RocksDBException failure) {
             throw new IllegalStateException("Cannot persist reconstruction state table", failure);
         }
+    }
+
+    /** Exact reads only: a probabilistic membership positive cannot omit an obligation. */
+    private int retainAbsentKeys(byte[][] keys) throws RocksDBException {
+        int retained = 0;
+        var sorted = Arrays.asList(keys);
+        try (var reads = new ReadOptions().setFillCache(false)) {
+            for (int from = 0; from < keys.length; from += MEMBERSHIP_BATCH_KEYS) {
+                int end = Math.min(keys.length, from + MEMBERSHIP_BATCH_KEYS);
+                var values = database.multiGetAsList(reads, sorted.subList(from, end));
+                if (values.size() != end - from)
+                    throw new IllegalStateException("Incomplete reconstruction membership lookup");
+                for (int i = from; i < end; i++) {
+                    byte[] value = values.get(i - from);
+                    if (value == null) keys[retained++] = keys[i];
+                    else if (value.length != 0)
+                        throw new IllegalStateException("Malformed persisted reconstruction value");
+                }
+            }
+        }
+        duplicateKeys.add(keys.length - retained);
+        return retained;
     }
 
     /** Drain persistence without a preliminary inventory scan. */
@@ -484,7 +526,8 @@ public final class CheckerStateStorage implements AutoCloseable {
                     }
                     return "encodedKeysConsumed=" + consumed + "/" + submitted + ", encodedKeysRemaining="
                             + (submitted - consumed) + ", ingestedTables=" + ingestedTables.sum()
-                            + ", ingestedKeys=" + ingestedKeys.sum() + ", uniqueTotal=unknown until counting";
+                            + ", ingestedKeys=" + ingestedKeys.sum() + ", duplicateKeysSkipped=" + duplicateKeys.sum()
+                            + ", uniqueTotal=unknown until counting";
                 })) {
             // Signal every shard before joining any: their final tables must
             // build and ingest concurrently, rather than one final flush at a time.
@@ -506,6 +549,6 @@ public final class CheckerStateStorage implements AutoCloseable {
         stopAdmissions();
         closed = true;
         try { finishWriters(); }
-        finally { database.close(); options.close(); memory.close(); }
+        finally { database.close(); options.close(); membershipFilter.close(); memory.close(); }
     }
 }

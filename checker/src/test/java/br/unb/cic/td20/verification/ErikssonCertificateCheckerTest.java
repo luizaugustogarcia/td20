@@ -26,6 +26,35 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ErikssonCertificateCheckerTest {
+    @Test void successfulInverseCoverageReclaimsEveryCompletedScratchWave(@TempDir Path path) throws Exception {
+        var database=path.resolve("certificates");emptyDatabase(database);
+        var work=Files.createDirectory(path.resolve("work"));
+        try(var certificates=new CertificateStore(database);
+            var endpoints=new CheckerStateSet(work.resolve("endpoint-residuals"));
+            var progress=new VerificationProgress()) {
+            var coverage=ErikssonCertificateChecker.verifyAvoidance(certificates,endpoints,work,progress);
+            assertEquals(0,coverage.endpoints());
+            assertEquals(0,coverage.roots());
+            for(String wave:List.of("endpoint-residuals","after-two","after-two-residuals","after-one","roots"))
+                assertFalse(Files.exists(work.resolve(wave)), "Completed scratch remains: "+wave);
+            assertTrue(Files.isRegularFile(work.resolve("inverse-coverage-v3.txt")));
+            assertTrue(Files.isRegularFile(database.resolve("CURRENT")));
+        }
+    }
+    @Test void failedSourceReplayPreservesItsScratchAndPublishesNoCoverage(@TempDir Path path) throws Exception {
+        var database=path.resolve("certificates");emptyDatabase(database);
+        var work=Files.createDirectory(path.resolve("work"));
+        try(var certificates=new CertificateStore(database);
+            var endpoints=new CheckerStateSet(work.resolve("endpoint-residuals"));
+            var progress=new VerificationProgress()) {
+            // A fixed-point-free pair from the wrong domain must abort before handoff.
+            endpoints.add(new SearchState(8,pairWithOrientedThreeCycles(18)));
+            assertThrows(IllegalStateException.class,
+                    () -> ErikssonCertificateChecker.verifyAvoidance(certificates,endpoints,work,progress));
+            assertTrue(Files.isRegularFile(work.resolve("endpoint-residuals/CURRENT")));
+            assertFalse(Files.exists(work.resolve("inverse-coverage-v3.txt")));
+        }
+    }
     @Test void missingEndpointWitnessRegeneratesAvoidanceWithoutAnyObstructionMarker(@TempDir final Path path) throws Exception {
         final var directory=path.resolve("certificate");
         emptyDatabase(directory);

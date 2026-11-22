@@ -3,7 +3,15 @@
 The independent checker owns its scratch storage implementation. Inverse
 producers retain bounded per-thread key batches and distribute them across
 deterministic persistence shards. Each shard deduplicates and sorts its own
-window, builds an SST, and ingests it without WAL. All producer remainders and
+window, checks exact persisted membership in batches of at most 4,096 keys,
+builds an SST containing only absent keys, and ingests it without WAL. A key
+always belongs to one serial writer, whose preceding ingest completes before
+its next membership check. Existing values must be empty; lookup failures and
+incomplete responses abort persistence. An entirely duplicate window creates
+no SST. Scratch SSTs use whole-key Bloom filters with ten bits per key to
+accelerate these exact lookups; filter positives never omit a key by themselves.
+Their cached metadata uses the existing shared RocksDB memory budget.
+All producer remainders and
 writers drain before sealing. Parallel read batches decode and replay complete
 lookup responses before processing misses; iterator errors, count mismatches,
 malformed records and asynchronous failures abort verification. The checker
@@ -15,6 +23,26 @@ sets. Certificate databases remain read-only. Scratch sizing uses
 `td20.reconstructionScanRangesPerWorker`. Persistence retains the emitter's
 bounded batching approach; the checker independently implements snapshot-range
 scanning and validates every record. A changed checker must restart with fresh work.
+
+The checker reclaims a completed scratch wave after its exhaustive source scan
+and callbacks succeed and its successor has sealed successfully. Thus the
+endpoint residuals, after-two states, second-level residuals and after-one
+states retire in that order, rather than accumulating through the final wave.
+Final roots retire after certificate replay and coverage-report publication.
+Ordinary failure unwinding closes databases without deleting the remaining
+source boundary. Cleanup applies only to directories created by this checker
+run and never follows directory symlinks. Reclamation logs name each retired
+wave and report the logical file bytes removed; persistence-drain progress
+reports `duplicateKeysSkipped` separately from newly ingested keys.
+
+Exact membership filtering and wave reclamation are checker storage safeguards
+relative to the shared TD18 emission machinery. State-key version 3, generation,
+sorting obligations, inventory checks and certificate formats are unchanged.
+These safeguards prevent repeated occurrences from accumulating as physical
+SST versions and limit retained data to the active source and successor waves.
+Distinct classes, bounded queues and temporary SST/compaction files still need
+space; there is no fixed full-run disk bound. Existing running JVMs keep their
+loaded implementation; use the rebuilt checker with fresh work for these changes.
 
 The checker packs canonical keys directly for certificate lookups and for
 residual and inverse-state writes. This applies to roots, endpoints, all three

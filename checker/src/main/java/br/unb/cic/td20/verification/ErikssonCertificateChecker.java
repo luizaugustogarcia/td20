@@ -137,20 +137,25 @@ public final class ErikssonCertificateChecker {
                 afterTwo.addGeneratedPrimitive(budget-2,output -> inverse.get().preimages(state.pair(),2,output));
             });
             long twoCount=afterTwo.seal().count();
+            endpoints.retireAfter(afterTwo);
             progress.phase("replaying budget-nine results and independently deriving second-level residuals");
             var retained=retainAfterTwoResiduals(certificates,afterTwo,secondLevel);
             if(Math.addExact(retained.closed(),retained.residual())!=twoCount)
                 throw new IllegalStateException("After-two result accounting differs from the regenerated inventory");
+            afterTwo.retireAfter(secondLevel);
             progress.phase("expanding second-level residuals through both second-move inverse branches");
             expandSecondMovePreimages(secondLevel,afterOne);
             long oneCount=afterOne.seal().count();
+            secondLevel.retireAfter(afterOne);
             progress.phase("covering every gain-zero/one first inverse by elementary closure or residual generation, without budget-ten lookup");
             var finalCover=expandFirstMovePreimages(afterOne,roots);
             long rootCount=roots.seal().count();
+            afterOne.retireAfter(roots);
             progress.phase("verifying reconstructed roots outside elementary closures");
             verifyFinalRoots(certificates,roots);
             var coverage=new InverseCoverage(endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount,finalCover);
             publishInverseCoverage(work,coverage);
+            roots.retire();
             System.out.printf("Eriksson inverse coverage verified: endpoints=%d afterTwo=%d afterTwoClosed=%d afterTwoResiduals=%d afterOne=%d residualRoots=%d rootInventory=ELEMENTARY_RESIDUALS budgetTenLookup=false%n",
                     endpointCount,twoCount,retained.closed(),retained.residual(),oneCount,rootCount);
             return coverage;

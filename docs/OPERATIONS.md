@@ -140,6 +140,14 @@ estimates for unflushed data. Every inventory count comes from exact merged-key
 iteration after successful callbacks. This replaces the serial iterator used
 by the older TD18 checker without introducing an emitter dependency.
 
+Inverse generation additionally caps callback batches at
+`td20.reconstructionInverseScanBatchKeys` sources (16 by default). Set it to
+one to publish progress after each completed source; certificate lookup scans
+retain their configured bulk batch size. Generation progress also reports
+queued key occurrences, ingested keys, skipped persisted duplicates and SST
+ingestions. These persistence counters describe operational work; exact
+inventories still require successful exhaustive scans and completed writer drains.
+
 The batch size is
 `min(td20.reconstructionScanBatchKeys, td20.certificateLookupBatchSize)`, with
 defaults 4,096 and 32,768; known small inventories further reduce lookup batch

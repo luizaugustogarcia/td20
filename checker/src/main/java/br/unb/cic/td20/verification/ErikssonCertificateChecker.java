@@ -143,11 +143,13 @@ public final class ErikssonCertificateChecker {
             if(Math.addExact(retained.closed(),retained.residual())!=twoCount)
                 throw new IllegalStateException("After-two result accounting differs from the regenerated inventory");
             afterTwo.retireAfter(secondLevel);
-            progress.phase("expanding second-level residuals through both second-move inverse branches");
+            progress.phase(()->"expanding second-level residuals through both second-move inverse branches "
+                    +afterOne.persistenceProgress());
             expandSecondMovePreimages(secondLevel,afterOne);
             long oneCount=afterOne.seal().count();
             secondLevel.retireAfter(afterOne);
-            progress.phase("covering every gain-zero/one first inverse by elementary closure or residual generation, without budget-ten lookup");
+            progress.phase(()->"covering every gain-zero/one first inverse by elementary closure or residual generation, without budget-ten lookup "
+                    +roots.persistenceProgress());
             var finalCover=expandFirstMovePreimages(afterOne,roots);
             long rootCount=roots.seal().count();
             afterOne.retireAfter(roots);

@@ -62,6 +62,15 @@ public final class CheckerStateStorage implements AutoCloseable {
         return new WriteProgress(ingestedKeys.sum(), duplicateKeys.sum(), ingestedTables.sum());
     }
 
+    String persistenceProgress() {
+        long submitted=0,consumed=0;
+        for(var writer:writers) if(writer!=null) {
+            submitted+=writer.submittedKeys();consumed+=writer.consumedKeys();
+        }
+        return "queuedKeyOccurrences="+Math.max(0,submitted-consumed)+" ingestedKeys="+ingestedKeys.sum()
+                +" duplicateKeysSkipped="+duplicateKeys.sum()+" ingestedTables="+ingestedTables.sum();
+    }
+
     public record State(PrimitivePair pair, int maximumMoves) {
         public State {
             java.util.Objects.requireNonNull(pair);
@@ -452,15 +461,20 @@ public final class CheckerStateStorage implements AutoCloseable {
                     else missing.accept(batch.get(i));
                 }
             }
-        });
+        },lookup==null?positiveProperty("td20.reconstructionInverseScanBatchKeys",16):Integer.MAX_VALUE);
         synchronized (this) { size = scanned; }
     }
 
     /** Worker-owned snapshot iterators feed bounded callbacks over disjoint key ranges. */
     private long scanEncodedConcurrently(int workers, long expected, String phase,
                                          Consumer<List<byte[]>> consumer) {
+        return scanEncodedConcurrently(workers,expected,phase,consumer,Integer.MAX_VALUE);
+    }
+
+    private long scanEncodedConcurrently(int workers, long expected, String phase,
+                                         Consumer<List<byte[]>> consumer,int callbackBatchLimit) {
         if (workers < 1) throw new IllegalArgumentException("Positive scan worker count required");
-        int batchKeys = Math.min(lookupBatchSize(), positiveProperty("td20.reconstructionScanBatchKeys", 4096));
+        int batchKeys = Math.min(callbackBatchLimit,Math.min(lookupBatchSize(), positiveProperty("td20.reconstructionScanBatchKeys", 4096)));
         int parallelism = Math.min(workers, Math.min(CheckerParallelism.scanWorkers(),
                 Runtime.getRuntime().availableProcessors()));
         // Small inverse inventories can have expensive callbacks. Keep their

@@ -30,6 +30,7 @@ final class CheckerStateSet implements AutoCloseable {
         storage.addGeneratedPrimitive(maximumMoves,generator);
     }
     Inventory seal() { return new Inventory(storage.seal()); }
+    String persistenceProgress() { return storage.persistenceProgress(); }
     boolean contains(SearchState state) {
         return storage.contains(new CheckerStateStorage.State(state.pair(), state.maximumMoves()));
     }

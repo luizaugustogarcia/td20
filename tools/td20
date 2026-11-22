@@ -26,9 +26,6 @@ Computation:
   emit         Emit sorting results via JShell (build native CUDA first)
   avoidance    Reconstruct endpoint failures via JShell
   import-td18  Replay TD18 budget-nine results and seal second-level residuals
-  fleet        Distribute emission and reconstruction over SSH; download and merge
-  fleet-consolidate  Compact closed emission DBs remotely, then download large SSTs
-  fleet-recover-emission  Regenerate a lost server's exact emission scope
   merge        Replay and merge certificate DBs into a fresh local database
   verify       Independently replay obligations via checker JShell
 
@@ -100,12 +97,6 @@ case "$command" in
     emit) entry=br.unb.cic.td20.WitnessEmitter ;;
     avoidance) entry=br.unb.cic.td20.WitnessEmitter; set -- --phase=avoidance "$@" ;;
     import-td18) entry=br.unb.cic.td20.avoidance.ImportTd18AfterTwo ;;
-    fleet) entry=br.unb.cic.td20.fleet.FleetEmitter ;;
-    fleet-worker) entry=br.unb.cic.td20.fleet.FleetWorker ;;
-    fleet-hardware) entry=br.unb.cic.td20.fleet.FleetHardware ;;
-    fleet-consolidate-worker) entry=br.unb.cic.td20.fleet.FleetConsolidationWorker ;;
-    fleet-consolidate) entry=br.unb.cic.td20.fleet.FleetConsolidationBackup ;;
-    fleet-recover-emission) entry=br.unb.cic.td20.fleet.FleetEmissionRecovery ;;
     merge) entry=br.unb.cic.td20.certificate.CertificateDatabaseMerger ;;
     *) printf 'Unknown command: %s\n' "$command" >&2; exit 2 ;;
 esac

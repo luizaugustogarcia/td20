@@ -89,16 +89,15 @@
 
 - Keep CPU computation in Java and runtime native sources in CUDA. Reuse the
   existing Java Burnside counter.
-- The distributed simulation belongs to TD20. Use its 83 root partitions,
-  143 endpoint annotations and budgets 8/9/10/11. Reject TD18 fleet plans,
-  receipts and reconstruction checkpoints; archived TD18 attempts are not inputs.
-- Tune each SSH server from its own allocated CPU, RAM, GPU and VRAM and observed
+- Run emission, reconstruction and checking through the maintained local launchers.
+  Use TD20 domains, 83 root partitions, 143 endpoint annotations and budgets
+  8/9/10/11. Archived TD18 attempts and reconstruction checkpoints are not inputs.
+- Tune each machine from its allocated CPU, RAM, GPU and VRAM and observed
   utilization. Record effective profiles locally. Multiple CPU sockets or NUMA
   nodes require the JShell remote-JVM flag -R-XX:+UseNUMA.
-- Use fine-grained generation prefixes and reconstruction batches in a shared
-  dynamic queue. Free servers claim more tasks immediately. Keep one compact
-  consolidated progress snapshot every ten seconds; raw output remains in
-  per-task/setup logs. Show unknown future totals explicitly.
+- Use fine-grained generation prefixes and reconstruction batches with bounded
+  queues. Keep one compact progress snapshot every ten seconds; raw output
+  remains in per-task/setup logs. Show unknown future totals explicitly.
 - Keep generation, counting, sorting, scheduling, persistence, and checking
   machinery identical to ../td18, except for TD20 domains, budgets, the
   budget-valid support clearings and documented compatibility safeguards.

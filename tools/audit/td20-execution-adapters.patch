@@ -2,11 +2,10 @@ diff --git a/.gitignore b/.gitignore
 index 7766284..68a8fbe 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -11,6 +11,9 @@ data/
+@@ -11,6 +11,8 @@ data/
  checkpoints/
  avoidance-work/
  logs/
-+/fleet/
 +/runs/
 +/local-runtime/
 

@@ -159,7 +159,7 @@ bash -ic './tools/run-local-checker.sh'
 Local data uses `certificates/` for the database, `emitter/target/native/`
 for CUDA build output, and project-root `local-runtime/` for work, logs,
 settings and temporary files. Computational runtime storage stays outside
-`fleet/` and Maven `target/` directories. The checker
+Maven `target/` directories. The checker
 always creates fresh work and reads certificates without writing them. Both
 launchers share a runtime lock. The local emitter uses up to 8 persistence writers,
 4,194,304 aggregate buffer keys, 512 queued batches, a 262,144-key certificate

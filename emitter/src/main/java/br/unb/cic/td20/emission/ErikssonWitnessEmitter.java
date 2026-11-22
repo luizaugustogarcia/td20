@@ -39,37 +39,6 @@ public final class ErikssonWitnessEmitter {
     private static final long RECONSTRUCTION_CPU_PREFIX_MILLIS = reconstructionCpuPrefixMillis();
     private ErikssonWitnessEmitter() { }
 
-    /** One exact endpoint subtree; the fleet validates the complete annotation inventory after all tasks. */
-    public record EndpointBatchResult(long generated, long residuals) { }
-    public static EndpointBatchResult emitEndpointBatch(ErikssonInventory.Endpoint endpoint,
-            DirectTwistedBraceletGenerator.GenerationWork generation, Path database, Path work) throws IOException {
-        Files.createDirectories(database.toAbsolutePath().getParent());
-        Files.createDirectories(work.toAbsolutePath().getParent());
-        if (work.toAbsolutePath().normalize().startsWith(database.toAbsolutePath().normalize())
-                || database.toAbsolutePath().normalize().startsWith(work.toAbsolutePath().normalize()))
-            throw new IllegalArgumentException("Work must be outside the certificate database");
-        Files.createDirectory(work);
-        var generated = new LongAdder(); var misses = new LongAdder();
-        try (var writer = new AsyncCertificateWriter(database,Long.getLong("td20.certificateFlushSeconds",5L));
-             var residuals = new DiskStateSet(work.resolve("endpoint-residuals"));
-             var reporting = new ReconstructionProgress("Endpoint prefix type " + endpoint.number(),
-                     generation.leavesOnly() ? generation.expectedLeaves() : -1,generated::sum)) {
-            WitnessSearch.installWriter(writer);
-            try {
-                DirectTwistedBraceletGenerator.generatePrimitiveWork(endpoint.partition(),endpoint.orientedByPart(),generation,() -> { },pair -> {
-                    if (!settle(pair,ErikssonRoute.ENDPOINT_BUDGET,writer,null,true)) {
-                        residuals.add(pair,ErikssonRoute.ENDPOINT_BUDGET); misses.increment();
-                    }
-                    generated.increment();
-                });
-                writer.flush();
-                long count = residuals.seal();
-                if (count != misses.sum()) throw new IllegalStateException("Duplicate or missing endpoint prefix residual");
-                return new EndpointBatchResult(generated.sum(),count);
-            } finally { WitnessSearch.uninstallWriter(writer); }
-        } finally { WitnessSearch.shutdownGpuStats(); DirectTwistedBraceletGenerator.shutdownExecutor(); }
-    }
-
     public static void main(String[] arguments) throws IOException {
         var options = Options.parse(arguments, ProjectPaths.root(Path.of("")));
         if (options.help) { usage(); return; }

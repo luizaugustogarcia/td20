@@ -116,15 +116,6 @@ an owner in the actual residual-derived source set, exact membership queries,
 and transport of supports through canonicalization. It is a later option, not
 an assumption that the lexicographically first unrestricted child is present.
 
-### 5. Scale the reduced workload over the fleet
-
-Once measured work per source is lower, partition the retained budget-ten
-source into fine-grained deterministic ranges with a shared dynamic queue.
-Use separate budgets for source scanning, GPU work and writers and profile each
-machine's actual allocation. Server count multiplies sustained throughput only
-until storage or coordinator transfer saturates. More existing sorting slots
-alone cannot accelerate Java inverse generation.
-
 ## Adopted analytic coverage and checkpoint protocol
 
 The paper proves that filtering produces exactly

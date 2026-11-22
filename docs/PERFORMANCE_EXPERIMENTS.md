@@ -8,7 +8,7 @@ make this a strong performance candidate. Code inspection does not establish
 its fraction of the production runtime.
 
 The primitive algorithms have now been integrated into production generation,
-reconstruction, sorting, certificate replay, import, merging, and fleet state
+reconstruction, sorting, certificate replay, import, merging, and state
 preparation. Immutable byte vectors own state at asynchronous boundaries; each
 worker owns reusable computation arrays. Inverse output packs one versioned
 canonical key allocation directly into bounded persistence batches. Packed

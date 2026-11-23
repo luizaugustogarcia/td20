@@ -35,6 +35,15 @@ budget 8. Endpoint misses generate three inverse waves, including both `(1,2,2)`
 and `(0,3,2)` branches on both endpoints, with budgets 9, 10 and 11.
 Missing obstruction markers cannot suppress any obligation.
 
+The certificate database is published as an uncompressed tar archive in the
+public S3 bucket `td20` (AWS region `us-east-2`):
+[certificate.tar](https://td20.s3.us-east-2.amazonaws.com/certificate.tar).
+The archive is 89,848,709,120 bytes (83.68 GiB) and contains the `certificates/`
+directory. Publication is in progress as of 23 November 2026. Extract it with
+`tar -xf certificate.tar` and use the independent checker described in
+[the execution instructions](docs/RUNNING.md) to regenerate obligations and
+replay witnesses. Download access requires no AWS account.
+
 JDK 21, Maven, Bash and JShell are the baseline. See
 [direct build and execution instructions](docs/RUNNING.md) for compilation,
 CPU tests, CUDA builds, emission and independent verification. The former

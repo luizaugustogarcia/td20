@@ -1,5 +1,9 @@
 # TD20 computational handoff
 
+> The former `tools/` utilities have been removed. Launcher commands and links
+> below are historical; use [RUNNING.md](RUNNING.md) for current direct build
+> and execution instructions. Recorded configurations and evidence remain valid.
+
 TD(20) = 11 is proved by the completed independent verification of
 22 November 2026. The authoritative completed-run handoff is
 [REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md), with checked completion

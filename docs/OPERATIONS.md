@@ -1,5 +1,9 @@
 # Runtime operations
 
+> The former `tools/` utilities have been removed. Launcher commands and links
+> below are historical; use [RUNNING.md](RUNNING.md) for current direct build
+> and execution instructions. Recorded configurations and evidence remain valid.
+
 The independent checker owns its scratch storage implementation. Inverse
 producers retain bounded per-thread key batches and distribute them across
 deterministic persistence shards. Each shard deduplicates and sorts its own

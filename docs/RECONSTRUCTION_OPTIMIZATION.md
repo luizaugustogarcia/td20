@@ -1,5 +1,9 @@
 # Reconstruction optimization
 
+> The former `tools/` utilities have been removed. Launcher commands and links
+> below are historical; use [RUNNING.md](RUNNING.md) for current direct build
+> and execution instructions. Recorded configurations and evidence remain valid.
+
 The active proof route defines support-family closure and the filtered final
 inventory. The emitter and checker implement this coverage independently.
 See [the source paper](td20-reduction-count.tex).

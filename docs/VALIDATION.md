@@ -1,5 +1,9 @@
 # Validation of the TD20 computation
 
+> The former `tools/` utilities have been removed. Launcher commands and links
+> below are historical; use [RUNNING.md](RUNNING.md) for current direct build
+> and execution instructions. Recorded configurations and evidence remain valid.
+
 The active structural inventory has 83 root partitions and 143 endpoint
 annotations. Counts and tests alone do not prove TD(20) = 11. The complete
 required evidence is in [RESEARCH_PLAN.md](RESEARCH_PLAN.md); completed TD20

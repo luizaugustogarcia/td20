@@ -1,5 +1,9 @@
 # Primitive representations and emitter benchmark
 
+> The former `tools/` utilities have been removed. Launcher commands and links
+> below are historical; use [RUNNING.md](RUNNING.md) for current direct build
+> and execution instructions. Recorded configurations and evidence remain valid.
+
 The previous emitter converted each accepted inverse state from image arrays
 into MulticyclePermutation and Cycle objects, canonicalizes an encoding,
 decodes another canonical pair, then packs its images as a certificate key.

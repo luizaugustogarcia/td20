@@ -1,5 +1,9 @@
 # TD(20) proof workflow
 
+> The former `tools/` utilities have been removed. Launcher commands and links
+> below are historical; use [RUNNING.md](RUNNING.md) for current direct build
+> and execution instructions. Recorded configurations and evidence remain valid.
+
 The [source paper](td20-reduction-count.tex) defines the active route.
 All 83 root partitions on 21 symbols and 143 endpoint annotations on 16 symbols
 have been regenerated structurally. All 83 emitter root-count rows are published:

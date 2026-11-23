@@ -215,7 +215,8 @@ required or claimed by the filtered protocol.
 
 ## 5. Independently verify the entire proof
 
-Run `tools/td20 verify --phase=all` against the finished certificate database
+Run the independent checker with `--phase=all` against the finished certificate database
+using [the direct JShell instructions](RUNNING.md)
 with fresh checker work and no range omissions. It must independently regenerate
 inventories, roots, endpoint classes and inverse waves; enforce every count and
 budget; independently verify the family and individual elementary closures;

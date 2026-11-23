@@ -35,27 +35,11 @@ budget 8. Endpoint misses generate three inverse waves, including both `(1,2,2)`
 and `(0,3,2)` branches on both endpoints, with budgets 9, 10 and 11.
 Missing obstruction markers cannot suppress any obligation.
 
-JDK 21, Maven, Bash and JShell are the baseline:
+JDK 21, Maven, Bash and JShell are the baseline. See
+[direct build and execution instructions](docs/RUNNING.md) for compilation,
+CPU tests, CUDA builds, emission and independent verification. The former
+tools/ launchers have been removed; record settings and logs explicitly.
 
-```bash
-bash -ic './tools/td20 build'
-bash -ic './tools/td20 test'
-bash -ic './tools/td20 inventory'
-bash -ic './tools/td20 count-roots'
-bash -ic './tools/td20 audit-roots'
-bash -ic './tools/td20 count-endpoints'
-bash -ic './tools/td20 audit-endpoints'
-bash -ic './tools/td20 endpoint-table'
-bash -ic './tools/run-local-emitter.sh --build'
-bash -ic './tools/run-local-emitter.sh'
-bash -ic './tools/run-local-checker.sh --build'
-bash -ic './tools/run-local-checker.sh'
-```
-
-The maintained launchers detect available CPU cores and memory limits and record
-each run's configuration, timings and status. Their resource limits and CUDA
-architecture are configurable. The generic GPU build includes SM 89 and SM 120; the local
-launcher defaults to SM 89.
 Successful CPU computations do not initialize CUDA. The checker has no emitter
 artifact dependency and independently regenerates obligations before replay.
 Both CPU suites exhaustively compare retained root class sets for every domain

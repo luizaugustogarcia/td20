@@ -19,8 +19,9 @@ and comparison references. Domains remain at most 21 symbols.
 The independent checker, budgets, exhaustive branches, scheduling, state
 version 3, certificate version 2, and WAL-disabled persistence are preserved.
 This intentionally changes the emitter representation compared with TD18;
-it does not change the mathematical obligations or establish the pending
-TD20 upper bound.
+it does not change the mathematical obligations. The completed independent
+verification establishing the TD20 upper bound is recorded in
+[REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md).
 
 ## Checker migration
 
@@ -47,7 +48,9 @@ every valid normalized pair through seven symbols; inverse labeled multisets
 for gains zero through three through six-symbol sources; active inverse
 fixtures through 21 symbols; direct generation classes and counts; all packed
 witness boundaries; and arbitrary multi-move replay and prefix budgets across
-domains three through 21. These are bounded equivalence checks. Full independent proof verification remains pending.
+domains three through 21. These are bounded equivalence checks. Full independent
+proof verification subsequently completed on 22 November 2026 as recorded in
+the execution record linked above.
 
 ## Representation and equivalence
 

@@ -6,6 +6,12 @@ required evidence is in [RESEARCH_PLAN.md](RESEARCH_PLAN.md); completed TD20
 execution metadata belongs in [REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md).
 No TD18 emission or checker success is a TD20 verification result.
 
+The TD20 proof is complete: `checker-20261122T183611Z-32945` independently
+verified the full scope on 22 November 2026, with zero unresolved final roots,
+the application success marker and exit zero. Both CPU suites have passed;
+the completion record links their evidence separately from the full checker run.
+The commands below reproduce these checks.
+
 ## CPU validation and inventories
 
 Load the configured toolchain and run both required suites:
@@ -25,8 +31,8 @@ eight symbols and compares the full retained class set with an arbitrary-support
 oracle moving the actual current and target cycles. Duplicate output classes
 fail. Both suites passed these complete class-set checks, their serial/parallel
 count comparisons and the 21-symbol reverse-exception test. These are explicit
-unit-test scopes; exhaustive 21-symbol independent counting and full witness
-replay still belong to the planned fresh proof run. Persistence
+unit-test scopes; the completed full-scope proof run supplies exhaustive
+21-symbol independent regeneration and full witness replay. Persistence
 checks cover bounded queues, sharded sorted tables, scan remainders, malformed or
 missing records, propagation of writer failures, interrupted handoffs and strongest
 certificate retention. These tests establish their explicit scope.
@@ -93,7 +99,8 @@ are informational; neither markers nor probe/import reports may omit work.
 Imported-witness audits use explicit source, certificate, residual and report
 paths, together with expected counts for that scope. The audit replays results
 within budget nine and checks that residuals equal the missing classes.
-Full endpoint regeneration and full TD20 verification remain required.
+Full endpoint regeneration and full TD20 verification were completed in the
+official run; the import audit alone does not supply that coverage.
 
 Every second-level residual regenerates both `(1,2,2)` and `(0,3,2)` paths
 on both endpoints through budgets ten and eleven. Budget-ten states are

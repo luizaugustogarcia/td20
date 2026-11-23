@@ -147,12 +147,12 @@ The root inventory contains all 83 partitions of 21. Root selection is not
 determined by annotated type, so it uses the constrained generator rather than
 Burnside. All 83 emitter count rows are published: U3 = 0 retained unoriented
 roots, O3 = 8 retained oriented roots and C3 = 2 support-cleared roots, leaving
-six direct obligations. The standalone checker census completed the first 24
-matching root reports before an intentional stop, leaving 59 independent rows
-to check. Both modules' complete retained-class unit comparisons passed for
+six direct obligations. The completed standalone checker census agrees on all
+83 root reports. Both modules' complete retained-class unit comparisons passed for
 every domain of three through eight symbols against an arbitrary-support oracle
 on the actual current and target cycles. These small-domain checks do not supply
-the remaining 21-symbol counts. Historical joint-2 counts cannot be substituted.
+the 21-symbol counts; the independent census and completed full-scope checker
+provide that evidence. Historical joint-2 counts cannot be substituted.
 
 The three inverse waves cover both `(1,2,2)` and `(0,3,2)` paths on both
 endpoints. Class counts are separate from witnesses within 8 moves at

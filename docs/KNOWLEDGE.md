@@ -45,4 +45,6 @@ and enumerate all supports. Actual forward replay, not an assumed obstruction
 list or odd-cycle shortcut, determines admission. Remaining roots require full
 budget 11. A sorting witness closes only its represented class and budget.
 See [the source paper](td20-reduction-count.tex) for the coverage argument,
-local bounds, complete inventories, and the conditional proof of TD(20) = 11.
+local bounds, complete inventories, and the completed computer-assisted proof
+of TD(20) = 11. The independent verification is recorded in
+[REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md).

@@ -13,7 +13,9 @@ with fixed points; and replay the actual forward gain and both pair components.
 The increasing order of restored labels only removes relabeling redundancy.
 The anchored gap convention includes the gap after the final old symbol and
 therefore every cyclic gap. These checks do not reveal a coverage defect.
-They do not replace the pending full independent proof verification.
+Full independent proof verification subsequently completed on 22 November 2026;
+see [the execution record](REFERENCE_SIMULATION.md). This mathematical audit
+is separate from that completed computational coverage.
 
 The problem is that this inverse cover includes many roots already discharged
 by the first clause of the forward argument. Exhaustively generating this

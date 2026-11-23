@@ -3,12 +3,15 @@
 The [source paper](td20-reduction-count.tex) defines the active route.
 All 83 root partitions on 21 symbols and 143 endpoint annotations on 16 symbols
 have been regenerated structurally. All 83 emitter root-count rows are published:
-U3 = 0, O3 = 8 and C3 = 2, leaving six direct obligations. The first 24
-independent root-count rows agree; 59 remain to check. Both modules independently
+U3 = 0, O3 = 8 and C3 = 2, leaving six direct obligations. All 83
+independent root-count rows agree. Both modules independently
 agree on all 143 endpoint
 counts: 14,098,353,328 classes in total and 11,523,939,269 outside elementary
-closures. Endpoints have budget 8; sorting and full proof verification remain
-separate obligations.
+closures. Endpoints have budget 8. Sorting and full independent verification
+completed on 22 November 2026, proving TD(20) = 11; see the
+[execution record](REFERENCE_SIMULATION.md) and
+[proof completion record](RESEARCH_PLAN.md). The commands below reproduce the
+completed computation.
 The maintained local launchers and their bounded settings are described in
 [OPERATIONS.md](OPERATIONS.md).
 
@@ -31,7 +34,8 @@ fixed-point-free input, moves the actual current and target cycles on arbitrary
 supports, and checks the full generated class set without duplicate classes.
 Separate tests compare serial and parallel counts and cover the 21-symbol
 reverse exception. These tests validate their stated domains; complete
-21-symbol independent counting and full witness replay remain required.
+21-symbol independent regeneration and full witness replay are established by
+the completed full-scope checker run.
 
 The root census runs all 83 partitions through JShell using all available
 CPU threads. It atomically persists versioned per-partition reports under
@@ -44,10 +48,9 @@ The independent checker uses `data/eriksson-root-counts-checker-v1/` and compare
 all counts against those rows. Repeated, malformed, incompatible or missing
 fields cannot supply a completed count. Pending active rows allow structural
 checks but block emission and proof verification.
-The standalone checker census was intentionally stopped after 24 completed
-matching reports. Completed reports persist; unfinished partition 25 regenerates
-when the census resumes. The planned fresh full proof checker independently
-regenerates the complete 21-symbol scope.
+The standalone checker census completed all 83 matching reports; its retained
+log is `logs/eriksson-route-v1/independent-root-census.log`. The full proof
+checker independently regenerated the complete 21-symbol scope again.
 Endpoint counting uses the full 143-annotation cover. Reports under
 `data/eriksson-endpoint-counts-v1/` and
 `data/eriksson-endpoint-counts-checker-v1/` include the route, domain, budget,
@@ -121,10 +124,11 @@ three inverse waves and replays the database at each actual budget. Every
 missing endpoint discharge is propagated regardless of obstruction markers.
 Any missing final root result fails verification. Ranges and partial phases
 certify only their stated scope. The final full-scope report is required for
-the checked computational part of the conditional proof of TD(20) = 11.
+the checked computational part of the proof of TD(20) = 11. The official run
+`checker-20261122T183611Z-32945` completed that scope with zero unresolved roots.
 Keep execution logs and settings untracked, and record the actual scope,
 configuration, timings and result locations in [the execution record](REFERENCE_SIMULATION.md).
-TD(20) = 11 remains conditional until every research-plan criterion is checked.
+All five proof completion criteria have checked evidence in the completion record.
 
 ## Endpoint table publication
 

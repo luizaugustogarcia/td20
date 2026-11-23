@@ -179,8 +179,9 @@ The maintained local launchers detect allocated CPU cores and memory limits.
 Their bounded defaults include a maximum 16 GiB heap, eight GPU slots and
 768 MiB of queue memory per slot; these are configurable resource limits,
 not TD20 measurements or hardcoded CPU allocations. Every run records its
-own settings, revision, timestamps and status under the run root. A full TD20
-reference emission and independent verification remain pending; see
+own settings, revision, timestamps and status under the run root. Full-scope
+independent verification of the completed TD20 certificate database succeeded
+on 22 November 2026; see
 [the execution record](REFERENCE_SIMULATION.md).
 
 ```bash

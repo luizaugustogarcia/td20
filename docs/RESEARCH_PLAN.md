@@ -1,12 +1,33 @@
-# Research plan and proof completion
+# TD(20) = 11: proof completion record
 
-The objective is a checked upper bound of eleven transpositions for every
-ordinary order-20 instance. Together with the established reverse-permutation
-lower bound TD(20) >= 11, this would establish TD(20) = 11. The upper bound is
-**not yet proved**. [The source paper](td20-reduction-count.tex) specifies the
+The completed computation establishes an upper bound of eleven transpositions
+for every ordinary order-20 instance. Together with the established
+reverse-permutation lower bound TD(20) >= 11, this proves **TD(20) = 11**.
+[The source paper](td20-reduction-count.tex) gives the proof using the
 two-sided Eriksson-plus-third-move route. TD(16) = 9 and TD(18) = 10 are
 established results using the same computational methodology and explicit
 completed premises, alongside the smaller established bounds.
+
+All five completion criteria below have checked evidence. The full-scope
+independent checker run `checker-20261122T183611Z-32945` completed on
+22 November 2026 with fresh work, exit code zero, `status=complete`,
+`completionScope=complete`, and the application success marker. Its retained
+[evidence directory](../logs/official-verification/checker-20261122T183611Z-32945/)
+and [execution record](REFERENCE_SIMULATION.md) document the scope and provenance.
+The criteria below remain the requirements for reproducing the proof.
+
+| Criterion | Completed checked evidence |
+| --- | --- |
+| 1. Mathematical coverage and small domains | Coverage derivation in the source paper; both Maven CPU suites passed, including a rerun on 23 November 2026 recorded in `logs/proof-status-update/`. Retained Surefire XML reports are under `emitter/target/surefire-reports/` and `checker/target/surefire-reports/`; earlier successful CPU-suite logs are under `logs/eriksson-route-v1/`. |
+| 2. Independent inventories | `logs/eriksson-route-v1/root-census.log` and `independent-root-census.log` complete all 83 rows with totals U3/O3/C3 = 0/8/2; `endpoint-census.log` and `independent-endpoints.log` complete all 143 annotations. `data/eriksson-route-validation-v1.json` records agreement. The full checker independently regenerates and compares every root row again. |
+| 3. Direct roots and endpoints | All 83 root and 143 endpoint completion entries in the official checker log; six direct obligations discharged at budget 11 and 2,036 endpoint residuals propagated to inverse coverage. Witnesses are replayed from the TD20 certificate database. |
+| 4. Complete inverse coverage | Official `inverse-coverage-v3.txt`: 5,032,950 after-two classes, 4,062,619 budget-nine closures, 970,331 second-level residuals, 4,010,256,622 after-one classes, 51,456,682 final residual roots, zero unresolved; both branches and endpoints, no budget-ten lookup. Full regeneration and replay independently check the reused results. |
+| 5. Entire proof | Both successful CPU suites and the official complete `verify --phase=all` run, its log, settings JSON, executed-class provenance and version-three coverage report. Established smaller diameters and the reverse bound are cited in the source paper. |
+
+Versioned census reports are generated at the paths specified in criterion 2;
+the retained census logs record their completed executions. They are separate
+from the full-scope sorting and reconstruction check. No standalone count,
+test, import audit, or partial run is being substituted for that check.
 
 The source paper proves elementary final-root family closures. The final
 persisted inventory contains reconstructed roots with no immediate
@@ -64,9 +85,9 @@ orientation annotations from the 28 even endpoint partitions of 16. Algebraic
 is complete and agrees between both modules in every row:
 14,098,353,328 classes, with 11,523,939,269 outside elementary closures.
 The paper contains all 83 complete emitter root-count rows: U3 = 0, O3 = 8
-and C3 = 2, leaving six direct obligations. The standalone checker census
-completed the first 24 matching reports before an intentional stop; 59 rows
-remain. This criterion still requires independent agreement in every row.
+and C3 = 2, leaving six direct obligations. The completed standalone checker
+census agrees in every row, and the full proof checker independently
+regenerated and compared all 83 rows again on 22 November 2026.
 
 For every root partition, independently count retained unoriented roots U3,
 retained oriented roots O3, and the support-cleared subset C3. Direct obligations
@@ -205,20 +226,19 @@ Record emission and verification separately, with their actual source revisions,
 runtime settings, exact regenerated counts, phase timings, success messages
 and exit status. Audit source changes between the two runs. Keep test executions
 and versioned census reports as distinct evidence: a replay success cannot
-mark an unexecuted test or unpublished report checked. Fresh TD20 emission and
-full independent checking will supply new execution logs; the result remains
-unproved until every exit criterion has its required artifact.
+mark an unexecuted test or unpublished report checked. The completed TD20
+full-scope check supplies the final coverage evidence; its actual execution
+record is linked above. Test and census artifacts retain their separate scopes.
 
 Exit criterion: both required Maven CPU suites and one complete successful
 end-to-end checker report, together with every counted inventory, replayed
 database and cited mathematical premise. CUDA-dependent tests require a configured
 environment; a proof using only CPU certificates need not use CUDA.
 
-All five criteria require checked artifacts. Structural regeneration and tests
-alone do not establish TD(20) = 11. Emitter root counts are published and the
-endpoint census is independently checked. Independent completion of the root
-census, sorting and the complete proof-checker report remain pending until
-their actual artifacts exist.
+All five criteria have checked evidence as recorded above. Structural
+regeneration and tests alone do not establish TD(20) = 11; the completed
+independent inventories, witness replay and full three-wave coverage supply
+the computational upper bound used in the proof.
 Generated databases, checkpoints, reports, certificates and logs remain untracked.
 Record completed execution metadata and artifact locations in
 [REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md); see

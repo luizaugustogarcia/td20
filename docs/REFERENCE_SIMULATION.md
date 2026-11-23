@@ -1,4 +1,10 @@
-# TD20 execution record
+# TD(20) = 11: completed proof execution
+
+The completed full-scope independent check establishes TD(20) <= 11.
+Together with the established reverse-permutation lower bound, it proves
+**TD(20) = 11**. [The proof completion record](RESEARCH_PLAN.md) maps the
+mathematical derivation, CPU validation, independent inventories and witness
+coverage to their checked evidence.
 
 Instance 61821972 (host 51010, machine 153507) is the retained execution
 instance. Its checker configuration is in [OPERATIONS.md](OPERATIONS.md),
@@ -64,12 +70,27 @@ It records `rootInventory=ELEMENTARY_RESIDUALS`, `budgetTenLookup=false`,
 and budgets 8/9/10/11. Source provenance is `source-export`; the settings JSON
 retains executed Java class hashes rather than a Git revision.
 
-No Maven tests were run in this execution session, at the user's request.
-The matching upper bound remains pending until every criterion in
-[RESEARCH_PLAN.md](RESEARCH_PLAN.md) has a checked artifact.
+No Maven tests were run during the official checker execution session, at the
+user's request.
+CPU validation is separate: successful suite logs are retained under
+`logs/eriksson-route-v1/`, and both modules' Surefire XML reports under
+`emitter/target/surefire-reports/` and `checker/target/surefire-reports/` record
+zero failures and errors. The completed standalone root census agrees on all
+83 rows; its full log is `logs/eriksson-route-v1/independent-root-census.log`.
+The endpoint census logs in the same directory cover all 143 annotations.
+The earlier statement that only 24 root rows had been checked was stale.
 TD(16) = 9 and TD(18) = 10 are established premises.
 
-For this instance, record the actual allocation, effective settings, source
+On 23 November 2026, both required Maven CPU suites were rerun successfully
+during the documentation update: emitter reported 301 tests, zero failures or
+errors and 16 skipped device tests; checker reported 171 tests, zero failures,
+errors or skips. The skipped CUDA checks are not counted as passed checks.
+Logs are under `logs/proof-status-update/`, alongside an evidence audit that
+compares both complete censuses, all paper root rows, the official completion
+entries and inverse-coverage totals. The root-table publication regression
+also passed, and the proof PDF was rebuilt from the updated source.
+
+For reproduction, record the actual allocation, effective settings, source
 revision, database and report locations, timestamps, exact regenerated counts,
 unresolved classes, phase durations, application success marker and exit status.
 The checker must use fresh work and independently replay every obligation.

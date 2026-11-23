@@ -1,12 +1,22 @@
-# Toward TD(20) = 11
+# A computer-assisted proof of TD(20) = 11
 
 This repository contains the mathematical argument, Java/CUDA certificate
-emitter, and independent Java checker for a prospective computer-assisted proof
-that TD(20) = 11. The established reverse-permutation lower bound is 11;
-**the matching upper bound remains conditional on checked computational coverage**.
+emitter, and independent Java checker for the completed computer-assisted proof
+that **TD(20) = 11**. Full-scope independent verification completed on
+**22 November 2026**, establishing the upper bound of eleven transpositions.
+The established reverse-permutation lower bound gives equality.
 TD(16) = 9 and TD(18) = 10 are established results using the same computational
 methodology and are explicit completed premises of this project.
 [The source paper](docs/td20-reduction-count.tex) specifies the proof route.
+[The reading PDF](docs/td20-reduction-count.pdf) presents the proof, and
+[the execution record](docs/REFERENCE_SIMULATION.md) documents the successful
+checker run, its configuration and retained evidence.
+
+The checker completed all **83 root partitions** and **143 endpoint annotations**,
+independently regenerated **4,010,256,622 budget-ten source classes**, and checked
+**51,456,682 final residual root classes**, with **zero unresolved obligations**.
+The run used fresh work, covered both inverse branches and both endpoints,
+printed the full-scope application success marker, and exited zero.
 
 The active Eriksson-plus-third-move route searches both the current and target
 cycles. Two transpositions produce three fixed symbols, then a third produces
@@ -45,17 +55,17 @@ bash -ic './tools/run-local-checker.sh'
 The maintained launchers detect available CPU cores and memory limits and record
 each run's configuration, timings and status. Their resource limits and CUDA
 architecture are configurable. The generic GPU build includes SM 89 and SM 120; the local
-launcher defaults to SM 89. Neither is evidence of a completed TD20 run.
+launcher defaults to SM 89.
 Successful CPU computations do not initialize CUDA. The checker has no emitter
 artifact dependency and independently regenerates obligations before replay.
 Both CPU suites exhaustively compare retained root class sets for every domain
 of three through eight symbols with an independent arbitrary-support oracle.
-Full 21-symbol independent counting and witness replay remain required for the
-planned fresh verification run.
+Full 21-symbol independent regeneration and witness replay completed in
+`checker-20261122T183611Z-32945`.
 
 Generated databases, count reports, checkpoints, certificates and logs remain
 untracked. See [workflow](docs/WORKFLOW.md), [operations](docs/OPERATIONS.md),
 [architecture](docs/ARCHITECTURE.md), [conventions](docs/KNOWLEDGE.md),
 [validation](docs/VALIDATION.md), and the [39-commit port ledger](docs/TD18_PORT.md).
-Every exit criterion in [the research plan](docs/RESEARCH_PLAN.md) requires a
-checked artifact before the upper bound can be claimed.
+[The proof completion record](docs/RESEARCH_PLAN.md) maps all five completion
+criteria to checked evidence and retains the requirements for reproduction.

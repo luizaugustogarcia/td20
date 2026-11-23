@@ -9,18 +9,20 @@
   its checked computational artifacts.
 - Treat TD(16) = 9 and TD(18) = 10 as explicit completed premises, established
   using the same computational methodology requested for this project.
-- The project objective is TD(20) = 11. Treat the reverse-permutation lower
-  bound TD(20) >= 11 as established and the checked computation as the program
-  for proving the matching upper bound.
-- Never present TD(20) = 11 as proved until every exit criterion in
-  docs/RESEARCH_PLAN.md has a checked artifact.
+- The project establishes TD(20) = 11 by a completed computer-assisted proof.
+  The reverse-permutation lower bound and the matching upper bound checked by
+  full-scope run checker-20261122T183611Z-32945 establish equality.
+- Preserve the checked evidence for every completion criterion in
+  docs/RESEARCH_PLAN.md and the execution record in docs/REFERENCE_SIMULATION.md.
+  Changes to the proof route or implementation require validation of their scope;
+  the completed run certifies its recorded computation.
 
 ## Mathematical framework
 
 - Use ../td only as the source for the shared twisted-bracelet framework and
   established mathematical conventions.
 - Preserve the distinction between the shared framework, the joint-selection
-  argument, and pending computational conclusions.
+  argument, completed computational conclusions, and new experimental work.
 - If documentation and code differ, identify the mismatch explicitly; do not
   silently choose one.
 - Explain fixed-content encoding, auxiliary standardization, the twisted
@@ -73,8 +75,8 @@
 
 - Keep definitions, bounds, algorithms, tables, tests, and artifacts consistent.
   Define every term and symbol, and prove or cite every nontrivial claim.
-- Distinguish established premises, completed counts, experimental checks,
-  estimates, and conditional proof conclusions.
+- Distinguish established premises, completed counts, checked proof conclusions,
+  experimental checks, and estimates.
 - Keep exhaustive generation, sorting, and verification boundaries explicit.
   A witness proves an upper bound only for its represented class.
 - Every persisted set or certificate needs a versioned format, deterministic

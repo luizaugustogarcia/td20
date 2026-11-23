@@ -16,9 +16,13 @@ checked comparison to tests and launchers, and incorporates `22042d8`.
 
 The user explicitly authorized porting the Eriksson route on 16 November 2026,
 replacing the former joint-2 instructions. TD20 keeps its own diameter premise,
-domain, budgets, explicit budget-valid support clearings and conditional proof
-status. Every current-route inventory must be regenerated. Historical joint-2
+domain, budgets, explicit budget-valid support clearings and proof evidence.
+Every current-route inventory must be regenerated. Historical joint-2
 counts and TD18 reference artifacts cannot discharge TD20 obligations.
+
+The port ledger below records the original adaptations. TD20's own full-scope
+verification completed on 22 November 2026 and establishes TD(20) = 11; see
+[the execution record](REFERENCE_SIMULATION.md).
 
 | TD18 commit | Improvement | TD20 disposition |
 | --- | --- | --- |
@@ -56,11 +60,11 @@ counts and TD18 reference artifacts cannot discharge TD20 obligations.
 | `c9134b2` | Keep only RTX 5090 and EPYC 7742 simulation profile | Temporary RTX 5090/EPYC profile consolidation was superseded by the final maintained local profile; no obsolete deployment preset retained. |
 | `847219a` | Optimize checker key encoding and certificate replay | Ported direct canonical key packing, exact canonical-frame reuse, single replay-derived budget validation and independent inverse target reuse. |
 | `3ee6d12` | Preserve strongest sorting certificates across write batches | Ported strongest sorting-certificate retention across write batches and regression coverage. |
-| `5871a30` | Record the local reference emission and document the TD18 proof | Ported execution settings/timing/provenance recording and the explicit validation guide. TD18 proof claims, counts, raw reference logs and hardware timings remain TD18 evidence; TD20 stays conditional and all generated logs remain untracked. |
+| `5871a30` | Record the local reference emission and document the TD18 proof | Ported execution settings/timing/provenance recording and the explicit validation guide. TD18 proof claims, counts, raw reference logs and hardware timings remain TD18 evidence; TD20 has its own completed verification record and all generated logs remain untracked. |
 | `29aedcd` | Align runtime profiles with the local reference hardware | Ported bounded maintained local launchers, affinity/quota-aware CPU detection, architecture overrides, preflight and success-marker checks. Machine-specific CPU worker counts are detected rather than hardcoded. |
 | `47318e0` | Remove obsolete machine deployment presets | Removed obsolete machine deployment presets; maintained local launchers are the supported entry points. |
 | `7a729c4` | Refresh compiled TD18 proof PDF | Regenerated the TD20 reading PDF from the updated TD20 source paper; no TD18 PDF or proof claim copied. |
-| `22042d8` | Record successful independent reference verification | Recorded the completed TD18 emission and separate-machine full-scope check as provenance for the established TD18 premise. Ported the separation of emission, verification, test and census evidence in the TD20 execution checklist. TD18 counts, timings and retained logs describe its own run; TD20 full verification remains pending. |
+| `22042d8` | Record successful independent reference verification | Recorded the completed TD18 emission and separate-machine full-scope check as provenance for the established TD18 premise. Ported the separation of emission, verification, test and census evidence in the TD20 execution checklist. TD18 counts, timings and retained logs describe its own run; TD20 full verification completed on 22 November 2026. |
 
 ## Port boundaries and verification
 
@@ -108,7 +112,7 @@ The reviewed test/tool adapter also records a TD20 publication safeguard in
 all 83 versioned reports, partition order and table markers before atomically
 updating the rows, aggregate totals and count-status paragraph. It reparses the
 temporary inventory before replacement, rejects incomplete or incompatible
-data and arithmetic overflow, and preserves the conditional proof status.
+data and arithmetic overflow, and preserves the proof text and its status.
 Publishing emitter counts remains separate from independent regeneration and
 full sorting verification. The TD20-only `test_eriksson_root_publication.py`
 fixture checks every synthetic row, all four totals, unchanged proof text,

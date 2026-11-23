@@ -10,7 +10,7 @@
 \newtheorem{theorem}{Theorem}
 
 \newcommand{\erikssonrow}[5]{#1 & $(#2)$ & #3 & #4 & #5 & \number\numexpr#3+#4-#5\relax\\}
-\title{Toward a computer-assisted proof that $\TD(20)=11$\\
+\title{A computer-assisted proof that $\TD(20)=11$\\
 \large Eriksson reduction, complete root generation, and two-sided inverse coverage}
 \author{}\date{}
 \begin{document}\setlength{\emergencystretch}{3em}\maketitle
@@ -22,11 +22,14 @@ Unselected roots are generated directly. The endpoint cover consists of all
 143 fixed-point-free even annotated types on 16 symbols, with budget
 8. The checker independently regenerates roots, endpoints, and all inverse
 waves, checks elementary final-root closure families, and replays intrinsic
-sorting certificates for the remaining classes. The conditional proof combines this
-exhaustive computational coverage with the reverse-permutation lower bound.
-The upper bound remains conditional: no TD18 execution record or historical
-joint-2 count supplies TD20 coverage. Every exit criterion in
-\nolinkurl{docs/RESEARCH_PLAN.md} requires its own checked artifact.
+sorting certificates for the remaining classes. Full-scope independent
+verification completed on 22 November 2026: all 83 root partitions and 143
+endpoint annotations were checked, and all $51\,456\,682$ reconstructed
+residual root classes were discharged, with zero unresolved obligations.
+This checked upper bound and the established reverse-permutation lower bound
+prove $\TD(20)=11$. The execution record and completion evidence are given in
+\nolinkurl{docs/REFERENCE_SIMULATION.md} and
+\nolinkurl{docs/RESEARCH_PLAN.md}.
 \end{abstract}
 \section{Pairs, moves, fixed symbols, and premises}
 Let $\TD(n)$ be the maximum transposition distance in $S_n$, and set $N=n+1$. Let a cyclic-target pair be $(\omega,\beta)$ with even algebraic
@@ -64,8 +67,8 @@ The shared-framework result is cited in~\cite{framework}; the TD18 reference
 emission and separate-machine full-scope verification completed on
 16 November 2026, with exit zero and all 1,349,910,890 reconstructed TD18
 root classes checked~\cite{td18-reference}. Those execution records belong
-to the established smaller result. The TD20 upper bound still requires its
-own complete checked artifacts.
+to the established smaller result. The TD20 upper bound is established by its
+own complete independent verification, recorded below.
 The insertion bound $\TD(n+1)\leq\TD(n)+1$ gives $\TD(19)\leq11$: after sorting the permutation with one symbol deleted, one transposition inserts that symbol at its target position. Thus a root with an existing fixed symbol requires no new diameter premise.
 A known-diameter closure at a contracted domain of $m$ symbols is valid with
 remaining budget $b$ exactly when $\TD(m-1)\leq b$ (distance zero for $m\leq1$).
@@ -330,10 +333,10 @@ them with these rows. The aggregate totals are sums of the published rows.
 Counting discharges no sorting obligation or full proof-verification requirement.
 Port validation compares complete class sets against an arbitrary-support
 two-endpoint oracle for every domain $3\leq N\leq8$ in both modules. The
-standalone checker census completed the first 24 root partitions with exact
-agreement before stopping; its remaining reports are incomplete. The planned
-full checker must independently regenerate all 21-symbol obligations and replay
-their required witnesses before the conditional upper bound is established.
+completed standalone checker census agrees on all 83 root partitions.
+The full-scope verification of 22 November 2026 independently regenerated
+every root partition, compared all three counts with these rows, and replayed
+the six direct obligations within budget eleven.
 \begin{longtable}{@{}rlrrrr@{}}
 \caption{Active Eriksson-plus-third-move root inventory.}\\
 \toprule No. & Partition & $U_3$ & $O_3$ & $C_3$ & Direct\\\midrule\endfirsthead
@@ -545,8 +548,9 @@ certificate database is complete. An independent checker audit replayed
 all $5\,032\,950$ persisted after-two classes, obtained exactly these
 $|H|$ and $|B|$ counts, and checked exact equality of the persisted residual
 set with the missing classes and the presence of every residual marker.
-This audit covers the persisted import inventory only; full endpoint
-regeneration and the independent final-root coverage report remain required.
+This audit covers the persisted import inventory only. The subsequent full-scope
+verification independently regenerated the endpoints and inverse waves,
+confirmed these counts, and checked the final-root coverage.
 
 Active emission starts from the sealed set $B$. The 16-symbol obstruction
 markers remain informational and are not reconstruction inputs. The checker
@@ -574,16 +578,16 @@ The budget-ten after-one states are generated and deduplicated, but no sorting
 search or certificate lookup at that stage suppresses a final inverse branch.
 The completed emitter key inventory of 19 November 2026 contains
 $4\,010\,256\,622$ distinct budget-ten after-one states. This is a completed
-emitter inventory count; independent regeneration and final-root witness
-coverage remain pending.
+emitter inventory count, independently reproduced by the completed full-scope
+checker run together with final-root witness coverage.
 Thus every class in $B$ is covered through both remaining inverse waves to
 its final 21-symbol root obligations. Define $C$ to be the complete set of
 budget-ten after-one classes and $P$ to be the union of their valid final
 preimages, including both endpoints and the gain appropriate to their domain.
 Define $D_{11}$ to be the 21-symbol fixed-point-free classes having an
 immediate gain-at-least-two move on either endpoint, and set
-$R=P\setminus D_{11}$. The active optimized final inventory is $R$; its exact
-count remains unknown until generation and the mandatory deduplicated scan.
+$R=P\setminus D_{11}$. The active optimized final inventory is $R$; the
+completed independent deduplicated scan establishes $|R|=51\,456\,682$.
 Neither $|P|$ nor $|P\cap D_{11}|$ is inferred from occurrence counters.
 
 Completeness follows by restoring the actual removed fixed symbols in their
@@ -856,8 +860,9 @@ contribute to these operational counters across batches and tables; their
 values are not class inventories. Family-closed support counts include all
 their prospective gap slots, even when some slots would not be accepted
 fixed-point-free inverse parents; these are candidate-work counts only.
-The exact distinct final residual-root total $|R|$ remains unknown until the
-mandatory merged-database root scan completes. No exact total of the
+During generation the exact distinct final residual-root total $|R|$ is unknown
+until the mandatory merged-database root scan completes; the completed run
+established $|R|=51\,456\,682$. No exact total of the
 unmaterialized elementary classes is needed or claimed.
 Advisory full-depth root searches with a positive time limit may run during
 generation through a
@@ -912,11 +917,39 @@ every explicitly constructed parent still passes its actual forward gain and
 pair replay. Family exclusions additionally require the elementary closure
 lemma; target reuse alone removes no support or gap.
 
-\begin{theorem}[Conditional transposition diameter]
+\subsection{Completed independent verification}
+The run \nolinkurl{checker-20261122T183611Z-32945} executed
+\nolinkurl{verify --phase=all} on 22 November 2026 with fresh work and no
+partition, endpoint, or phase omissions. It completed all 83 root rows and
+143 endpoint annotations, printed
+\begin{quote}\small
+All regenerated obligations in the complete joint-selection scope are verified.
+\end{quote}
+and exited with code zero and \nolinkurl{completionScope=complete}.
+Its version-three independent inverse-coverage report records:
+\begin{center}
+\begin{tabular}{@{}lr@{}}
+\toprule Inventory & Checked classes\\\midrule
+Residual endpoints $|E|$ & $2\,036$\\
+After-two classes $|A|$ & $5\,032\,950$\\
+Budget-nine closures $|H|$ & $4\,062\,619$\\
+Second-level residuals $|B|$ & $970\,331$\\
+Budget-ten source classes $|C|$ & $4\,010\,256\,622$\\
+Final residual roots $|R|$ & $51\,456\,682$\\
+Unresolved final roots & $0$\\\bottomrule
+\end{tabular}
+\end{center}
+The report identifies \nolinkurl{rootInventory=ELEMENTARY_RESIDUALS},
+\nolinkurl{budgetTenLookup=false}, and budgets $8,9,10,11$. Both inverse
+branches and both endpoints are included. Execution took 4 hours, 21 minutes,
+5.306043 seconds on 96 logical CPUs with OpenJDK 21. The retained logs,
+settings, executed-class provenance, hardware profile, and report locations
+are documented in \nolinkurl{docs/REFERENCE_SIMULATION.md}; the completed
+evidence ledger is \nolinkurl{docs/RESEARCH_PLAN.md}.
+
+\begin{theorem}[Transposition diameter]
 \label{thm:td20}
-Under the established smaller-diameter premises stated above and the checked
-computational coverage specified in \nolinkurl{docs/RESEARCH_PLAN.md},
-$\TD(20)=11$.
+The transposition diameter of $S_{20}$ is $\TD(20)=11$.
 \end{theorem}
 \begin{proof}
 A root with a fixed symbol contracts to a known smaller domain, and the reverse
@@ -938,10 +971,9 @@ The reverse root supplies the matching lower bound, giving $\TD(20)=11$.
 The theorem uses checked computational coverage as well as the established
 mathematical premises. Count totals, partial runs, and software tests alone do
 not supply that coverage. \nolinkurl{docs/RESEARCH_PLAN.md} enumerates the
-required evidence. The upper bound is pending until every criterion has a
-checked artifact. \nolinkurl{docs/REFERENCE_SIMULATION.md} specifies the
-execution record to complete for TD20; TD18 timings and results are not TD20
-artifacts.
+completed evidence and retains the requirements for reproducing it.
+\nolinkurl{docs/REFERENCE_SIMULATION.md} records the successful TD20 execution;
+TD18 timings and results belong only to the established smaller premise.
 
 \begin{thebibliography}{9}
 \bibitem{td18-reference}

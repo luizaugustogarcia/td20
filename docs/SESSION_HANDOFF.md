@@ -1,5 +1,12 @@
 # TD20 computational handoff
 
+TD(20) = 11 is proved by the completed independent verification of
+22 November 2026. The authoritative completed-run handoff is
+[REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md), with checked completion
+criteria in [RESEARCH_PLAN.md](RESEARCH_PLAN.md). Retain the official evidence
+under `logs/official-verification/checker-20261122T183611Z-32945/` and the
+certificate database. The transfer below records an earlier execution setup.
+
 Instance 61821972 (host 51010, machine 153507) uses
 [its checker launcher](../tools/run-61821972-checker.sh). Its configuration is
 in [OPERATIONS.md](OPERATIONS.md).
@@ -10,6 +17,6 @@ under local-runtime/transfers/61821972/. The local certificates/ database
 is the source for that transfer.
 
 The instance stores checker work, logs and scheduling records under
-/root/td20/local-runtime/. Independent verification must regenerate every
-obligation and replay its witness. TD(20) = 11 remains pending until every
-exit criterion in [RESEARCH_PLAN.md](RESEARCH_PLAN.md) has a checked artifact.
+/root/td20/local-runtime/. Independent verification regenerates every
+obligation and replays its witness. The completed full-scope run was executed
+on EC2 as recorded in the execution record linked above.

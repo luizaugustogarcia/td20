@@ -58,7 +58,7 @@ class PublicationFixture {
             ActiveErikssonRootCensus.write(ActiveErikssonRootCensus.OUTPUT.resolve(String.format("partition-%02d.txt",index)),values);
         }
         String original=Files.readString(PAPER);
-        String proofStart=BS+"begin{theorem}[Conditional transposition diameter]";
+        String proofStart=BS+"begin{theorem}[Transposition diameter]";
         String proof=original.substring(original.indexOf(proofStart));
         ActiveErikssonRootCensus.run();
         String published=Files.readString(PAPER);

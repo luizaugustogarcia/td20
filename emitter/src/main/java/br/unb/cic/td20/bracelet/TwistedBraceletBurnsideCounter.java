@@ -1,5 +1,7 @@
 package br.unb.cic.td20.bracelet;
 
+import lombok.val;
+
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,82 +19,97 @@ import java.util.concurrent.ExecutorService;
  * docs/td20-burnside-counting.md for the identity-term derivation.
  */
 final class TwistedBraceletBurnsideCounter {
+
     private static final Map<Integer, int[][]> SUPPORTS = new ConcurrentHashMap<>();
     private static final Map<String, Map<Long, Long>> FIXED_SETS = new ConcurrentHashMap<>();
 
-    private TwistedBraceletBurnsideCounter() { }
+    private TwistedBraceletBurnsideCounter() {
+    }
 
-    static long count(final int[] partition, final boolean[] oriented,
-                      final ExecutorService executor) {
-        final var n = Arrays.stream(partition).sum();
+    static long count(final int[] partition, final boolean[] oriented, final ExecutorService executor) {
+        val n = Arrays.stream(partition).sum();
         if (n > 30) {
             throw new IllegalArgumentException("Burnside counting supports at most 30 symbols");
         }
         if (Arrays.stream(partition).filter(k -> (k & 1) == 0).count() % 2 != 0) {
             return 0;
         }
-        final var identity = identityFixed(partition, oriented, executor);
+
+        val identity = identityFixed(partition, oriented, executor);
         if (identity.signum() == 0) {
             return 0;
         }
-        final var key = annotatedKey(partition, oriented);
+
+        val key = annotatedKey(partition, oriented);
         var sum = identity;
         for (var d = 1; d < n; d++) {
             if (n % d == 0) {
-                final var fixed = rotationFixed(n, d, executor).getOrDefault(key, 0L);
+                val fixed = rotationFixed(n, d, executor).getOrDefault(key, 0L);
                 sum = sum.add(BigInteger.valueOf(fixed).multiply(BigInteger.valueOf(totient(n / d))));
             }
         }
-        final var firstReflection = reflectionFixed(n, 0, executor).getOrDefault(key, 0L);
+
+        val firstReflection = reflectionFixed(n, 0, executor).getOrDefault(key, 0L);
         if ((n & 1) != 0) {
             sum = sum.add(BigInteger.valueOf(firstReflection).multiply(BigInteger.valueOf(n)));
         } else {
-            final var secondReflection = reflectionFixed(n, 1, executor).getOrDefault(key, 0L);
-            sum = sum.add(BigInteger.valueOf(firstReflection + secondReflection)
-                    .multiply(BigInteger.valueOf(n / 2)));
+            val secondReflection = reflectionFixed(n, 1, executor).getOrDefault(key, 0L);
+            sum = sum.add(BigInteger.valueOf(firstReflection + secondReflection).multiply(BigInteger.valueOf(n / 2)));
         }
+
         return exactDivide(sum, BigInteger.valueOf(2L * n)).longValueExact();
     }
 
-    static BigInteger identityFixed(final int[] partition, final boolean[] oriented,
-                                    final ExecutorService executor) {
-        final var n = Arrays.stream(partition).sum();
+    static BigInteger identityFixed(final int[] partition, final boolean[] oriented, final ExecutorService executor) {
+        val n = Arrays.stream(partition).sum();
         var result = BigInteger.ZERO;
-        for (final var term : terms(partition, oriented)) {
-            final var moment = forcedMoment(n, term.forced, term.remaining, executor);
+        for (val term : terms(partition, oriented)) {
+            val moment = forcedMoment(n, term.forced, term.remaining, executor);
             result = result.add(BigInteger.valueOf(moment).multiply(term.weight));
         }
         if (result.signum() < 0) {
             throw new IllegalStateException("Negative annotated identity fixed-set count");
         }
+
         return result;
     }
 
-    private record Term(int[] forced, int[] remaining, BigInteger weight) { }
+    private record Term(int[] forced, int[] remaining, BigInteger weight) {
+    }
 
     private static List<Term> terms(final int[] partition, final boolean[] oriented) {
-        final var n = Arrays.stream(partition).sum();
-        final var multiplicities = new int[n + 1];
-        final var unoriented = new int[n + 1];
+        val n = Arrays.stream(partition).sum();
+        val multiplicities = new int[n + 1];
+        val unoriented = new int[n + 1];
         for (var i = 0; i < partition.length; i++) {
             multiplicities[partition[i]]++;
             if (!oriented[i]) {
                 unoriented[partition[i]]++;
             }
         }
-        final var result = new ArrayList<Term>();
-        collectTerms(n, multiplicities, unoriented, n, new int[n + 1],
-                BigInteger.ONE, result);
+
+        val result = new ArrayList<Term>();
+        collectTerms(n,
+                multiplicities,
+                unoriented,
+                n,
+                new int[n + 1],
+                BigInteger.ONE,
+                result);
+
         return result;
     }
 
-    private static void collectTerms(final int n, final int[] multiplicities,
-                                     final int[] unoriented, final int length,
-                                     final int[] forced, final BigInteger weight,
-                                     final List<Term> result) {
+    private static void collectTerms(final int n,
+            final int[] multiplicities,
+            final int[] unoriented,
+            final int length,
+            final int[] forced,
+            final BigInteger weight,
+            final List<Term> result) {
         if (length < 2) {
-            final var selected = new ArrayList<Integer>();
-            final var remaining = new ArrayList<Integer>();
+            val selected = new ArrayList<Integer>();
+            val remaining = new ArrayList<Integer>();
             for (var k = n; k >= 2; k--) {
                 for (var j = 0; j < forced[k]; j++) {
                     selected.add(k);
@@ -101,42 +118,50 @@ final class TwistedBraceletBurnsideCounter {
                     remaining.add(k);
                 }
             }
+
             result.add(new Term(selected.stream().mapToInt(Integer::intValue).toArray(),
-                    remaining.stream().mapToInt(Integer::intValue).toArray(), weight));
+                    remaining.stream().mapToInt(Integer::intValue).toArray(),
+                    weight));
+
             return;
         }
+
         // An unoriented support cannot contain neighbours in the current
         // cycle: they would force a fixed point of the target. In particular
         // its length cannot exceed floor(n/2).
-        final var maximum = length > n / 2 ? 0 : multiplicities[length];
+        val maximum = length > n / 2 ? 0 : multiplicities[length];
         for (var r = unoriented[length]; r <= maximum; r++) {
             forced[length] = r;
+
             var nextWeight = weight.multiply(binomial(r, unoriented[length]));
             if (((r - unoriented[length]) & 1) != 0) {
                 nextWeight = nextWeight.negate();
             }
+
             collectTerms(n, multiplicities, unoriented, length - 1, forced, nextWeight, result);
         }
     }
 
-    private static long forcedMoment(final int n, final int[] forced, final int[] remaining,
-                                     final ExecutorService executor) {
-        final var kernel = new CompletionKernel(remaining);
+    private static long forcedMoment(final int n, final int[] forced, final int[] remaining, final ExecutorService executor) {
+        val kernel = new CompletionKernel(remaining);
         if (forced.length == 0) {
-            return kernel.count(partitionKey(new int[]{n}));
+            return kernel.count(partitionKey(new int[] { n }));
         }
-        final var supports = SUPPORTS.computeIfAbsent(n, TwistedBraceletBurnsideCounter::independentSupports);
-        final var tasks = new ArrayList<Callable<Long>>();
-        for (final var mask : supports[forced[0]]) {
+
+        val supports = SUPPORTS.computeIfAbsent(n, TwistedBraceletBurnsideCounter::independentSupports);
+        val tasks = new ArrayList<Callable<Long>>();
+        for (val mask : supports[forced[0]]) {
             tasks.add(() -> {
-                final var counter = new SupportCounter(n, forced, supports, kernel);
+                val counter = new SupportCounter(n, forced, supports, kernel);
                 return counter.selectFirst(mask);
             });
         }
+
         var total = 0L;
-        for (final var value : parallel(tasks, executor)) {
+        for (val value : parallel(tasks, executor)) {
             total = Math.addExact(total, value);
         }
+
         return total;
     }
 
@@ -150,11 +175,12 @@ final class TwistedBraceletBurnsideCounter {
                 lists.get(Integer.bitCount(mask)).add(mask);
             }
         }
-        return lists.stream().map(list -> list.stream().mapToInt(Integer::intValue).toArray())
-                .toArray(int[][]::new);
+
+        return lists.stream().map(list -> list.stream().mapToInt(Integer::intValue).toArray()).toArray(int[][]::new);
     }
 
     private static final class SupportCounter {
+
         private final int n;
         private final int[] forced;
         private final int[][] supports;
@@ -168,8 +194,7 @@ final class TwistedBraceletBurnsideCounter {
         private final int[] cycleLengths;
         private int edges;
 
-        private SupportCounter(final int n, final int[] forced, final int[][] supports,
-                               final CompletionKernel kernel) {
+        private SupportCounter(final int n, final int[] forced, final int[][] supports, final CompletionKernel kernel) {
             this.n = n;
             this.forced = forced;
             this.supports = supports;
@@ -195,47 +220,54 @@ final class TwistedBraceletBurnsideCounter {
             if (index == forced.length) {
                 return complete(available);
             }
+
             var total = 0L;
-            for (final var mask : supports[forced[index]]) {
-                if ((mask & available) != mask
-                        || (forced[index] == forced[index - 1] && mask <= previousMask)) {
+            for (val mask : supports[forced[index]]) {
+                if ((mask & available) != mask || (forced[index] == forced[index - 1] && mask <= previousMask)) {
                     continue;
                 }
-                final var before = edges;
+
+                val before = edges;
                 if (addCycle(mask)) {
                     total = Math.addExact(total, recurse(index + 1, available ^ mask, mask));
                 }
+
                 rollback(before);
             }
+
             return total;
         }
 
         private boolean addCycle(final int mask) {
             var previous = 31 - Integer.numberOfLeadingZeros(mask);
             for (var bits = mask; bits != 0; bits &= bits - 1) {
-                final var vertex = Integer.numberOfTrailingZeros(bits);
-                final var source = vertex == 0 ? n - 1 : vertex - 1;
+                val vertex = Integer.numberOfTrailingZeros(bits);
+                val source = vertex == 0 ? n - 1 : vertex - 1;
                 var first = root(source);
                 var second = root(previous);
                 if (first == second && edges + 1 < n) {
                     return false;
                 }
+
                 var child = -1;
                 if (first != second) {
                     if (size[first] < size[second]) {
-                        final var temporary = first;
+                        val temporary = first;
                         first = second;
                         second = temporary;
                     }
+
                     child = second;
                     parent[child] = first;
                     size[first] += size[child];
                 }
+
                 childTrail[edges] = child;
                 vertexTrail[edges++] = vertex;
                 omega[vertex] = previous;
                 previous = vertex;
             }
+
             return true;
         }
 
@@ -244,36 +276,41 @@ final class TwistedBraceletBurnsideCounter {
             while (parent[current] != current) {
                 current = parent[current];
             }
+
             return current;
         }
 
         private void rollback(final int before) {
             while (edges > before) {
-                final var child = childTrail[--edges];
+                val child = childTrail[--edges];
                 if (child >= 0) {
                     size[parent[child]] -= size[child];
                     parent[child] = child;
                 }
+
                 omega[vertexTrail[edges]] = 0;
             }
         }
 
         private long complete(final int available) {
             if (available == 0) {
-                return 1; // Only the final arc was allowed to close a cycle.
+                // Only the final arc was allowed to close a cycle.
+                return 1;
             }
             for (var bits = available; bits != 0; bits &= bits - 1) {
-                final var vertex = Integer.numberOfTrailingZeros(bits);
+                val vertex = Integer.numberOfTrailingZeros(bits);
                 var next = (vertex + 1) % n;
                 while ((available & (1 << next)) == 0) {
                     next = (omega[next] + 1) % n;
                 }
+
                 phi[vertex] = next;
             }
+
             var unvisited = available;
             var cycles = 0;
             while (unvisited != 0) {
-                final var first = Integer.numberOfTrailingZeros(unvisited);
+                val first = Integer.numberOfTrailingZeros(unvisited);
                 var current = first;
                 var length = 0;
                 do {
@@ -281,9 +318,12 @@ final class TwistedBraceletBurnsideCounter {
                     length++;
                     current = phi[current];
                 } while (current != first);
+
                 cycleLengths[cycles++] = length;
             }
+
             Arrays.sort(cycleLengths, 0, cycles);
+
             var key = 0L;
             var singletons = 0;
             for (var i = 0; i < cycles; i++) {
@@ -293,12 +333,16 @@ final class TwistedBraceletBurnsideCounter {
                     key = (key << 5) | cycleLengths[i];
                 }
             }
+
             return kernel.count((key << 5) | singletons);
         }
     }
 
-    /** Counts completions sigma with cycle type lambda for which sigma*phi is a full cycle. */
+    /**
+     * Counts completions sigma with cycle type lambda for which sigma*phi is a full cycle.
+     */
     private static final class CompletionKernel {
+
         private final int n;
         private final long[] characters;
         private final BigInteger classSize;
@@ -309,18 +353,22 @@ final class TwistedBraceletBurnsideCounter {
         private CompletionKernel(final int[] lambda) {
             n = Arrays.stream(lambda).sum();
             characters = hookCharacters(lambda);
+
             var centralizer = BigInteger.ONE;
-            final var repetitions = new HashMap<Integer, Integer>();
-            for (final var k : lambda) {
-                final var occurrence = repetitions.merge(k, 1, Integer::sum);
+            val repetitions = new HashMap<Integer, Integer>();
+            for (val k : lambda) {
+                val occurrence = repetitions.merge(k, 1, Integer::sum);
                 centralizer = centralizer.multiply(BigInteger.valueOf((long) k * occurrence));
             }
+
             classSize = factorial(n).divide(centralizer);
+
             var common = BigInteger.ONE;
             for (var j = 0; j < n; j++) {
-                final var degree = binomial(n - 1, j);
+                val degree = binomial(n - 1, j);
                 common = common.divide(common.gcd(degree)).multiply(degree);
             }
+
             denominator = common.multiply(BigInteger.valueOf(n));
             scaledReciprocals = new BigInteger[n];
             for (var j = 0; j < n; j++) {
@@ -329,38 +377,44 @@ final class TwistedBraceletBurnsideCounter {
         }
 
         private long count(final long mu) {
-            return counts.computeIfAbsent(mu, key -> {
-                final var other = hookCharacters(decodePartition(key));
-                var numerator = BigInteger.ZERO;
-                for (var j = 0; j < n; j++) {
-                    var product = BigInteger.valueOf(characters[j]).multiply(BigInteger.valueOf(other[j]))
-                            .multiply(scaledReciprocals[j]);
-                    if ((j & 1) != 0) {
-                        product = product.negate();
-                    }
-                    numerator = numerator.add(product);
-                }
-                return exactDivide(classSize.multiply(numerator), denominator).longValueExact();
-            });
+            return counts.computeIfAbsent(mu,
+                    key -> {
+                        val other = hookCharacters(decodePartition(key));
+                        var numerator = BigInteger.ZERO;
+                        for (var j = 0; j < n; j++) {
+                            var product = BigInteger.valueOf(characters[j]).multiply(BigInteger.valueOf(other[j])).multiply(scaledReciprocals[j]);
+                            if ((j & 1) != 0) {
+                                product = product.negate();
+                            }
+
+                            numerator = numerator.add(product);
+                        }
+
+                        return exactDivide(classSize.multiply(numerator), denominator).longValueExact();
+                    });
         }
     }
 
     private static long[] hookCharacters(final int[] partition) {
-        final var n = Arrays.stream(partition).sum();
-        final var numerator = new long[n + 1];
+        val n = Arrays.stream(partition).sum();
+        val numerator = new long[n + 1];
         numerator[0] = 1;
+
         var degree = 0;
-        for (final var k : partition) {
-            final var sign = (k & 1) == 0 ? -1 : 1;
+        for (val k : partition) {
+            val sign = (k & 1) == 0 ? -1 : 1;
             for (var j = degree; j >= 0; j--) {
                 numerator[j + k] += sign * numerator[j];
             }
+
             degree += k;
         }
-        final var result = new long[n];
+
+        val result = new long[n];
         for (var j = 0; j < n; j++) {
             result[j] = numerator[j] - (j == 0 ? 0 : result[j - 1]);
         }
+
         return result;
     }
 
@@ -369,21 +423,26 @@ final class TwistedBraceletBurnsideCounter {
                 ignored -> countRotations(n, d, executor));
     }
 
-    private static Map<Long, Long> countRotations(final int n, final int d,
-                                                final ExecutorService executor) {
-        final var tasks = new ArrayList<Callable<LongCounts>>();
-        final var order = new int[d];
+    private static Map<Long, Long> countRotations(final int n, final int d, final ExecutorService executor) {
+        val tasks = new ArrayList<Callable<LongCounts>>();
+        val order = new int[d];
         order[0] = 0;
         rotationFrontier(n, d, order, 1, 1, Math.min(d, 4), tasks);
+
         return merge(parallel(tasks, executor));
     }
 
-    private static void rotationFrontier(final int n, final int d, final int[] order,
-                                          final int placed, final int used, final int depth,
-                                          final List<Callable<LongCounts>> tasks) {
+    private static void rotationFrontier(final int n,
+            final int d,
+            final int[] order,
+            final int placed,
+            final int used,
+            final int depth,
+            final List<Callable<LongCounts>> tasks) {
         if (placed == depth) {
-            final var prefix = order.clone();
+            val prefix = order.clone();
             tasks.add(() -> new RotationCounter(n, d, prefix).orders(placed, used));
+
             return;
         }
         for (var v = 1; v < d; v++) {
@@ -395,6 +454,7 @@ final class TwistedBraceletBurnsideCounter {
     }
 
     private static final class RotationCounter {
+
         private final int n;
         private final int d;
         private final int length;
@@ -421,6 +481,7 @@ final class TwistedBraceletBurnsideCounter {
                 for (var i = 0; i < d; i++) {
                     quotient[order[i]] = order[(i + 1) % d];
                 }
+
                 phases(0, 0);
             } else {
                 for (var v = 1; v < d; v++) {
@@ -430,6 +491,7 @@ final class TwistedBraceletBurnsideCounter {
                     }
                 }
             }
+
             return counts;
         }
 
@@ -442,32 +504,32 @@ final class TwistedBraceletBurnsideCounter {
                     // rho is a full cycle in the centralizer of beta^d.
                     // omega = rho*beta^{-1} retains the same rotational symmetry.
                     for (var v = 0; v < n; v++) {
-                        final var previous = v == 0 ? n - 1 : v - 1;
-                        final var residue = previous % d;
-                        omega[v] = quotient[residue]
-                                + d * ((previous / d + phase[residue]) % length);
+                        val previous = v == 0 ? n - 1 : v - 1;
+                        val residue = previous % d;
+                        omega[v] = quotient[residue] + d * ((previous / d + phase[residue]) % length);
                     }
+
                     counts.increment(classify(omega, codes));
                 }
             }
         }
     }
 
-    static Map<Long, Long> reflectionFixed(final int n, final int shift,
-                                         final ExecutorService executor) {
+    static Map<Long, Long> reflectionFixed(final int n, final int shift, final ExecutorService executor) {
         return FIXED_SETS.computeIfAbsent("s:" + n + ":" + shift,
                 ignored -> countReflections(n, shift, executor));
     }
 
-    private static Map<Long, Long> countReflections(final int n, final int shift,
-                                                  final ExecutorService executor) {
-        final var f = new int[n];
-        final var first = new ArrayList<Integer>();
-        final var second = new ArrayList<Integer>();
-        final var endpoints = new ArrayList<Integer>();
+    private static Map<Long, Long> countReflections(final int n, final int shift, final ExecutorService executor) {
+        val f = new int[n];
+        val first = new ArrayList<Integer>();
+        val second = new ArrayList<Integer>();
+        val endpoints = new ArrayList<Integer>();
         for (var v = 0; v < n; v++) {
             f[v] = Math.floorMod(shift - v, n);
-            final var h = Math.floorMod(shift - 1 - v, n); // h = f*beta
+
+            // h = f*beta
+            val h = Math.floorMod(shift - 1 - v, n);
             if (v < h) {
                 first.add(v);
                 second.add(h);
@@ -475,25 +537,41 @@ final class TwistedBraceletBurnsideCounter {
                 endpoints.add(v);
             }
         }
-        final var pairs = new int[first.size()][2];
+
+        val pairs = new int[first.size()][2];
         for (var i = 0; i < pairs.length; i++) {
-            pairs[i] = new int[]{first.get(i), second.get(i)};
+            pairs[i] = new int[] { first.get(i), second.get(i) };
         }
-        final var start = endpoints.isEmpty() ? -1 : endpoints.getFirst();
-        final var end = endpoints.size() == 2 ? endpoints.getLast() : -1;
-        final var tasks = new ArrayList<Callable<LongCounts>>();
-        reflectionFrontier(f, pairs, end, new int[n], 0, start, -1,
-                Math.min(2, pairs.length), tasks);
+
+        val start = endpoints.isEmpty() ? -1 : endpoints.getFirst();
+        val end = endpoints.size() == 2 ? endpoints.getLast() : -1;
+        val tasks = new ArrayList<Callable<LongCounts>>();
+        reflectionFrontier(f,
+                pairs,
+                end,
+                new int[n],
+                0,
+                start,
+                -1,
+                Math.min(2, pairs.length),
+                tasks);
+
         return merge(parallel(tasks, executor));
     }
 
-    private static void reflectionFrontier(final int[] f, final int[][] pairs, final int end,
-                                            final int[] q, final int used, final int last,
-                                            final int first, final int depth,
-                                            final List<Callable<LongCounts>> tasks) {
+    private static void reflectionFrontier(final int[] f,
+            final int[][] pairs,
+            final int end,
+            final int[] q,
+            final int used,
+            final int last,
+            final int first,
+            final int depth,
+            final List<Callable<LongCounts>> tasks) {
         if (Integer.bitCount(used) == depth) {
-            final var prefix = q.clone();
+            val prefix = q.clone();
             tasks.add(() -> new ReflectionCounter(f, pairs, end, prefix).paths(used, last, first));
+
             return;
         }
         for (var i = 0; i < pairs.length; i++) {
@@ -501,19 +579,28 @@ final class TwistedBraceletBurnsideCounter {
                 continue;
             }
             for (var direction = 0; direction < 2; direction++) {
-                final var entry = pairs[i][direction];
-                final var exit = pairs[i][1 - direction];
+                val entry = pairs[i][direction];
+                val exit = pairs[i][1 - direction];
                 q[entry] = last < 0 ? entry : last;
                 if (last >= 0) {
                     q[last] = entry;
                 }
-                reflectionFrontier(f, pairs, end, q, used | (1 << i), exit,
-                        last < 0 ? entry : first, depth, tasks);
+
+                reflectionFrontier(f,
+                        pairs,
+                        end,
+                        q,
+                        used | (1 << i),
+                        exit,
+                        last < 0 ? entry : first,
+                        depth,
+                        tasks);
             }
         }
     }
 
     private static final class ReflectionCounter {
+
         private final int[] f;
         private final int[][] pairs;
         private final int end;
@@ -538,6 +625,7 @@ final class TwistedBraceletBurnsideCounter {
                 if (first >= 0 && first > last) {
                     return counts;
                 }
+
                 q[last] = end < 0 ? last : end;
                 if (end >= 0) {
                     q[end] = last;
@@ -547,7 +635,9 @@ final class TwistedBraceletBurnsideCounter {
                 for (var v = 0; v < f.length; v++) {
                     omega[v] = q[f[v]];
                 }
+
                 counts.increment(classify(omega, codes));
+
                 return counts;
             }
             for (var i = 0; i < pairs.length; i++) {
@@ -555,29 +645,34 @@ final class TwistedBraceletBurnsideCounter {
                     continue;
                 }
                 for (var direction = 0; direction < 2; direction++) {
-                    final var entry = pairs[i][direction];
-                    final var exit = pairs[i][1 - direction];
+                    val entry = pairs[i][direction];
+                    val exit = pairs[i][1 - direction];
                     q[entry] = last < 0 ? entry : last;
                     if (last >= 0) {
                         q[last] = entry;
                     }
+
                     paths(used | (1 << i), exit, last < 0 ? entry : first);
                 }
             }
+
             return counts;
         }
     }
 
     static long annotatedKey(final int[] partition, final boolean[] oriented) {
-        final var codes = new int[partition.length];
+        val codes = new int[partition.length];
         for (var i = 0; i < codes.length; i++) {
             codes[i] = 2 * partition[i] + (oriented[i] ? 1 : 0);
         }
+
         Arrays.sort(codes);
+
         var key = 0L;
-        for (final var code : codes) {
+        for (val code : codes) {
             key = (key << 6) | code;
         }
+
         return key;
     }
 
@@ -585,13 +680,14 @@ final class TwistedBraceletBurnsideCounter {
         var unseen = (1 << omega.length) - 1;
         var cycles = 0;
         while (unseen != 0) {
-            final var first = Integer.numberOfTrailingZeros(unseen);
+            val first = Integer.numberOfTrailingZeros(unseen);
             var v = first;
             var length = 0;
             var oriented = false;
             do {
                 unseen ^= 1 << v;
-                final var next = omega[v];
+
+                val next = omega[v];
                 oriented |= v != first && next > v;
                 v = next;
                 length++;
@@ -599,23 +695,30 @@ final class TwistedBraceletBurnsideCounter {
             if (length == 1) {
                 return 0;
             }
-            final var code = 2 * length + (oriented ? 1 : 0);
+
+            val code = 2 * length + (oriented ? 1 : 0);
             var index = cycles++;
             while (index > 0 && codes[index - 1] > code) {
                 codes[index] = codes[index - 1];
                 index--;
             }
+
             codes[index] = code;
         }
+
         var key = 0L;
         for (var i = 0; i < cycles; i++) {
             key = (key << 6) | codes[i];
         }
+
         return key;
     }
 
-    /** Primitive accumulation avoids one allocation per fixed permutation. */
+    /**
+     * Primitive accumulation avoids one allocation per fixed permutation.
+     */
     private static final class LongCounts {
+
         private final long[] keys = new long[2048];
         private final long[] values = new long[2048];
 
@@ -623,34 +726,38 @@ final class TwistedBraceletBurnsideCounter {
             if (key == 0) {
                 return;
             }
+
             var index = (int) ((key ^ (key >>> 32)) * 0x9E3779B9L) & (keys.length - 1);
             while (keys[index] != 0 && keys[index] != key) {
                 index = (index + 1) & (keys.length - 1);
             }
+
             keys[index] = key;
             values[index]++;
         }
     }
 
     private static Map<Long, Long> merge(final List<LongCounts> results) {
-        final var merged = new HashMap<Long, Long>();
-        for (final var result : results) {
+        val merged = new HashMap<Long, Long>();
+        for (val result : results) {
             for (var i = 0; i < result.keys.length; i++) {
                 if (result.keys[i] != 0) {
                     merged.merge(result.keys[i], result.values[i], Math::addExact);
                 }
             }
         }
+
         return Map.copyOf(merged);
     }
 
     private static <T> List<T> parallel(final List<Callable<T>> tasks, final ExecutorService executor) {
         try {
-            final var futures = executor.invokeAll(tasks);
-            final var result = new ArrayList<T>(futures.size());
-            for (final var future : futures) {
+            val futures = executor.invokeAll(tasks);
+            val result = new ArrayList<T>(futures.size());
+            for (val future : futures) {
                 result.add(future.get());
             }
+
             return result;
         } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -661,31 +768,35 @@ final class TwistedBraceletBurnsideCounter {
     }
 
     private static long partitionKey(final int[] partition) {
-        final var sorted = partition.clone();
+        val sorted = partition.clone();
         Arrays.sort(sorted);
+
         var key = 0L;
         var singletons = 0;
-        for (final var k : sorted) {
+        for (val k : sorted) {
             if (k == 1) {
                 singletons++;
             } else {
                 key = (key << 5) | k;
             }
         }
+
         return (key << 5) | singletons;
     }
 
     private static int[] decodePartition(long key) {
-        final var values = new ArrayList<Integer>();
-        final var singletons = (int) (key & 31);
+        val values = new ArrayList<Integer>();
+        val singletons = (int) (key & 31);
         for (var i = 0; i < singletons; i++) {
             values.add(1);
         }
+
         key >>>= 5;
         while (key != 0) {
             values.add((int) (key & 31));
             key >>>= 5;
         }
+
         return values.stream().mapToInt(Integer::intValue).toArray();
     }
 
@@ -694,6 +805,7 @@ final class TwistedBraceletBurnsideCounter {
         for (var k = 2; k <= n; k++) {
             result = result.multiply(BigInteger.valueOf(k));
         }
+
         return result;
     }
 
@@ -702,23 +814,26 @@ final class TwistedBraceletBurnsideCounter {
         for (var j = 1; j <= k; j++) {
             result = result.multiply(BigInteger.valueOf(n - j + 1)).divide(BigInteger.valueOf(j));
         }
+
         return result;
     }
 
     private static BigInteger exactDivide(final BigInteger numerator, final BigInteger denominator) {
-        final var result = numerator.divideAndRemainder(denominator);
+        val result = numerator.divideAndRemainder(denominator);
         if (result[1].signum() != 0) {
             throw new IllegalStateException("Nonintegral Burnside/character count");
         }
+
         return result[0];
     }
 
     private static int gcd(int a, int b) {
         while (b != 0) {
-            final var remainder = a % b;
+            val remainder = a % b;
             a = b;
             b = remainder;
         }
+
         return a;
     }
 
@@ -729,6 +844,7 @@ final class TwistedBraceletBurnsideCounter {
                 result++;
             }
         }
+
         return result;
     }
 }

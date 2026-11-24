@@ -4,6 +4,7 @@ import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
 import br.unb.cic.td20.permutation.PermutationGroups;
 import br.unb.cic.td20.search.CommonOperations;
+import lombok.val;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -41,27 +42,22 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
      * The owned path is reserved for factories in this package so that a word
      * need not be decoded and then copied immediately.
      */
-    protected CyclicTargetCandidate(
-            final MulticyclePermutation omega,
-            final Cycle beta,
-            final boolean takeOwnership
-    ) {
+    protected CyclicTargetCandidate(final MulticyclePermutation omega, final Cycle beta, final boolean takeOwnership) {
         this(omega, beta, takeOwnership, true);
     }
 
-    /** Internal construction path for objects already proved well formed. */
-    protected CyclicTargetCandidate(
-            final MulticyclePermutation omega,
+    /**
+     * Internal construction path for objects already proved well formed.
+     */
+    protected CyclicTargetCandidate(final MulticyclePermutation omega,
             final Cycle beta,
             final boolean takeOwnership,
-            final boolean validate
-    ) {
+            final boolean validate) {
         this.beta = takeOwnership ? beta : copy(beta);
         this.omega = takeOwnership ? omega : copy(omega);
         if (validate) {
             validatePermutationRepresentation(this.omega, this.beta);
         }
-
     }
 
     public CyclicTargetCandidate(final MulticyclePermutation omega) {
@@ -73,10 +69,10 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
     }
 
     public static CyclicTargetCandidate fromEncodingWord(final EncodingWord word) {
-        final var beta = canonicalCycle(word.length());
-        final var candidate = new CyclicTargetCandidate(
-                word.decodeAlgebraicPermutation(), beta, true);
+        val beta = canonicalCycle(word.length());
+        val candidate = new CyclicTargetCandidate(word.decodeAlgebraicPermutation(), beta, true);
         candidate.validateEncodedOrientations(word);
+
         return candidate;
     }
 
@@ -88,24 +84,26 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
         return beta;
     }
 
-    /** Returns {@code omega * beta}; it is a target cycle only after validation. */
+    /**
+     * Returns {@code omega * beta}; it is a target cycle only after validation.
+     */
     public MulticyclePermutation getProduct() {
         var result = product;
         if (result == null) {
             synchronized (this) {
                 result = product;
                 if (result == null) {
-                    result = PermutationGroups.computeProduct(
-                            true, beta.size(), omega, beta);
+                    result = PermutationGroups.computeProduct(true, beta.size(), omega, beta);
                     product = result;
                 }
             }
         }
+
         return result;
     }
 
     public boolean formsCyclicTargetPair() {
-        final var rho = getProduct();
+        val rho = getProduct();
         return rho.size() == 1 && rho.asNCycle().size() == beta.size();
     }
 
@@ -114,8 +112,7 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
     }
 
     public CyclicTargetPair requireCyclicTargetPair() {
-        return asCyclicTargetPair().orElseThrow(() -> new IllegalStateException(
-                "The candidate product omega * beta is not an N-cycle: " + this));
+        return asCyclicTargetPair().orElseThrow(() -> new IllegalStateException("The candidate product omega * beta is not an N-cycle: " + this));
     }
 
     public StandardizedEncodingWord standardizedEncodingWord() {
@@ -129,13 +126,13 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
                 }
             }
         }
+
         return result;
     }
 
     public Stream<DihedralOrbitWord> dihedralOrbitWords() {
-        final var word = standardizedEncodingWord();
-        return IntStream.range(0, word.length()).boxed().flatMap(shift -> Stream.of(
-                new DihedralOrbitWord(word.transform(shift, false), shift, false),
+        val word = standardizedEncodingWord();
+        return IntStream.range(0, word.length()).boxed().flatMap(shift -> Stream.of(new DihedralOrbitWord(word.transform(shift, false), shift, false),
                 new DihedralOrbitWord(word.transform(shift, true), shift, true)));
     }
 
@@ -150,6 +147,7 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
                 }
             }
         }
+
         return result;
     }
 
@@ -159,7 +157,7 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
             synchronized (this) {
                 result = canonicalRepresentative;
                 if (result == null) {
-                    final var key = twistedBraceletKey();
+                    val key = twistedBraceletKey();
                     result = key.canonicalRepresentative();
                     result.twistedBraceletKey = key;
                     result.canonicalRepresentative = result;
@@ -167,6 +165,7 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
                 }
             }
         }
+
         return result;
     }
 
@@ -175,48 +174,44 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
     }
 
     final void validateEncodedOrientations(final EncodingWord word) {
-        final var cycleBySymbol = CommonOperations.cycleIndex(omega, beta);
+        val cycleBySymbol = CommonOperations.cycleIndex(omega, beta);
         for (var position = 0; position < word.length(); position++) {
-            final var cycle = cycleBySymbol[position];
-            final var encodedAsOriented = word.rankAt(position) > 0;
-            final var isOriented = CommonOperations.isOriented(beta, cycle);
+            val cycle = cycleBySymbol[position];
+            val encodedAsOriented = word.rankAt(position) > 0;
+            val isOriented = CommonOperations.isOriented(beta, cycle);
             if (encodedAsOriented != isOriented) {
-                throw new IllegalArgumentException(
-                        "Encoding rank status disagrees with the decoded cycle orientation");
+                throw new IllegalArgumentException("Encoding rank status disagrees with the decoded cycle orientation");
             }
         }
     }
 
-    private static void validatePermutationRepresentation(
-            final MulticyclePermutation omega,
-            final Cycle beta
-    ) {
+    private static void validatePermutationRepresentation(final MulticyclePermutation omega, final Cycle beta) {
         if (beta.size() == 0) {
             throw new IllegalArgumentException("The current cycle must not be empty");
         }
-        final var domain = new boolean[beta.size()];
-        for (final var symbol : beta.getSymbols()) {
+
+        val domain = new boolean[beta.size()];
+        for (val symbol : beta.getSymbols()) {
             if (symbol < 0 || symbol >= beta.size() || domain[symbol]) {
-                throw new IllegalArgumentException(
-                        "The current cycle must contain each symbol in 0..N-1 exactly once");
+                throw new IllegalArgumentException("The current cycle must contain each symbol in 0..N-1 exactly once");
             }
+
             domain[symbol] = true;
         }
 
-        final var movedOrExplicit = new boolean[beta.size()];
-        for (final var cycle : omega) {
+        val movedOrExplicit = new boolean[beta.size()];
+        for (val cycle : omega) {
             if (cycle.size() == 0) {
                 throw new IllegalArgumentException("Algebraic cycles must not be empty");
             }
-            for (final var symbol : cycle.getSymbols()) {
+            for (val symbol : cycle.getSymbols()) {
                 if (symbol < 0 || symbol >= beta.size()) {
-                    throw new IllegalArgumentException(
-                            "Algebraic cycle symbol lies outside the current-cycle domain: " + symbol);
+                    throw new IllegalArgumentException("Algebraic cycle symbol lies outside the current-cycle domain: " + symbol);
                 }
                 if (movedOrExplicit[symbol]) {
-                    throw new IllegalArgumentException(
-                            "Algebraic cycles must have disjoint supports: " + symbol);
+                    throw new IllegalArgumentException("Algebraic cycles must have disjoint supports: " + symbol);
                 }
+
                 movedOrExplicit[symbol] = true;
             }
         }
@@ -232,10 +227,12 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
                     for (var symbol = 0; symbol < result.length; symbol++) {
                         result[symbol] = omega.image(symbol);
                     }
+
                     omegaImages = result;
                 }
             }
         }
+
         return result;
     }
 
@@ -243,10 +240,12 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
         if (size <= 0) {
             throw new IllegalArgumentException("The current-cycle domain must be nonempty");
         }
-        final var symbols = new int[size];
+
+        val symbols = new int[size];
         for (var symbol = 0; symbol < size; symbol++) {
             symbols[symbol] = symbol;
         }
+
         return Cycle.of(symbols);
     }
 
@@ -255,10 +254,11 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
     }
 
     private static MulticyclePermutation copy(final MulticyclePermutation permutation) {
-        final var result = new MulticyclePermutation();
-        for (final var cycle : permutation) {
+        val result = new MulticyclePermutation();
+        for (val cycle : permutation) {
             result.add(copy(cycle));
         }
+
         return result;
     }
 
@@ -274,12 +274,12 @@ public sealed class CyclicTargetCandidate permits CyclicTargetPair {
         if (!structuralHashCodeComputed) {
             synchronized (this) {
                 if (!structuralHashCodeComputed) {
-                    structuralHashCode = 31 * beta.hashCode()
-                            + Arrays.hashCode(omegaImages());
+                    structuralHashCode = 31 * beta.hashCode() + Arrays.hashCode(omegaImages());
                     structuralHashCodeComputed = true;
                 }
             }
         }
+
         return structuralHashCode;
     }
 

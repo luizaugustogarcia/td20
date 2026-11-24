@@ -2,7 +2,6 @@ package br.unb.cic.td20.model;
 
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
-
 import lombok.val;
 import org.junit.jupiter.api.Test;
 
@@ -33,25 +32,25 @@ class CyclicTargetCandidateTest {
 
     @Test
     void separatesConcreteEqualityFromBraceletEquivalence() {
-        val candidate = new CyclicTargetCandidate(
-                "(0 9 7)(1 5 2 6 3)(4 10 8)");
-        val rotated = CyclicTargetCandidate.fromEncodingWord(
-                candidate.standardizedEncodingWord().transform(1, false));
+        val candidate = new CyclicTargetCandidate("(0 9 7)(1 5 2 6 3)(4 10 8)");
+        val rotated = CyclicTargetCandidate.fromEncodingWord(candidate.standardizedEncodingWord().transform(1, false));
 
-        assertNotEquals(candidate, rotated,
+        assertNotEquals(candidate,
+                rotated,
                 "Concrete candidate equality must retain omega and beta");
-        assertEquals(candidate.twistedBraceletKey(), rotated.twistedBraceletKey(),
+        assertEquals(candidate.twistedBraceletKey(),
+                rotated.twistedBraceletKey(),
                 "Orbit equivalence belongs to the explicit bracelet key");
     }
 
     @Test
     void integerRanksHaveNoTwoDigitLimit() {
-        final var symbols = new int[101];
+        val symbols = new int[101];
         for (var symbol = 0; symbol < symbols.length; symbol++) {
             symbols[symbol] = symbol;
         }
-        val candidate = new CyclicTargetCandidate(
-                new MulticyclePermutation(Cycle.of(symbols)), Cycle.of(symbols.clone()));
+
+        val candidate = new CyclicTargetCandidate(new MulticyclePermutation(Cycle.of(symbols)), Cycle.of(symbols.clone()));
 
         assertEquals(101, candidate.standardizedEncodingWord().rankAt(100));
     }
@@ -65,11 +64,9 @@ class CyclicTargetCandidateTest {
 
     @Test
     void fixedPointsAreSingletonColorsInTheCanonicalWord() {
-        final var beta = Cycle.of(0, 1, 2, 3);
-        final var implicitIdentity = new CyclicTargetCandidate(
-                new MulticyclePermutation(), beta);
-        final var explicitIdentity = new CyclicTargetCandidate(
-                new MulticyclePermutation("(0)(1)(2)(3)"), beta);
+        val beta = Cycle.of(0, 1, 2, 3);
+        val implicitIdentity = new CyclicTargetCandidate(new MulticyclePermutation(), beta);
+        val explicitIdentity = new CyclicTargetCandidate(new MulticyclePermutation("(0)(1)(2)(3)"), beta);
 
         assertEquals("[1,2,3,4]", implicitIdentity.standardizedEncodingWord().toString());
         assertEquals(implicitIdentity.twistedBraceletKey(),

@@ -1,5 +1,7 @@
 package br.unb.cic.td20.base;
 
+import lombok.val;
+
 import java.util.Arrays;
 
 /**
@@ -8,34 +10,11 @@ import java.util.Arrays;
  */
 final class GpuSearchStats {
 
-    record DeviceSnapshot(
-            int device,
-            long started,
-            long completed,
-            long failed,
-            long completeWitnesses,
-            long diameterClosures,
-            long misses,
-            long timeouts,
-            long queueWaitNanos,
-            long busyNanos
-    ) {
+    record DeviceSnapshot(int device, long started, long completed, long failed, long completeWitnesses, long diameterClosures, long misses, long timeouts, long queueWaitNanos, long busyNanos) {
     }
 
-    record Snapshot(
-            long elapsedNanos,
-            long started,
-            long completed,
-            long failed,
-            long completeWitnesses,
-            long diameterClosures,
-            long misses,
-            long timeouts,
-            long queueWaitNanos,
-            long busyNanos,
-            int totalSlots,
-            DeviceSnapshot[] devices
-    ) {
+    record Snapshot(long elapsedNanos, long started, long completed, long failed, long completeWitnesses, long diameterClosures, long misses, long timeouts, long queueWaitNanos, long busyNanos, int totalSlots, DeviceSnapshot[] devices) {
+
         Snapshot {
             devices = devices.clone();
         }
@@ -77,6 +56,7 @@ final class GpuSearchStats {
         if (slotActiveSinceNanos[slot] >= 0) {
             throw new IllegalStateException("GPU slot " + slot + " was acquired while already active");
         }
+
         final int deviceIndex = layout.deviceIndexForSlot(slot);
         deviceStarted[deviceIndex]++;
         deviceQueueWaitNanos[deviceIndex] += Math.max(0, acquiredAtNanos - queuedAtNanos);
@@ -88,11 +68,15 @@ final class GpuSearchStats {
     }
 
     synchronized void released(final int slot, final long releasedAtNanos, final boolean failed, final int kind) {
-        if (!failed && (kind < 0 || kind > 4)) throw new IllegalArgumentException("Unknown GPU result kind");
+        if (!failed && (kind < 0 || kind > 4)) {
+            throw new IllegalArgumentException("Unknown GPU result kind");
+        }
+
         final long activeSince = slotActiveSinceNanos[slot];
         if (activeSince < 0) {
             throw new IllegalStateException("GPU slot " + slot + " was released while inactive");
         }
+
         final int deviceIndex = layout.deviceIndexForSlot(slot);
         deviceBusyNanos[deviceIndex] += Math.max(0, releasedAtNanos - activeSince);
         deviceCompleted[deviceIndex]++;
@@ -100,11 +84,17 @@ final class GpuSearchStats {
             deviceFailed[deviceIndex]++;
         }
         if (!failed) {
-            if (kind == 1) deviceCompleteWitnesses[deviceIndex]++;
-            else if (kind == 2) deviceDiameterClosures[deviceIndex]++;
-            else if (kind == 3) deviceTimeouts[deviceIndex]++;
-            else deviceMisses[deviceIndex]++;
+            if (kind == 1) {
+                deviceCompleteWitnesses[deviceIndex]++;
+            } else if (kind == 2) {
+                deviceDiameterClosures[deviceIndex]++;
+            } else if (kind == 3) {
+                deviceTimeouts[deviceIndex]++;
+            } else {
+                deviceMisses[deviceIndex]++;
+            }
         }
+
         slotActiveSinceNanos[slot] = -1L;
     }
 
@@ -127,7 +117,7 @@ final class GpuSearchStats {
         long queueWaitNanos = 0;
         long busyNanos = 0;
         final int[] devices = layout.devices();
-        final var deviceSnapshots = new DeviceSnapshot[devices.length];
+        val deviceSnapshots = new DeviceSnapshot[devices.length];
 
         for (int deviceIndex = 0; deviceIndex < devices.length; deviceIndex++) {
             started += deviceStarted[deviceIndex];
@@ -139,12 +129,13 @@ final class GpuSearchStats {
             timeouts += deviceTimeouts[deviceIndex];
             queueWaitNanos += deviceQueueWaitNanos[deviceIndex];
             busyNanos += deviceBusyNanos[deviceIndex];
-            deviceSnapshots[deviceIndex] = new DeviceSnapshot(
-                    devices[deviceIndex],
+            deviceSnapshots[deviceIndex] = new DeviceSnapshot(devices[deviceIndex],
                     deviceStarted[deviceIndex],
                     deviceCompleted[deviceIndex],
                     deviceFailed[deviceIndex],
-                    deviceCompleteWitnesses[deviceIndex], deviceDiameterClosures[deviceIndex], deviceMisses[deviceIndex],
+                    deviceCompleteWitnesses[deviceIndex],
+                    deviceDiameterClosures[deviceIndex],
+                    deviceMisses[deviceIndex],
                     deviceTimeouts[deviceIndex],
                     deviceQueueWaitNanos[deviceIndex],
                     deviceBusyNanos[deviceIndex]);
@@ -153,13 +144,25 @@ final class GpuSearchStats {
         Arrays.fill(deviceStarted, 0);
         Arrays.fill(deviceCompleted, 0);
         Arrays.fill(deviceFailed, 0);
-        Arrays.fill(deviceCompleteWitnesses, 0); Arrays.fill(deviceDiameterClosures, 0); Arrays.fill(deviceMisses, 0);
+        Arrays.fill(deviceCompleteWitnesses, 0);
+        Arrays.fill(deviceDiameterClosures, 0);
+        Arrays.fill(deviceMisses, 0);
         Arrays.fill(deviceTimeouts, 0);
         Arrays.fill(deviceQueueWaitNanos, 0);
         Arrays.fill(deviceBusyNanos, 0);
         windowStartedNanos = nowNanos;
 
-        return new Snapshot(elapsedNanos, started, completed, failed, completeWitnesses, diameterClosures, misses, timeouts, queueWaitNanos,
-                busyNanos, layout.totalSlots(), deviceSnapshots);
+        return new Snapshot(elapsedNanos,
+                started,
+                completed,
+                failed,
+                completeWitnesses,
+                diameterClosures,
+                misses,
+                timeouts,
+                queueWaitNanos,
+                busyNanos,
+                layout.totalSlots(),
+                deviceSnapshots);
     }
 }

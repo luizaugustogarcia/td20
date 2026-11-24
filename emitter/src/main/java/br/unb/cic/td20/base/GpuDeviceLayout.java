@@ -1,5 +1,7 @@
 package br.unb.cic.td20.base;
 
+import lombok.val;
+
 import java.util.Arrays;
 import java.util.HashSet;
 
@@ -23,6 +25,7 @@ public final class GpuDeviceLayout {
         validateDistinctDevices(devices);
         this.devices = devices.clone();
         this.slotsPerDevice = slotsPerDevice;
+
         try {
             this.totalSlots = Math.multiplyExact(devices.length, slotsPerDevice);
         } catch (final ArithmeticException e) {
@@ -34,31 +37,28 @@ public final class GpuDeviceLayout {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("GPU device list must not be blank");
         }
+
         try {
-            return Arrays.stream(value.split(",", -1))
-                    .map(String::trim)
-                    .mapToInt(token -> {
-                        if (token.isEmpty()) {
-                            throw new IllegalArgumentException("GPU device list contains an empty ordinal");
-                        }
-                        return Integer.parseInt(token);
-                    })
-                    .toArray();
+            return Arrays.stream(value.split(",", -1)).map(String::trim).mapToInt(token -> {
+                if (token.isEmpty()) {
+                    throw new IllegalArgumentException("GPU device list contains an empty ordinal");
+                }
+
+                return Integer.parseInt(token);
+            }).toArray();
         } catch (final NumberFormatException e) {
             throw new IllegalArgumentException("GPU device list contains a non-integer ordinal: " + value, e);
         }
     }
 
     private static void validateDistinctDevices(final int[] devices) {
-        final var seen = new HashSet<Integer>(devices.length);
-        for (final var device : devices) {
+        val seen = new HashSet<Integer>(devices.length);
+        for (val device : devices) {
             if (device < 0) {
-                throw new IllegalArgumentException(
-                        "devices must contain only non-negative CUDA device ordinals");
+                throw new IllegalArgumentException("devices must contain only non-negative CUDA device ordinals");
             }
             if (!seen.add(device)) {
-                throw new IllegalArgumentException(
-                        "devices must contain distinct CUDA device ordinals; duplicate: " + device);
+                throw new IllegalArgumentException("devices must contain distinct CUDA device ordinals; duplicate: " + device);
             }
         }
     }

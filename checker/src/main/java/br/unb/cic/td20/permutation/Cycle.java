@@ -1,14 +1,24 @@
 package br.unb.cic.td20.permutation;
 
+import lombok.Getter;
 import lombok.val;
 
 import java.util.Arrays;
 
 public class Cycle implements Permutation, Comparable<Cycle> {
+
+    @Getter
     private int[] symbols;
+
+    @Getter
     private int[] symbolIndexes;
+
+    @Getter
     private int minSymbol = -1;
+
+    @Getter
     private int maxSymbol = -1;
+
     private Cycle inverse;
     private Integer hashCode;
 
@@ -24,6 +34,7 @@ public class Cycle implements Permutation, Comparable<Cycle> {
             val strSymbol = strSymbols[i];
             symbols[i] = Integer.parseInt(strSymbol);
         }
+
         return of(symbols);
     }
 
@@ -34,10 +45,6 @@ public class Cycle implements Permutation, Comparable<Cycle> {
     public void update(final int... symbols) {
         this.symbols = symbols;
         updateInternalState();
-    }
-
-    public int[] getSymbols() {
-        return symbols;
     }
 
     private void updateInternalState() {
@@ -59,14 +66,6 @@ public class Cycle implements Permutation, Comparable<Cycle> {
         }
     }
 
-    public int getMaxSymbol() {
-        return maxSymbol;
-    }
-
-    public int getMinSymbol() {
-        return minSymbol;
-    }
-
     @Override
     public String toString() {
         return defaultStringRepresentation();
@@ -78,13 +77,15 @@ public class Cycle implements Permutation, Comparable<Cycle> {
             val symbolsCopy = new int[this.symbols.length];
             System.arraycopy(this.symbols, 0, symbolsCopy, 0, this.symbols.length);
             for (var left = 0; left < symbolsCopy.length / 2; left++) {
-                final var right = symbolsCopy.length - 1 - left;
-                final var temporary = symbolsCopy[left];
+                val right = symbolsCopy.length - 1 - left;
+                val temporary = symbolsCopy[left];
                 symbolsCopy[left] = symbolsCopy[right];
                 symbolsCopy[right] = temporary;
             }
+
             inverse = Cycle.of(symbolsCopy);
         }
+
         return inverse;
     }
 
@@ -99,10 +100,13 @@ public class Cycle implements Permutation, Comparable<Cycle> {
 
         for (var i = 0; ; i++) {
             representation.append(defaultCycle.symbols[i]);
-            if (i == defaultCycle.symbols.length - 1)
+            if (i == defaultCycle.symbols.length - 1) {
                 break;
+            }
+
             representation.append(" ");
         }
+
         representation.append(")");
 
         return representation.toString();
@@ -113,6 +117,7 @@ public class Cycle implements Permutation, Comparable<Cycle> {
         if (hashCode == null) {
             hashCode = Arrays.hashCode(startingBy(getMinSymbol()).getSymbols());
         }
+
         return hashCode;
     }
 
@@ -124,14 +129,16 @@ public class Cycle implements Permutation, Comparable<Cycle> {
         if (getClass() != obj.getClass()) {
             return false;
         }
+
         val other = (Cycle) obj;
 
         if (size() != other.size()) {
             return false;
         }
 
-        if (getMinSymbol() != other.getMinSymbol() || getMaxSymbol() != other.getMaxSymbol())
+        if (getMinSymbol() != other.getMinSymbol() || getMaxSymbol() != other.getMaxSymbol()) {
             return false;
+        }
 
         if (this.hashCode() != obj.hashCode()) {
             return false;
@@ -157,8 +164,9 @@ public class Cycle implements Permutation, Comparable<Cycle> {
         val aIndex = indexOf(a);
         val bIndex = indexOf(b);
 
-        if (bIndex >= aIndex)
+        if (bIndex >= aIndex) {
             return bIndex - aIndex;
+        }
 
         return (symbols.length - aIndex) + bIndex;
     }
@@ -210,9 +218,5 @@ public class Cycle implements Permutation, Comparable<Cycle> {
 
     public boolean isLong() {
         return this.size() > 3;
-    }
-
-    public int[] getSymbolIndexes() {
-        return symbolIndexes;
     }
 }

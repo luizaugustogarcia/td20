@@ -2,8 +2,11 @@ package br.unb.cic.td20.permutation;
 
 import java.util.Arrays;
 
-/** Immutable one-line permutation passed to the native exact sorter. */
+/**
+ * Immutable one-line permutation passed to the native exact sorter.
+ */
 public final class OneLinePermutation {
+
     private final byte[] oneLine;
 
     public OneLinePermutation(final byte[] oneLine) {
@@ -24,8 +27,7 @@ public final class OneLinePermutation {
 
     @Override
     public boolean equals(final Object object) {
-        return object instanceof OneLinePermutation other
-                && Arrays.equals(oneLine, other.oneLine);
+        return object instanceof OneLinePermutation other && Arrays.equals(oneLine, other.oneLine);
     }
 
     @Override

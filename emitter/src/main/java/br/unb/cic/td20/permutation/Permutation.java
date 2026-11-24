@@ -20,9 +20,9 @@ public interface Permutation extends Serializable {
         return PermutationGroups.computeProduct(true, this, rightOperand);
     }
 
-    boolean contains(int i);
+    boolean contains(final int i);
 
-    int image(int a);
+    int image(final int a);
 
     int getMaxSymbol();
 }

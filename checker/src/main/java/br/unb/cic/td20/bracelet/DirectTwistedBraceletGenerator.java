@@ -4,6 +4,7 @@ import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
+import lombok.val;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -62,112 +63,142 @@ public final class DirectTwistedBraceletGenerator {
     private static final int DEFAULT_WORKER_COUNT = defaultWorkerCount();
     private static final String WORKER_COUNT_PROPERTY = "td20.twistedBraceletWorkers";
     private static final int WORKER_COUNT = workerCountFromVmOption();
-    private static final Runnable NO_CANCELLATION_CHECK = () -> { };
+    private static final Runnable NO_CANCELLATION_CHECK = () -> {
+    };
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(WORKER_COUNT,
             Thread.ofPlatform().daemon().name("twisted-bracelet-", 0).factory());
 
     private DirectTwistedBraceletGenerator() {
     }
 
-    /** Shuts down the shared executor after all concurrent generation has completed. */
+    /**
+     * Shuts down the shared executor after all concurrent generation has completed.
+     */
     public static void shutdownExecutor() {
         EXECUTOR.shutdown();
     }
 
-    public static int configuredWorkerCount() { return WORKER_COUNT; }
-
-    public static void generateRepresentatives(final int[] partition,
-                                        final boolean[] orientedByPart,
-                                        final Consumer<CyclicTargetPair> consumer) {
-        generateRepresentatives(
-                partition, orientedByPart, NO_CANCELLATION_CHECK, consumer);
+    public static int configuredWorkerCount() {
+        return WORKER_COUNT;
     }
 
     public static void generateRepresentatives(final int[] partition,
-                                        final boolean[] orientedByPart,
-                                        final Runnable cancellationCheck,
-                                        final Consumer<CyclicTargetPair> consumer) {
-        validate(partition, orientedByPart);
-        new Generator(normalizedSpecs(partition, orientedByPart), state -> consumer.accept(state.decodeWord()), null,
-                null, cancellationCheck).generate();
+            final boolean[] orientedByPart,
+            final Consumer<CyclicTargetPair> consumer) {
+        generateRepresentatives(partition, orientedByPart, NO_CANCELLATION_CHECK, consumer);
     }
 
-    /** Production leaves use the emitter primitive representation without cycle decomposition. */
-    public static void generatePrimitiveRepresentatives(int[] partition, boolean[] orientedByPart,
-                                                        Consumer<PrimitivePair> consumer) {
+    public static void generateRepresentatives(final int[] partition,
+            final boolean[] orientedByPart,
+            final Runnable cancellationCheck,
+            final Consumer<CyclicTargetPair> consumer) {
         validate(partition, orientedByPart);
         new Generator(normalizedSpecs(partition, orientedByPart),
-                state -> consumer.accept(state.decodePrimitive()), null, null, NO_CANCELLATION_CHECK).generate();
+                state -> consumer.accept(state.decodeWord()),
+                null,
+                null,
+                cancellationCheck).generate();
     }
 
-    public static void generatePrimitiveRepresentativesConcurrently(int[] partition, boolean[] orientedByPart,
-            Runnable cancellationCheck, Consumer<PrimitivePair> consumer) {
-        generateConcurrently(partition, orientedByPart, cancellationCheck,
-                state -> consumer.accept(state.decodePrimitive()), null);
-    }
-
-    /** Counts realizable representatives without decoding completed words. */
-    public static long countRepresentatives(final int[] partition,
-                                     final boolean[] orientedByPart) {
+    /**
+     * Production leaves use the emitter primitive representation without cycle decomposition.
+     */
+    public static void generatePrimitiveRepresentatives(final int[] partition,
+            final boolean[] orientedByPart,
+            final Consumer<PrimitivePair> consumer) {
         validate(partition, orientedByPart);
-        final long[] count = {0};
-        new Generator(normalizedSpecs(partition, orientedByPart), null, null,
-                () -> count[0]++, NO_CANCELLATION_CHECK).generate();
+        new Generator(normalizedSpecs(partition, orientedByPart),
+                state -> consumer.accept(state.decodePrimitive()),
+                null,
+                null,
+                NO_CANCELLATION_CHECK).generate();
+    }
+
+    public static void generatePrimitiveRepresentativesConcurrently(final int[] partition,
+            final boolean[] orientedByPart,
+            final Runnable cancellationCheck,
+            final Consumer<PrimitivePair> consumer) {
+        generateConcurrently(partition,
+                orientedByPart,
+                cancellationCheck,
+                state -> consumer.accept(state.decodePrimitive()),
+                null);
+    }
+
+    /**
+     * Counts realizable representatives without decoding completed words.
+     */
+    public static long countRepresentatives(final int[] partition, final boolean[] orientedByPart) {
+        validate(partition, orientedByPart);
+
+        final long[] count = { 0 };
+        new Generator(normalizedSpecs(partition, orientedByPart),
+                null,
+                null,
+                () -> count[0]++,
+                NO_CANCELLATION_CHECK).generate();
+
         return count[0];
     }
 
-    /** Counts realizable representatives on the shared CPU pool without decoding words. */
-    public static long countRepresentativesConcurrently(final int[] partition,
-                                                       final boolean[] orientedByPart) {
-        final var count = new LongAdder();
-        generateConcurrently(partition, orientedByPart, NO_CANCELLATION_CHECK,
-                null, count::increment);
+    /**
+     * Counts realizable representatives on the shared CPU pool without decoding words.
+     */
+    public static long countRepresentativesConcurrently(final int[] partition, final boolean[] orientedByPart) {
+        val count = new LongAdder();
+        generateConcurrently(partition,
+                orientedByPart,
+                NO_CANCELLATION_CHECK,
+                null,
+                count::increment);
+
         return count.sum();
     }
 
-    /** Exact Burnside count for fixed-point-free contracted domains of at most 30 symbols. */
-    public static long countRepresentativesByBurnside(final int[] partition,
-                                                     final boolean[] orientedByPart) {
+    /**
+     * Exact Burnside count for fixed-point-free contracted domains of at most 30 symbols.
+     */
+    public static long countRepresentativesByBurnside(final int[] partition, final boolean[] orientedByPart) {
         validate(partition, orientedByPart);
         return TwistedBraceletBurnsideCounter.count(partition, orientedByPart, EXECUTOR);
     }
 
-    /** Parallel generation for a thread-safe consumer. */
-    public static void generateRepresentativesConcurrently(
-            final int[] partition,
+    /**
+     * Parallel generation for a thread-safe consumer.
+     */
+    public static void generateRepresentativesConcurrently(final int[] partition,
             final boolean[] orientedByPart,
             final Runnable cancellationCheck,
             final Consumer<CyclicTargetPair> consumer) {
         generateConcurrently(partition, orientedByPart, cancellationCheck, state -> consumer.accept(state.decodeWord()), null);
     }
 
-    private static void generateConcurrently(
-            final int[] partition,
+    private static void generateConcurrently(final int[] partition,
             final boolean[] orientedByPart,
             final Runnable cancellationCheck,
             final Consumer<Generator> consumer,
             final Runnable countConsumer) {
         validate(partition, orientedByPart);
-        final var specs = normalizedSpecs(partition, orientedByPart);
-        final var failure = new AtomicReference<Throwable>();
+
+        val specs = normalizedSpecs(partition, orientedByPart);
+        val failure = new AtomicReference<Throwable>();
         final Runnable branchCancellationCheck = () -> {
             if (failure.get() != null) {
                 throw BranchStopped.INSTANCE;
             }
+
             cancellationCheck.run();
         };
-        final var targetTaskCount = (int) Math.min(
-                Integer.MAX_VALUE,
+        val targetTaskCount = (int) Math.min(Integer.MAX_VALUE,
                 (long) WORKER_COUNT * FRONTIER_TASKS_PER_WORKER);
-        final var branches = buildFrontier(
-                specs, consumer, countConsumer, branchCancellationCheck, targetTaskCount);
+        val branches = buildFrontier(specs, consumer, countConsumer, branchCancellationCheck, targetTaskCount);
         if (branches.size() <= 1) {
             branches.forEach(GenerationTask::runToCompletion);
             return;
         }
 
-        final var futures = new ArrayList<Future<?>>(branches.size());
-        for (final var branch : branches) {
+        val futures = new ArrayList<Future<?>>(branches.size());
+        for (val branch : branches) {
             futures.add(EXECUTOR.submit(() -> {
                 try {
                     branch.runToCompletion();
@@ -178,38 +209,40 @@ public final class DirectTwistedBraceletGenerator {
                 }
             }));
         }
+
         try {
-            for (final var future : futures) {
+            for (val future : futures) {
                 future.get();
             }
         } catch (final InterruptedException exception) {
-            for (final var future : futures) {
+            for (val future : futures) {
                 future.cancel(true);
             }
+
             Thread.currentThread().interrupt();
-            throw new RuntimeException(
-                    "Interrupted while generating twisted-bracelet representatives", exception);
+            throw new RuntimeException("Interrupted while generating twisted-bracelet representatives", exception);
         } catch (final java.util.concurrent.ExecutionException exception) {
             failure.compareAndSet(null, exception.getCause());
         }
+
         rethrow(failure.get());
     }
 
     private static int workerCountFromVmOption() {
-        final var configured = System.getProperty(WORKER_COUNT_PROPERTY);
+        val configured = System.getProperty(WORKER_COUNT_PROPERTY);
         if (configured == null || configured.equals("auto")) {
             return DEFAULT_WORKER_COUNT;
         }
+
         try {
-            final var parsed = Integer.parseInt(configured);
+            val parsed = Integer.parseInt(configured);
             if (parsed < 1) {
-                throw new IllegalArgumentException(
-                        WORKER_COUNT_PROPERTY + " must be a positive integer: " + configured);
+                throw new IllegalArgumentException(WORKER_COUNT_PROPERTY + " must be a positive integer: " + configured);
             }
+
             return parsed;
         } catch (final NumberFormatException exception) {
-            throw new IllegalArgumentException(
-                    WORKER_COUNT_PROPERTY + " must be a positive integer or auto: " + configured,
+            throw new IllegalArgumentException(WORKER_COUNT_PROPERTY + " must be a positive integer or auto: " + configured,
                     exception);
         }
     }
@@ -222,77 +255,70 @@ public final class DirectTwistedBraceletGenerator {
      * Expands the exact generation tree breadth first until it contains enough
      * accepted continuations to keep a larger worker pool balanced.
      */
-    private static List<GenerationTask> buildFrontier(
-            final CycleSpec[] specs,
+    private static List<GenerationTask> buildFrontier(final CycleSpec[] specs,
             final Consumer<Generator> consumer,
             final Runnable countConsumer,
             final Runnable cancellationCheck,
             final int targetTaskCount) {
-        final var generator = new Generator(
-                specs, consumer, null, countConsumer, cancellationCheck);
-        final var initialTask = generator.initialTask();
+        val generator = new Generator(specs, consumer, null, countConsumer, cancellationCheck);
+        val initialTask = generator.initialTask();
         if (initialTask == null) {
             return List.of();
         }
 
-        final var frontier = new ArrayDeque<GenerationTask>();
+        val frontier = new ArrayDeque<GenerationTask>();
         frontier.add(initialTask);
-        final var maximumExpansions = (long) targetTaskCount
-                * (Arrays.stream(specs).mapToInt(CycleSpec::size).sum() + 1);
+
+        val maximumExpansions = (long) targetTaskCount * (Arrays.stream(specs).mapToInt(CycleSpec::size).sum() + 1);
         var expansions = 0L;
-        while (frontier.size() < targetTaskCount
-                && expansions++ < maximumExpansions) {
-            final var branch = frontier.pollFirst();
+        while (frontier.size() < targetTaskCount && expansions++ < maximumExpansions) {
+            val branch = frontier.pollFirst();
             if (branch == null) {
                 break;
             }
+
             branch.expand(frontier::addLast);
         }
+
         return new ArrayList<>(frontier);
     }
 
-    /** Test hook that emits raw orbit-minimal words before target realizability. */
-    static void generateWords(final int[] partition,
-                              final boolean[] orientedByPart,
-                              final Consumer<int[]> consumer) {
+    /**
+     * Test hook that emits raw orbit-minimal words before target realizability.
+     */
+    static void generateWords(final int[] partition, final boolean[] orientedByPart, final Consumer<int[]> consumer) {
         validate(partition, orientedByPart);
-        new Generator(normalizedSpecs(partition, orientedByPart), null, consumer,
-                null, NO_CANCELLATION_CHECK).generate();
+        new Generator(normalizedSpecs(partition, orientedByPart),
+                null,
+                consumer,
+                null,
+                NO_CANCELLATION_CHECK).generate();
     }
 
-    private static void validate(final int[] partition,
-                                 final boolean[] orientedByPart) {
+    private static void validate(final int[] partition, final boolean[] orientedByPart) {
         if (partition.length != orientedByPart.length) {
-            throw new IllegalArgumentException(
-                    "Partition and orientation arrays must have the same length");
+            throw new IllegalArgumentException("Partition and orientation arrays must have the same length");
         }
         if (partition.length == 0) {
             throw new IllegalArgumentException("The annotated partition must be nonempty");
         }
         for (var index = 0; index < partition.length; index++) {
             if (partition[index] < 2) {
-                throw new IllegalArgumentException(
-                        "Every cycle must have length at least two: "
-                                + Arrays.toString(partition));
+                throw new IllegalArgumentException("Every cycle must have length at least two: " + Arrays.toString(partition));
             }
             if (orientedByPart[index] && partition[index] < 3) {
-                throw new IllegalArgumentException(
-                        "Only cycles of length at least three can be oriented: "
-                                + Arrays.toString(partition));
+                throw new IllegalArgumentException("Only cycles of length at least three can be oriented: " + Arrays.toString(partition));
             }
         }
     }
 
-    private static CycleSpec[] normalizedSpecs(final int[] partition,
-                                               final boolean[] orientedByPart) {
-        final var specs = new CycleSpec[partition.length];
+    private static CycleSpec[] normalizedSpecs(final int[] partition, final boolean[] orientedByPart) {
+        val specs = new CycleSpec[partition.length];
         for (var index = 0; index < partition.length; index++) {
             specs[index] = new CycleSpec(partition[index], orientedByPart[index]);
         }
-        Arrays.sort(specs, Comparator
-                .comparingInt(CycleSpec::size)
-                .reversed()
-                .thenComparing(CycleSpec::oriented));
+
+        Arrays.sort(specs, Comparator.comparingInt(CycleSpec::size).reversed().thenComparing(CycleSpec::oriented));
 
         return specs;
     }
@@ -300,39 +326,41 @@ public final class DirectTwistedBraceletGenerator {
     private record CycleSpec(int size, boolean oriented) {
     }
 
-    private record GenerationTask(Generator generator,
-                                  boolean necklace,
-                                  boolean forcedMaximumTail,
-                                  int t,
-                                  int period,
-                                  int reflectionPrefix,
-                                  int maximumRunStart,
-                                  int reflectionBlocks,
-                                  boolean reverseSuffixSmaller,
-                                  int finalPeriod) {
+    private record GenerationTask(Generator generator, boolean necklace, boolean forcedMaximumTail, int t, int period, int reflectionPrefix, int maximumRunStart, int reflectionBlocks, boolean reverseSuffixSmaller, int finalPeriod) {
 
-        private static GenerationTask regular(
-                final Generator generator,
+        private static GenerationTask regular(final Generator generator,
                 final int t,
                 final int period,
                 final int reflectionPrefix,
                 final int maximumRunStart,
                 final int reflectionBlocks,
                 final boolean reverseSuffixSmaller) {
-            return new GenerationTask(generator, false, false, t, period,
-                    reflectionPrefix, maximumRunStart, reflectionBlocks,
-                    reverseSuffixSmaller, 0);
+            return new GenerationTask(generator,
+                    false,
+                    false,
+                    t,
+                    period,
+                    reflectionPrefix,
+                    maximumRunStart,
+                    reflectionBlocks,
+                    reverseSuffixSmaller,
+                    0);
         }
 
-        private static GenerationTask necklace(final Generator generator,
-                                               final int t,
-                                               final int period) {
-            return new GenerationTask(generator, true, false, t, period,
-                    0, 0, 0, false, 0);
+        private static GenerationTask necklace(final Generator generator, final int t, final int period) {
+            return new GenerationTask(generator,
+                    true,
+                    false,
+                    t,
+                    period,
+                    0,
+                    0,
+                    0,
+                    false,
+                    0);
         }
 
-        private static GenerationTask forced(
-                final Generator generator,
+        private static GenerationTask forced(final Generator generator,
                 final int t,
                 final int period,
                 final int reflectionPrefix,
@@ -340,13 +368,21 @@ public final class DirectTwistedBraceletGenerator {
                 final int reflectionBlocks,
                 final boolean reverseSuffixSmaller,
                 final int finalPeriod) {
-            return new GenerationTask(generator, false, true, t, period,
-                    reflectionPrefix, maximumRunStart, reflectionBlocks,
-                    reverseSuffixSmaller, finalPeriod);
+            return new GenerationTask(generator,
+                    false,
+                    true,
+                    t,
+                    period,
+                    reflectionPrefix,
+                    maximumRunStart,
+                    reflectionBlocks,
+                    reverseSuffixSmaller,
+                    finalPeriod);
         }
 
         private void expand(final Consumer<GenerationTask> collector) {
             generator.continuationCollector = collector;
+
             try {
                 runContinuation();
             } finally {
@@ -362,17 +398,26 @@ public final class DirectTwistedBraceletGenerator {
             if (necklace) {
                 generator.generateNecklaces(t, period);
             } else if (forcedMaximumTail) {
-                generator.continueForcedMaximumTail(t, period, reflectionPrefix,
-                        maximumRunStart, reflectionBlocks, reverseSuffixSmaller,
+                generator.continueForcedMaximumTail(t,
+                        period,
+                        reflectionPrefix,
+                        maximumRunStart,
+                        reflectionBlocks,
+                        reverseSuffixSmaller,
                         finalPeriod);
             } else {
-                generator.generateBracelets(t, period, reflectionPrefix,
-                        maximumRunStart, reflectionBlocks, reverseSuffixSmaller);
+                generator.generateBracelets(t,
+                        period,
+                        reflectionPrefix,
+                        maximumRunStart,
+                        reflectionBlocks,
+                        reverseSuffixSmaller);
             }
         }
     }
 
     private static final class Generator {
+
         private final CycleSpec[] specs;
         private final Consumer<Generator> consumer;
         private final Consumer<int[]> wordConsumer;
@@ -459,10 +504,10 @@ public final class DirectTwistedBraceletGenerator {
         private Consumer<GenerationTask> continuationCollector;
 
         private Generator(final CycleSpec[] specs,
-                          final Consumer<Generator> consumer,
-                          final Consumer<int[]> wordConsumer,
-                          final Runnable countConsumer,
-                          final Runnable cancellationCheck) {
+                final Consumer<Generator> consumer,
+                final Consumer<int[]> wordConsumer,
+                final Runnable countConsumer,
+                final Runnable cancellationCheck) {
             this.specs = specs;
             this.consumer = consumer;
             this.wordConsumer = wordConsumer;
@@ -471,9 +516,7 @@ public final class DirectTwistedBraceletGenerator {
             this.pruneTargetCycles = consumer != null || countConsumer != null;
             this.auxiliaryActionTrivial = hasTrivialAuxiliaryAction(specs);
             this.n = Arrays.stream(specs).mapToInt(CycleSpec::size).sum();
-            this.numberOfSymbols = Arrays.stream(specs)
-                    .mapToInt(spec -> spec.oriented ? spec.size : 1)
-                    .sum();
+            this.numberOfSymbols = Arrays.stream(specs).mapToInt(spec -> spec.oriented ? spec.size : 1).sum();
 
             this.word = new int[n + 1];
             this.remaining = new int[numberOfSymbols];
@@ -509,9 +552,9 @@ public final class DirectTwistedBraceletGenerator {
 
             // With no auxiliary color permutation or rank-origin choice,
             // BraceletFC already enforces every required spatial comparison.
-            this.comparisonCount = auxiliaryActionTrivial ? 0 : Math.multiplyExact(
-                    2, affectedSymbolCount(specs, cyclesByGroup));
-            final var comparisonMapLength = comparisonCount * specs.length;
+            this.comparisonCount = auxiliaryActionTrivial ? 0 : Math.multiplyExact(2, affectedSymbolCount(specs, cyclesByGroup));
+
+            val comparisonMapLength = comparisonCount * specs.length;
             this.comparisonMapBase = new int[comparisonCount];
             this.comparisonStartPosition = new int[comparisonCount];
             this.comparisonStateByMapIndex = new int[comparisonMapLength];
@@ -519,8 +562,7 @@ public final class DirectTwistedBraceletGenerator {
             this.comparisonStatus = new byte[comparisonCount];
             this.comparisonSourceToTarget = new int[comparisonMapLength];
             this.comparisonRankOffset = new int[comparisonMapLength];
-            this.comparisonNextTargetByGroup =
-                    new int[comparisonCount * cyclesByGroup.length];
+            this.comparisonNextTargetByGroup = new int[comparisonCount * cyclesByGroup.length];
             this.comparisonOffsetStack = new int[n][comparisonCount];
             this.comparisonStatusStack = new byte[n][comparisonCount];
             this.activeComparisonCountStack = new int[n];
@@ -541,12 +583,16 @@ public final class DirectTwistedBraceletGenerator {
             for (var vertex = 0; vertex < n; vertex++) {
                 targetComponentParent[vertex] = vertex;
             }
+
             initializeComparisonIndexes();
             initializeAlphabet();
         }
 
         private Generator(final Generator source) {
-            this(source.specs, source.consumer, source.wordConsumer, source.countConsumer,
+            this(source.specs,
+                    source.consumer,
+                    source.wordConsumer,
+                    source.countConsumer,
                     source.cancellationCheck);
 
             copy(source.word, word);
@@ -598,6 +644,7 @@ public final class DirectTwistedBraceletGenerator {
                 copy(source.comparisonStatusStack[position],
                         comparisonStatusStack[position]);
             }
+
             copy(source.activeComparisonCountStack, activeComparisonCountStack);
             copy(source.comparisonMapTrail, comparisonMapTrail);
             copy(source.comparisonMapTrailMarker, comparisonMapTrailMarker);
@@ -619,7 +666,7 @@ public final class DirectTwistedBraceletGenerator {
         private void initializeAlphabet() {
             var symbol = 0;
             for (var cycle = 0; cycle < specs.length; cycle++) {
-                final var spec = specs[cycle];
+                val spec = specs[cycle];
                 firstSymbolByCycle[cycle] = symbol;
                 if (spec.oriented) {
                     for (var rank = 0; rank < spec.size; rank++) {
@@ -639,10 +686,12 @@ public final class DirectTwistedBraceletGenerator {
 
         private void initializeComparisonIndexes() {
             for (var state = 0; state < comparisonCount; state++) {
-                final var mapBase = state * specs.length;
+                val mapBase = state * specs.length;
                 comparisonMapBase[state] = mapBase;
                 Arrays.fill(comparisonStateByMapIndex,
-                        mapBase, mapBase + specs.length, state);
+                        mapBase,
+                        mapBase + specs.length,
+                        state);
             }
         }
 
@@ -661,6 +710,7 @@ public final class DirectTwistedBraceletGenerator {
             if (!beginGeneration()) {
                 return null;
             }
+
             return GenerationTask.regular(this, 2, 1, 1, 2, 1, false);
         }
 
@@ -677,6 +727,7 @@ public final class DirectTwistedBraceletGenerator {
             if (remaining[0] == 0) {
                 listRemove(0);
             }
+
             appendBlock(0);
 
             if (recordPlacement(0, 0)) {
@@ -685,8 +736,10 @@ public final class DirectTwistedBraceletGenerator {
                     if (advanceComparisons(1)) {
                         return true;
                     }
+
                     restoreComparisons(0);
                 }
+
                 removePlacement(0, 0);
             }
 
@@ -694,7 +747,9 @@ public final class DirectTwistedBraceletGenerator {
             if (remaining[0] == 0) {
                 listAdd(0);
             }
+
             remaining[0]++;
+
             return false;
         }
 
@@ -705,6 +760,7 @@ public final class DirectTwistedBraceletGenerator {
             if (remaining[0] == 0) {
                 listAdd(0);
             }
+
             remaining[0]++;
         }
 
@@ -713,29 +769,34 @@ public final class DirectTwistedBraceletGenerator {
          * comparisons modulo the auxiliary group.
          */
         private void generateBracelets(final int t,
-                                       final int period,
-                                       final int reflectionPrefix,
-                                       final int maximumRunStart,
-                                       final int reflectionBlocks,
-                                       boolean reverseSuffixSmaller) {
+                final int period,
+                final int reflectionPrefix,
+                final int maximumRunStart,
+                final int reflectionBlocks,
+                boolean reverseSuffixSmaller) {
             cancellationCheck.run();
-            reverseSuffixSmaller = updateReverseSuffixComparison(
-                    t, reflectionPrefix, reverseSuffixSmaller);
+            reverseSuffixSmaller = updateReverseSuffixComparison(t, reflectionPrefix, reverseSuffixSmaller);
 
             if (t > n) {
                 if (!reverseSuffixSmaller && n % period == 0) {
                     emitDirectly();
                 }
+
                 return;
             }
 
-            final var remainingSlots = n - t + 1;
-            final var maximumSymbol = numberOfSymbols - 1;
+            val remainingSlots = n - t + 1;
+            val maximumSymbol = numberOfSymbols - 1;
             if (remaining[maximumSymbol] == remainingSlots) {
-                final var finalPeriod = remainingSlots > run[t - period] ? n : period;
-                appendForcedMaximumTail(t, period, reflectionPrefix,
-                        maximumRunStart, reflectionBlocks, reverseSuffixSmaller,
+                val finalPeriod = remainingSlots > run[t - period] ? n : period;
+                appendForcedMaximumTail(t,
+                        period,
+                        reflectionPrefix,
+                        maximumRunStart,
+                        reflectionBlocks,
+                        reverseSuffixSmaller,
                         finalPeriod);
+
                 return;
             }
             if (remaining[0] == remainingSlots) {
@@ -743,7 +804,7 @@ public final class DirectTwistedBraceletGenerator {
             }
 
             var symbol = availableHead;
-            final var lowerBound = word[t - period];
+            val lowerBound = word[t - period];
             while (symbol != -1 && symbol < lowerBound) {
                 symbol = listNext(symbol);
             }
@@ -752,35 +813,44 @@ public final class DirectTwistedBraceletGenerator {
                     symbol = listNext(symbol);
                     continue;
                 }
+
                 run[maximumRunStart] = t - maximumRunStart;
                 appendBlock(symbol);
                 remaining[symbol]--;
                 if (remaining[symbol] == 0) {
                     listRemove(symbol);
                 }
+
                 word[t] = symbol;
 
-                final var position = t - 1;
+                val position = t - 1;
                 if (recordPlacement(position, symbol)) {
                     if (recordTargetArcs(position, symbol)) {
-                        final var reflectionComparison = checkTwistedReverse(t);
+                        val reflectionComparison = checkTwistedReverse(t);
                         if (reflectionComparison != REVERSE_SMALLER) {
                             saveComparisons(position);
                             if (advanceComparisons(t)) {
-                                recurseAfterReflectionCheck(t, period,
-                                        reflectionPrefix, maximumRunStart,
-                                        reflectionBlocks, reverseSuffixSmaller,
-                                        symbol, reflectionComparison);
+                                recurseAfterReflectionCheck(t,
+                                        period,
+                                        reflectionPrefix,
+                                        maximumRunStart,
+                                        reflectionBlocks,
+                                        reverseSuffixSmaller,
+                                        symbol,
+                                        reflectionComparison);
                             }
+
                             restoreComparisons(position);
                         }
                     }
+
                     removePlacement(position, symbol);
                 }
 
                 if (remaining[symbol] == 0) {
                     listAdd(symbol);
                 }
+
                 remaining[symbol]++;
                 removeBlock();
                 symbol = listNext(symbol);
@@ -800,11 +870,12 @@ public final class DirectTwistedBraceletGenerator {
                 if (n % period == 0) {
                     emitDirectly();
                 }
+
                 return;
             }
 
             var symbol = availableHead;
-            final var lowerBound = word[t - period];
+            val lowerBound = word[t - period];
             while (symbol != -1 && symbol < lowerBound) {
                 symbol = listNext(symbol);
             }
@@ -813,29 +884,33 @@ public final class DirectTwistedBraceletGenerator {
                     symbol = listNext(symbol);
                     continue;
                 }
+
                 remaining[symbol]--;
                 if (remaining[symbol] == 0) {
                     listRemove(symbol);
                 }
+
                 word[t] = symbol;
 
-                final var position = t - 1;
+                val position = t - 1;
                 if (recordPlacement(position, symbol)) {
                     if (recordTargetArcs(position, symbol)) {
                         saveComparisons(position);
                         if (advanceComparisons(t)) {
-                            final var nextPeriod = symbol == word[t - period]
-                                    ? period : t;
+                            val nextPeriod = symbol == word[t - period] ? period : t;
                             descendNecklaces(t + 1, nextPeriod);
                         }
+
                         restoreComparisons(position);
                     }
+
                     removePlacement(position, symbol);
                 }
 
                 if (remaining[symbol] == 0) {
                     listAdd(symbol);
                 }
+
                 remaining[symbol]++;
                 symbol = listNext(symbol);
             }
@@ -848,54 +923,64 @@ public final class DirectTwistedBraceletGenerator {
                 generateNecklaces(t, period);
                 return;
             }
-            continuationCollector.accept(GenerationTask.necklace(
-                    new Generator(this), t, period));
+
+            continuationCollector.accept(GenerationTask.necklace(new Generator(this), t, period));
         }
 
-        /** The fixed maximum-symbol tail has one continuation and no color loop. */
+        /**
+         * The fixed maximum-symbol tail has one continuation and no color loop.
+         */
         private void appendForcedMaximumTail(final int t,
-                                             final int period,
-                                             final int reflectionPrefix,
-                                             final int maximumRunStart,
-                                             final int reflectionBlocks,
-                                             final boolean reverseSuffixSmaller,
-                                             final int finalPeriod) {
-            final var symbol = numberOfSymbols - 1;
+                final int period,
+                final int reflectionPrefix,
+                final int maximumRunStart,
+                final int reflectionBlocks,
+                final boolean reverseSuffixSmaller,
+                final int finalPeriod) {
+            val symbol = numberOfSymbols - 1;
             run[maximumRunStart] = t - maximumRunStart;
             appendBlock(symbol);
             remaining[symbol]--;
             if (remaining[symbol] == 0) {
                 listRemove(symbol);
             }
+
             word[t] = symbol;
 
-            final var position = t - 1;
+            val position = t - 1;
             if (recordPlacement(position, symbol)) {
                 if (recordTargetArcs(position, symbol)) {
-                    final var reflectionComparison = checkTwistedReverse(t);
+                    val reflectionComparison = checkTwistedReverse(t);
                     if (reflectionComparison != REVERSE_SMALLER) {
                         saveComparisons(position);
                         if (advanceComparisons(t)) {
-                            recurseForcedTailAfterReflectionCheck(t, period,
-                                    reflectionPrefix, maximumRunStart,
-                                    reflectionBlocks, reverseSuffixSmaller, symbol,
-                                    finalPeriod, reflectionComparison);
+                            recurseForcedTailAfterReflectionCheck(t,
+                                    period,
+                                    reflectionPrefix,
+                                    maximumRunStart,
+                                    reflectionBlocks,
+                                    reverseSuffixSmaller,
+                                    symbol,
+                                    finalPeriod,
+                                    reflectionComparison);
                         }
+
                         restoreComparisons(position);
                     }
                 }
+
                 removePlacement(position, symbol);
             }
 
             if (remaining[symbol] == 0) {
                 listAdd(symbol);
             }
+
             remaining[symbol]++;
             removeBlock();
         }
 
-        private void recurseForcedTailAfterReflectionCheck(
-                final int t,
+        private void recurseForcedTailAfterReflectionCheck(final int t,
                 final int period,
                 final int reflectionPrefix,
                 final int maximumRunStart,
@@ -904,19 +989,27 @@ public final class DirectTwistedBraceletGenerator {
                 final int symbol,
                 final int finalPeriod,
                 final int reflectionComparison) {
-            final var nextPeriod = symbol == word[t - period] ? period : t;
+            val nextPeriod = symbol == word[t - period] ? period : t;
             if (reflectionComparison == REVERSE_EQUAL) {
-                descendForcedMaximumTail(t + 1, nextPeriod, t,
-                        maximumRunStart, blockCount, false, finalPeriod);
+                descendForcedMaximumTail(t + 1,
+                        nextPeriod,
+                        t,
+                        maximumRunStart,
+                        blockCount,
+                        false,
+                        finalPeriod);
             } else if (reflectionComparison == REVERSE_LARGER) {
-                descendForcedMaximumTail(t + 1, nextPeriod, reflectionPrefix,
-                        maximumRunStart, reflectionBlocks,
-                        reverseSuffixSmaller, finalPeriod);
+                descendForcedMaximumTail(t + 1,
+                        nextPeriod,
+                        reflectionPrefix,
+                        maximumRunStart,
+                        reflectionBlocks,
+                        reverseSuffixSmaller,
+                        finalPeriod);
             }
         }
 
-        private void descendForcedMaximumTail(
-                final int t,
+        private void descendForcedMaximumTail(final int t,
                 final int period,
                 final int reflectionPrefix,
                 final int maximumRunStart,
@@ -924,19 +1017,27 @@ public final class DirectTwistedBraceletGenerator {
                 final boolean reverseSuffixSmaller,
                 final int finalPeriod) {
             if (continuationCollector == null) {
-                continueForcedMaximumTail(t, period, reflectionPrefix,
-                        maximumRunStart, reflectionBlocks, reverseSuffixSmaller,
+                continueForcedMaximumTail(t,
+                        period,
+                        reflectionPrefix,
+                        maximumRunStart,
+                        reflectionBlocks,
+                        reverseSuffixSmaller,
                         finalPeriod);
                 return;
             }
-            continuationCollector.accept(GenerationTask.forced(
-                    new Generator(this), t, period, reflectionPrefix,
-                    maximumRunStart, reflectionBlocks, reverseSuffixSmaller,
+
+            continuationCollector.accept(GenerationTask.forced(new Generator(this),
+                    t,
+                    period,
+                    reflectionPrefix,
+                    maximumRunStart,
+                    reflectionBlocks,
+                    reverseSuffixSmaller,
                     finalPeriod));
         }
 
-        private void continueForcedMaximumTail(
-                final int t,
+        private void continueForcedMaximumTail(final int t,
                 final int period,
                 final int reflectionPrefix,
                 final int maximumRunStart,
@@ -944,8 +1045,7 @@ public final class DirectTwistedBraceletGenerator {
                 boolean reverseSuffixSmaller,
                 final int finalPeriod) {
             cancellationCheck.run();
-            reverseSuffixSmaller = updateReverseSuffixComparison(
-                    t, reflectionPrefix, reverseSuffixSmaller);
+            reverseSuffixSmaller = updateReverseSuffixComparison(t, reflectionPrefix, reverseSuffixSmaller);
             if (t > n) {
                 // BraceletFC's maximum-tail shortcut determines divisibility
                 // from finalPeriod.  The period replayed above is only the
@@ -953,52 +1053,75 @@ public final class DirectTwistedBraceletGenerator {
                 if (!reverseSuffixSmaller && n % finalPeriod == 0) {
                     emitDirectly();
                 }
+
                 return;
             }
-            appendForcedMaximumTail(t, period, reflectionPrefix,
-                    maximumRunStart, reflectionBlocks, reverseSuffixSmaller,
+
+            appendForcedMaximumTail(t,
+                    period,
+                    reflectionPrefix,
+                    maximumRunStart,
+                    reflectionBlocks,
+                    reverseSuffixSmaller,
                     finalPeriod);
         }
 
         private void recurseAfterReflectionCheck(final int t,
-                                                 final int period,
-                                                 final int reflectionPrefix,
-                                                 final int maximumRunStart,
-                                                 final int reflectionBlocks,
-                                                 final boolean reverseSuffixSmaller,
-                                                 final int symbol,
-                                                 final int reflectionComparison) {
-            final var maximumSymbol = numberOfSymbols - 1;
-            final var nextMaximumRunStart = symbol == maximumSymbol
-                    ? maximumRunStart : t + 1;
-            final var nextPeriod = symbol == word[t - period] ? period : t;
+                final int period,
+                final int reflectionPrefix,
+                final int maximumRunStart,
+                final int reflectionBlocks,
+                final boolean reverseSuffixSmaller,
+                final int symbol,
+                final int reflectionComparison) {
+            val maximumSymbol = numberOfSymbols - 1;
+            val nextMaximumRunStart = symbol == maximumSymbol ? maximumRunStart : t + 1;
+            val nextPeriod = symbol == word[t - period] ? period : t;
             if (reflectionComparison == REVERSE_EQUAL) {
-                descendNormally(t + 1, nextPeriod, t,
-                        nextMaximumRunStart, blockCount, false);
+                descendNormally(t + 1,
+                        nextPeriod,
+                        t,
+                        nextMaximumRunStart,
+                        blockCount,
+                        false);
             } else if (reflectionComparison == REVERSE_LARGER) {
-                descendNormally(t + 1, nextPeriod, reflectionPrefix,
-                        nextMaximumRunStart, reflectionBlocks,
+                descendNormally(t + 1,
+                        nextPeriod,
+                        reflectionPrefix,
+                        nextMaximumRunStart,
+                        reflectionBlocks,
                         reverseSuffixSmaller);
             }
         }
 
         private void descendNormally(final int t,
-                                     final int period,
-                                     final int reflectionPrefix,
-                                     final int maximumRunStart,
-                                     final int reflectionBlocks,
-                                     final boolean reverseSuffixSmaller) {
+                final int period,
+                final int reflectionPrefix,
+                final int maximumRunStart,
+                final int reflectionBlocks,
+                final boolean reverseSuffixSmaller) {
             if (continuationCollector == null) {
-                generateBracelets(t, period, reflectionPrefix, maximumRunStart,
-                        reflectionBlocks, reverseSuffixSmaller);
+                generateBracelets(t,
+                        period,
+                        reflectionPrefix,
+                        maximumRunStart,
+                        reflectionBlocks,
+                        reverseSuffixSmaller);
                 return;
             }
-            continuationCollector.accept(GenerationTask.regular(
-                    new Generator(this), t, period, reflectionPrefix,
-                    maximumRunStart, reflectionBlocks, reverseSuffixSmaller));
+
+            continuationCollector.accept(GenerationTask.regular(new Generator(this),
+                    t,
+                    period,
+                    reflectionPrefix,
+                    maximumRunStart,
+                    reflectionBlocks,
+                    reverseSuffixSmaller));
         }
 
-        /** Compares the assigned prefix with its rank-inverting reversal. */
+        /**
+         * Compares the assigned prefix with its rank-inverting reversal.
+         */
         private int checkTwistedReverse(final int length) {
             var leftBlock = 1;
             var rightBlock = blockCount;
@@ -1006,8 +1129,8 @@ public final class DirectTwistedBraceletGenerator {
             var rightRemaining = blockLengths[rightBlock];
             var compared = 0;
             while (compared < length) {
-                final var current = blockSymbols[leftBlock];
-                final var candidate = reflectedSymbol(blockSymbols[rightBlock]);
+                val current = blockSymbols[leftBlock];
+                val candidate = reflectedSymbol(blockSymbols[rightBlock]);
                 if (candidate < current) {
                     return REVERSE_SMALLER;
                 }
@@ -1015,7 +1138,7 @@ public final class DirectTwistedBraceletGenerator {
                     return REVERSE_LARGER;
                 }
 
-                final var consumed = Math.min(leftRemaining, rightRemaining);
+                val consumed = Math.min(leftRemaining, rightRemaining);
                 compared += consumed;
                 leftRemaining -= consumed;
                 rightRemaining -= consumed;
@@ -1028,35 +1151,39 @@ public final class DirectTwistedBraceletGenerator {
                     rightRemaining = blockLengths[rightBlock];
                 }
             }
+
             return REVERSE_EQUAL;
         }
 
-        /** Maintains BraceletFC's comparison beyond its longest reflected prefix. */
-        private boolean updateReverseSuffixComparison(final int t,
-                                                      final int reflectionPrefix,
-                                                      final boolean previousResult) {
+        /**
+         * Maintains BraceletFC's comparison beyond its longest reflected prefix.
+         */
+        private boolean updateReverseSuffixComparison(final int t, final int reflectionPrefix, final boolean previousResult) {
             if (t - 1 <= (n - reflectionPrefix) / 2 + reflectionPrefix) {
                 return previousResult;
             }
-            final var mirroredPosition = n - t + 2 + reflectionPrefix;
-            final var candidate = reflectedSymbol(word[t - 1]);
-            final var current = word[mirroredPosition];
+
+            val mirroredPosition = n - t + 2 + reflectionPrefix;
+            val candidate = reflectedSymbol(word[t - 1]);
+            val current = word[mirroredPosition];
             if (candidate < current) {
                 return true;
             }
             if (candidate > current) {
                 return false;
             }
+
             return previousResult;
         }
 
         private int reflectedSymbol(final int symbol) {
-            final var cycle = symbolCycle[symbol];
+            val cycle = symbolCycle[symbol];
             if (!specs[cycle].oriented) {
                 return symbol;
             }
-            final var rank = symbolRank[symbol] == 0
-                    ? 0 : specs[cycle].size - symbolRank[symbol];
+
+            val rank = symbolRank[symbol] == 0 ? 0 : specs[cycle].size - symbolRank[symbol];
+
             return firstSymbolByCycle[cycle] + rank;
         }
 
@@ -1082,6 +1209,7 @@ public final class DirectTwistedBraceletGenerator {
 
         private void initializeAvailableSymbols() {
             availableHead = -1;
+
             var prior = -1;
             for (var symbol = 0; symbol < numberOfSymbols; symbol++) {
                 if (remaining[symbol] == 0) {
@@ -1092,10 +1220,12 @@ public final class DirectTwistedBraceletGenerator {
                 if (availableHead == -1) {
                     availableHead = symbol;
                 }
+
                 previous[symbol] = prior;
                 if (prior != -1) {
                     next[prior] = symbol;
                 }
+
                 prior = symbol;
             }
             if (prior != -1) {
@@ -1104,8 +1234,8 @@ public final class DirectTwistedBraceletGenerator {
         }
 
         private void listRemove(final int symbol) {
-            final var prior = previous[symbol];
-            final var following = next[symbol];
+            val prior = previous[symbol];
+            val following = next[symbol];
             if (prior == -1) {
                 availableHead = following;
             } else {
@@ -1117,8 +1247,8 @@ public final class DirectTwistedBraceletGenerator {
         }
 
         private void listAdd(final int symbol) {
-            final var prior = previous[symbol];
-            final var following = next[symbol];
+            val prior = previous[symbol];
+            val following = next[symbol];
             if (prior == -1) {
                 availableHead = symbol;
             } else {
@@ -1143,22 +1273,26 @@ public final class DirectTwistedBraceletGenerator {
             if (auxiliaryActionTrivial || activeComparisonCount == 0) {
                 return true;
             }
-            final var sourceCycle = symbolCycle[symbol];
-            final var mapIndex = sourceCycle;
+
+            val sourceCycle = symbolCycle[symbol];
+            val mapIndex = sourceCycle;
             var targetCycle = comparisonSourceToTarget[mapIndex];
             if (targetCycle == -1) {
-                final var groupIndex = groupByCycle[sourceCycle];
-                final var group = cyclesByGroup[groupIndex];
+                val groupIndex = groupByCycle[sourceCycle];
+                val group = cyclesByGroup[groupIndex];
                 targetCycle = group[comparisonNextTargetByGroup[groupIndex]];
+
                 return symbol == firstSymbolByCycle[targetCycle];
             }
             if (!specs[sourceCycle].oriented) {
                 return symbol == firstSymbolByCycle[targetCycle];
             }
+
             var rank = symbolRank[symbol] + comparisonRankOffset[mapIndex];
             if (rank < 0) {
                 rank += specs[sourceCycle].size;
             }
+
             return symbol == firstSymbolByCycle[targetCycle] + rank;
         }
 
@@ -1167,29 +1301,41 @@ public final class DirectTwistedBraceletGenerator {
          * activate a new pair or advance existing comparisons.
          */
         private void saveComparisons(final int position) {
-            System.arraycopy(comparisonOffset, 0,
-                    comparisonOffsetStack[position], 0, activeComparisonCount);
-            System.arraycopy(comparisonStatus, 0,
-                    comparisonStatusStack[position], 0, activeComparisonCount);
+            System.arraycopy(comparisonOffset,
+                    0,
+                    comparisonOffsetStack[position],
+                    0,
+                    activeComparisonCount);
+            System.arraycopy(comparisonStatus,
+                    0,
+                    comparisonStatusStack[position],
+                    0,
+                    activeComparisonCount);
             activeComparisonCountStack[position] = activeComparisonCount;
             comparisonMapTrailMarker[position] = comparisonMapTrailSize;
         }
 
         private void restoreComparisons(final int position) {
-            final var savedCount = activeComparisonCountStack[position];
-            System.arraycopy(comparisonOffsetStack[position], 0,
-                    comparisonOffset, 0, savedCount);
-            System.arraycopy(comparisonStatusStack[position], 0,
-                    comparisonStatus, 0, savedCount);
-            final var marker = comparisonMapTrailMarker[position];
+            val savedCount = activeComparisonCountStack[position];
+            System.arraycopy(comparisonOffsetStack[position],
+                    0,
+                    comparisonOffset,
+                    0,
+                    savedCount);
+            System.arraycopy(comparisonStatusStack[position],
+                    0,
+                    comparisonStatus,
+                    0,
+                    savedCount);
+
+            val marker = comparisonMapTrailMarker[position];
             while (comparisonMapTrailSize > marker) {
-                final var mapIndex = comparisonMapTrail[--comparisonMapTrailSize];
-                final var state = comparisonStateByMapIndex[mapIndex];
-                final var sourceCycle = mapIndex - comparisonMapBase[state];
+                val mapIndex = comparisonMapTrail[--comparisonMapTrailSize];
+                val state = comparisonStateByMapIndex[mapIndex];
+                val sourceCycle = mapIndex - comparisonMapBase[state];
                 comparisonSourceToTarget[mapIndex] = -1;
                 comparisonRankOffset[mapIndex] = 0;
-                comparisonNextTargetByGroup[state * cyclesByGroup.length
-                        + groupByCycle[sourceCycle]]--;
+                comparisonNextTargetByGroup[state * cyclesByGroup.length + groupByCycle[sourceCycle]]--;
             }
             // A newly activated pair has no state before this placement.
             // All its map entries were removed by the same trail rollback.
@@ -1198,6 +1344,7 @@ public final class DirectTwistedBraceletGenerator {
                 comparisonOffset[state] = 0;
                 comparisonStatus[state] = 0;
             }
+
             activeComparisonCount = savedCount;
             if (savedCount == 0) {
                 comparisonAnchorGroup = -1;
@@ -1214,29 +1361,26 @@ public final class DirectTwistedBraceletGenerator {
          * already handled by the base bracelet recursion.
          */
         private boolean advanceComparisons(final int prefixLength) {
-            final var position = prefixLength - 1;
-            final var group = groupByCycle[symbolCycle[word[prefixLength]]];
-            if (!auxiliaryActionTrivial
-                    && comparisonAnchorGroup == -1 && isAffectedGroup(group)) {
+            val position = prefixLength - 1;
+            val group = groupByCycle[symbolCycle[word[prefixLength]]];
+            if (!auxiliaryActionTrivial && comparisonAnchorGroup == -1 && isAffectedGroup(group)) {
                 comparisonAnchorGroup = group;
                 comparisonAnchorPosition = position;
             }
             if (group == comparisonAnchorGroup) {
-                comparisonStartPosition[activeComparisonCount++] =
-                        Math.floorMod(position - comparisonAnchorPosition, n);
-                comparisonStartPosition[activeComparisonCount++] =
-                        (position + comparisonAnchorPosition) % n;
+                comparisonStartPosition[activeComparisonCount++] = Math.floorMod(position - comparisonAnchorPosition, n);
+                comparisonStartPosition[activeComparisonCount++] = (position + comparisonAnchorPosition) % n;
             }
             for (var state = 0; state < activeComparisonCount; state++) {
                 if (comparisonStatus[state] == COMPARISON_LARGER) {
                     continue;
                 }
-                final var reflected = (state & 1) != 0;
-                final var startPosition = comparisonStartPosition[state];
+
+                val reflected = (state & 1) != 0;
+                val startPosition = comparisonStartPosition[state];
                 var offset = comparisonOffset[state];
                 while (offset < n && offset < prefixLength) {
-                    var sourcePosition = reflected
-                            ? startPosition - offset : startPosition + offset;
+                    var sourcePosition = reflected ? startPosition - offset : startPosition + offset;
                     if (sourcePosition < 0) {
                         sourcePosition += n;
                     } else if (sourcePosition >= n) {
@@ -1246,13 +1390,13 @@ public final class DirectTwistedBraceletGenerator {
                         break;
                     }
 
-                    final var sourceSymbol = word[sourcePosition + 1];
-                    final var candidate = leastMappedSymbol(
-                            state, sourceSymbol, reflected);
-                    final var current = word[offset + 1];
+                    val sourceSymbol = word[sourcePosition + 1];
+                    val candidate = leastMappedSymbol(state, sourceSymbol, reflected);
+                    val current = word[offset + 1];
                     if (candidate < current) {
                         return false;
                     }
+
                     offset++;
                     comparisonOffset[state] = offset;
                     if (candidate > current) {
@@ -1261,6 +1405,7 @@ public final class DirectTwistedBraceletGenerator {
                     }
                 }
             }
+
             return true;
         }
 
@@ -1269,23 +1414,20 @@ public final class DirectTwistedBraceletGenerator {
          * spatial transform.  First encounters choose the least unused equal
          * cycle and the rank shift that produces rank zero.
          */
-        private int leastMappedSymbol(final int state,
-                                      final int sourceSymbol,
-                                      final boolean reflected) {
-            final var mapBase = comparisonMapBase[state];
-            final var sourceCycle = symbolCycle[sourceSymbol];
-            final var mapIndex = mapBase + sourceCycle;
+        private int leastMappedSymbol(final int state, final int sourceSymbol, final boolean reflected) {
+            val mapBase = comparisonMapBase[state];
+            val sourceCycle = symbolCycle[sourceSymbol];
+            val mapIndex = mapBase + sourceCycle;
             var targetCycle = comparisonSourceToTarget[mapIndex];
             if (targetCycle == -1) {
-                final var groupIndex = groupByCycle[sourceCycle];
-                final var nextTargetIndex = state * cyclesByGroup.length + groupIndex;
-                targetCycle = cyclesByGroup[groupIndex][
-                        comparisonNextTargetByGroup[nextTargetIndex]++];
+                val groupIndex = groupByCycle[sourceCycle];
+                val nextTargetIndex = state * cyclesByGroup.length + groupIndex;
+                targetCycle = cyclesByGroup[groupIndex][comparisonNextTargetByGroup[nextTargetIndex]++];
                 comparisonSourceToTarget[mapIndex] = targetCycle;
                 comparisonMapTrail[comparisonMapTrailSize++] = mapIndex;
 
                 if (specs[sourceCycle].oriented) {
-                    final var rank = symbolRank[sourceSymbol];
+                    val rank = symbolRank[sourceSymbol];
                     comparisonRankOffset[mapIndex] = reflected ? rank : -rank;
                 }
             }
@@ -1293,16 +1435,18 @@ public final class DirectTwistedBraceletGenerator {
             if (!specs[sourceCycle].oriented) {
                 return firstSymbolByCycle[targetCycle];
             }
-            final var size = specs[sourceCycle].size;
-            final var transformedRank = (reflected ? -symbolRank[sourceSymbol]
-                    : symbolRank[sourceSymbol]) + comparisonRankOffset[mapIndex];
-            return firstSymbolByCycle[targetCycle]
-                    + (transformedRank < 0 ? transformedRank + size : transformedRank);
+
+            val size = specs[sourceCycle].size;
+            val transformedRank = (reflected ? -symbolRank[sourceSymbol] : symbolRank[sourceSymbol]) + comparisonRankOffset[mapIndex];
+
+            return firstSymbolByCycle[targetCycle] + (transformedRank < 0 ? transformedRank + size : transformedRank);
         }
 
-        /** Records orientation information for a placement. */
+        /**
+         * Records orientation information for a placement.
+         */
         private boolean recordPlacement(final int position, final int symbol) {
-            final var cycle = symbolCycle[symbol];
+            val cycle = symbolCycle[symbol];
             previousRankByPosition[position] = lastRankByCycle[cycle];
             previousReverseOrderByPosition[position] = followsReverseOrder[cycle];
             previousLastPositionByPosition[position] = lastPositionByCycle[cycle];
@@ -1313,18 +1457,16 @@ public final class DirectTwistedBraceletGenerator {
                 if (placedByCycle[cycle] == 0) {
                     followsReverseOrder[cycle] = true;
                 } else {
-                    final var precedingRank = lastRankByCycle[cycle] == 0
-                            ? specs[cycle].size - 1
-                            : lastRankByCycle[cycle] - 1;
+                    val precedingRank = lastRankByCycle[cycle] == 0 ? specs[cycle].size - 1 : lastRankByCycle[cycle] - 1;
                     followsReverseOrder[cycle] &= symbolRank[symbol] == precedingRank;
                 }
+
                 lastRankByCycle[cycle] = symbolRank[symbol];
             }
+
             placedByCycle[cycle]++;
 
-            if (specs[cycle].oriented
-                    && placedByCycle[cycle] == specs[cycle].size
-                    && followsReverseOrder[cycle]) {
+            if (specs[cycle].oriented && placedByCycle[cycle] == specs[cycle].size && followsReverseOrder[cycle]) {
                 removePlacement(position, symbol);
                 return false;
             }
@@ -1343,7 +1485,7 @@ public final class DirectTwistedBraceletGenerator {
                 return true;
             }
 
-            final var cycle = symbolCycle[symbol];
+            val cycle = symbolCycle[symbol];
             final boolean accepted;
             if (specs[cycle].oriented) {
                 positionBySymbol[symbol] = position;
@@ -1351,11 +1493,12 @@ public final class DirectTwistedBraceletGenerator {
             } else {
                 accepted = addUnorientedTargetArcs(position, cycle);
             }
+
             return accepted;
         }
 
         private void removePlacement(final int position, final int symbol) {
-            final var cycle = symbolCycle[symbol];
+            val cycle = symbolCycle[symbol];
             if (pruneTargetCycles) {
                 removeTargetArcs(position);
                 if (specs[cycle].oriented) {
@@ -1367,6 +1510,7 @@ public final class DirectTwistedBraceletGenerator {
                     }
                 }
             }
+
             placedByCycle[cycle]--;
             if (specs[cycle].oriented) {
                 lastRankByCycle[cycle] = previousRankByPosition[position];
@@ -1375,31 +1519,29 @@ public final class DirectTwistedBraceletGenerator {
         }
 
         private boolean addOrientedTargetArcs(final int position, final int symbol) {
-            final var cycle = symbolCycle[symbol];
-            final var size = specs[cycle].size;
-            final var rank = symbolRank[symbol];
-            final var firstSymbol = firstSymbolByCycle[cycle];
+            val cycle = symbolCycle[symbol];
+            val size = specs[cycle].size;
+            val rank = symbolRank[symbol];
+            val firstSymbol = firstSymbolByCycle[cycle];
 
-            final var predecessorSymbol = firstSymbol
-                    + (rank == 0 ? size - 1 : rank - 1);
-            final var predecessorPosition = positionBySymbol[predecessorSymbol];
-            if (predecessorPosition != -1
-                    && !addTargetArc(position,
+            val predecessorSymbol = firstSymbol + (rank == 0 ? size - 1 : rank - 1);
+            val predecessorPosition = positionBySymbol[predecessorSymbol];
+            if (predecessorPosition != -1 && !addTargetArc(position,
                     predecessorPosition == 0 ? n - 1 : predecessorPosition - 1,
                     position)) {
                 return false;
             }
 
-            final var successorSymbol = firstSymbol
-                    + (rank + 1 == size ? 0 : rank + 1);
-            final var successorPosition = positionBySymbol[successorSymbol];
-            return successorPosition == -1
-                    || addTargetArc(position,
-                    position == 0 ? n - 1 : position - 1, successorPosition);
+            val successorSymbol = firstSymbol + (rank + 1 == size ? 0 : rank + 1);
+            val successorPosition = positionBySymbol[successorSymbol];
+
+            return successorPosition == -1 || addTargetArc(position,
+                    position == 0 ? n - 1 : position - 1,
+                    successorPosition);
         }
 
         private boolean addUnorientedTargetArcs(final int position, final int cycle) {
-            final var occurrence = placedByCycle[cycle] - 1;
+            val occurrence = placedByCycle[cycle] - 1;
             if (occurrence == 0) {
                 firstPositionByCycle[cycle] = position;
             } else if (!addTargetArc(position, position - 1, lastPositionByCycle[cycle])) {
@@ -1407,19 +1549,16 @@ public final class DirectTwistedBraceletGenerator {
             }
 
             lastPositionByCycle[cycle] = position;
-            return occurrence + 1 < specs[cycle].size
-                    || addTargetArc(position,
-                    firstPositionByCycle[cycle] == 0
-                            ? n - 1 : firstPositionByCycle[cycle] - 1,
+
+            return occurrence + 1 < specs[cycle].size || addTargetArc(position,
+                    firstPositionByCycle[cycle] == 0 ? n - 1 : firstPositionByCycle[cycle] - 1,
                     position);
         }
 
-        private boolean addTargetArc(final int placementPosition,
-                                     final int source,
-                                     final int target) {
-            final var sourceRoot = findTargetComponent(source);
-            final var targetRoot = findTargetComponent(target);
-            final var closesCycle = sourceRoot == targetRoot;
+        private boolean addTargetArc(final int placementPosition, final int source, final int target) {
+            val sourceRoot = findTargetComponent(source);
+            val targetRoot = findTargetComponent(target);
+            val closesCycle = sourceRoot == targetRoot;
             if (closesCycle && targetEdgeCount + 1 < n) {
                 return false;
             }
@@ -1433,10 +1572,11 @@ public final class DirectTwistedBraceletGenerator {
                 var parentRoot = sourceRoot;
                 var childRoot = targetRoot;
                 if (targetComponentSize[parentRoot] < targetComponentSize[childRoot]) {
-                    final var temporary = parentRoot;
+                    val temporary = parentRoot;
                     parentRoot = childRoot;
                     childRoot = temporary;
                 }
+
                 targetComponentParent[childRoot] = parentRoot;
                 targetComponentSize[parentRoot] += targetComponentSize[childRoot];
                 targetUnionChildBySource[source] = childRoot;
@@ -1450,15 +1590,19 @@ public final class DirectTwistedBraceletGenerator {
             } else if (secondTargetSourceByPosition[placementPosition] == -1) {
                 secondTargetSourceByPosition[placementPosition] = source;
             }
+
             return true;
         }
 
-        /** Finds a forced-target component in O(log N) worst-case time. */
+        /**
+         * Finds a forced-target component in O(log N) worst-case time.
+         */
         private int findTargetComponent(final int vertex) {
             var root = vertex;
             while (targetComponentParent[root] != root) {
                 root = targetComponentParent[root];
             }
+
             return root;
         }
 
@@ -1473,14 +1617,16 @@ public final class DirectTwistedBraceletGenerator {
             if (source == -1) {
                 return;
             }
-            final var unionChild = targetUnionChildBySource[source];
+
+            val unionChild = targetUnionChildBySource[source];
             if (unionChild != -1) {
-                final var unionParent = targetComponentParent[unionChild];
+                val unionParent = targetComponentParent[unionChild];
                 targetComponentSize[unionParent] -= targetComponentSize[unionChild];
                 targetComponentParent[unionChild] = unionChild;
                 targetUnionChildBySource[source] = -1;
             }
-            final var target = targetSuccessor[source];
+
+            val target = targetSuccessor[source];
             targetSuccessor[source] = -1;
             targetPredecessor[target] = -1;
             targetEdgeCount--;
@@ -1488,75 +1634,81 @@ public final class DirectTwistedBraceletGenerator {
 
         private void emitDirectly() {
             if (wordConsumer != null) {
-                final var result = new int[n];
+                val result = new int[n];
                 System.arraycopy(word, 1, result, 0, n);
                 wordConsumer.accept(result);
+
                 return;
             }
             if (countConsumer != null) {
                 countConsumer.run();
                 return;
             }
+
             consumer.accept(this);
         }
 
         private PrimitivePair decodePrimitive() {
-            final byte[] omega=new byte[n];
-            for (int x=0;x<n;x++) omega[x]=(byte)targetSuccessor[(x+n-1)%n];
+            val omega = new byte[n];
+            for (int x = 0; x < n; x++) {
+                omega[x] = (byte) targetSuccessor[(x + n - 1) % n];
+            }
+
             // The recurrence already minimized the auxiliary encoding word.
             // Reflection reverses positions and inverts oriented ranks.
-            return PrimitivePair.fromNormalizedImages(omega,true);
+            return PrimitivePair.fromNormalizedImages(omega, true);
         }
 
         private CyclicTargetPair decodeWord() {
-            final var symbolsByCycle = new int[specs.length][];
-            final var fillByCycle = new int[specs.length];
+            val symbolsByCycle = new int[specs.length][];
+            val fillByCycle = new int[specs.length];
             for (var cycle = 0; cycle < specs.length; cycle++) {
                 symbolsByCycle[cycle] = new int[specs[cycle].size];
             }
 
             for (var position = n - 1; position >= 0; position--) {
-                final var symbol = word[position + 1];
-                final var cycle = symbolCycle[symbol];
-                final var cyclePosition = specs[cycle].oriented
-                        ? symbolRank[symbol]
-                        : fillByCycle[cycle]++;
+                val symbol = word[position + 1];
+                val cycle = symbolCycle[symbol];
+                val cyclePosition = specs[cycle].oriented ? symbolRank[symbol] : fillByCycle[cycle]++;
                 symbolsByCycle[cycle][cyclePosition] = position;
             }
 
-            final var omega = new MulticyclePermutation(specs.length, n);
-            for (final var cycleSymbols : symbolsByCycle) {
+            val omega = new MulticyclePermutation(specs.length, n);
+            for (val cycleSymbols : symbolsByCycle) {
                 omega.add(Cycle.of(cycleSymbols));
             }
-            final var betaSymbols = new int[n];
-            final var rhoSymbols = new int[n];
+
+            val betaSymbols = new int[n];
+            val rhoSymbols = new int[n];
             for (var symbol = 0; symbol < n; symbol++) {
                 betaSymbols[symbol] = symbol;
             }
             for (var index = 1; index < n; index++) {
                 rhoSymbols[index] = targetSuccessor[rhoSymbols[index - 1]];
             }
-            return CyclicTargetPair.ofCanonicalKnownTargetOwned(
-                    omega, Cycle.of(betaSymbols), Cycle.of(rhoSymbols));
+
+            return CyclicTargetPair.ofCanonicalKnownTargetOwned(omega, Cycle.of(betaSymbols), Cycle.of(rhoSymbols));
         }
 
-        private static int[][] buildCycleGroups(final CycleSpec[] specs,
-                                                final int[] groupByCycle) {
+        private static int[][] buildCycleGroups(final CycleSpec[] specs, final int[] groupByCycle) {
             final List<int[]> groups = new ArrayList<>();
             for (var start = 0; start < specs.length; ) {
                 var end = start + 1;
                 while (end < specs.length && specs[end].equals(specs[start])) {
                     end++;
                 }
-                final var group = new int[end - start];
-                final var groupIndex = groups.size();
+
+                val group = new int[end - start];
+                val groupIndex = groups.size();
                 for (var cycle = start; cycle < end; cycle++) {
                     group[cycle - start] = cycle;
                     groupByCycle[cycle] = groupIndex;
                 }
+
                 groups.add(group);
                 start = end;
             }
+
             return groups.toArray(int[][]::new);
         }
 
@@ -1569,24 +1721,24 @@ public final class DirectTwistedBraceletGenerator {
                     return false;
                 }
             }
+
             return true;
         }
 
-        private static int affectedSymbolCount(final CycleSpec[] specs,
-                                               final int[][] cyclesByGroup) {
+        private static int affectedSymbolCount(final CycleSpec[] specs, final int[][] cyclesByGroup) {
             var result = 0;
-            for (final var group : cyclesByGroup) {
+            for (val group : cyclesByGroup) {
                 if (specs[group[0]].oriented || group.length > 1) {
                     result = Math.addExact(result,
                             Math.multiplyExact(specs[group[0]].size, group.length));
                 }
             }
+
             return result;
         }
 
         private boolean isAffectedGroup(final int group) {
-            return specs[cyclesByGroup[group][0]].oriented
-                    || cyclesByGroup[group].length > 1;
+            return specs[cyclesByGroup[group][0]].oriented || cyclesByGroup[group].length > 1;
         }
     }
 
@@ -1604,6 +1756,7 @@ public final class DirectTwistedBraceletGenerator {
     }
 
     private static final class BranchStopped extends RuntimeException {
+
         private static final BranchStopped INSTANCE = new BranchStopped();
 
         private BranchStopped() {

@@ -22,6 +22,7 @@ public class PermutationGroups implements Serializable {
                 }
             }
         }
+
         return computeProduct(include1Cycle, n + 1, p);
     }
 

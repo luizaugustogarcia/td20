@@ -1,39 +1,48 @@
 package br.unb.cic.td20.avoidance;
 
 import br.unb.cic.td20.certificate.CertificateCodec;
-import br.unb.cic.td20.model.CyclicTargetPair;
-import br.unb.cic.td20.model.PrimitivePair;
-import br.unb.cic.td20.model.PrimitiveCanonicalizer;
 import br.unb.cic.td20.compat.LegacyPairs;
+import br.unb.cic.td20.model.CyclicTargetPair;
+import br.unb.cic.td20.model.PrimitiveCanonicalizer;
+import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.runtime.BoundedTasks;
 import br.unb.cic.td20.runtime.DatabaseWriteBatching;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.LongAdder;
-import java.util.function.Consumer;
-import java.util.function.Function;
+import lombok.val;
 import org.rocksdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Bounded disk deduplication of a regenerated wave of valid-pair classes. */
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+/**
+ * Bounded disk deduplication of a regenerated wave of valid-pair classes.
+ */
 public final class DiskStateSet implements AutoCloseable {
+
     private static final Logger log = LoggerFactory.getLogger(DiskStateSet.class);
     private static final byte VERSION = 3;
     private static final byte[] EMPTY = {};
     private final int generatedBatchKeys = positiveProperty("td20.reconstructionGeneratedBatchKeys", 65536);
     private static final int ADMISSION_STOPPED = Integer.MIN_VALUE;
-    static { RocksDB.loadLibrary(); }
+
+    static {
+        RocksDB.loadLibrary();
+    }
+
     private final int bufferKeys = positiveProperty("td20.reconstructionBufferKeys", 16777216);
     private final int writeBatchEntries = DatabaseWriteBatching.entries();
     private final Options options;
@@ -46,9 +55,7 @@ public final class DiskStateSet implements AutoCloseable {
     private final AtomicReference<Throwable> generationFailure = new AtomicReference<>();
     private final AtomicReference<Throwable> persistenceFailure = new AtomicReference<>();
     private final LongAdder generatedKeys = new LongAdder(), ingestedTables = new LongAdder(), ingestedKeys = new LongAdder();
-    private final LongAdder finalCandidateSlots = new LongAdder(), familyClosedSlots = new LongAdder(),
-            closedEndpointFamilies = new LongAdder(), replayedFinalParents = new LongAdder(),
-            immediateClosedParents = new LongAdder();
+    private final LongAdder finalCandidateSlots = new LongAdder(), familyClosedSlots = new LongAdder(), closedEndpointFamilies = new LongAdder(), replayedFinalParents = new LongAdder(), immediateClosedParents = new LongAdder();
     private long size = -1;
     private boolean inventoryValidated;
     private boolean scanPrepared;
@@ -56,75 +63,131 @@ public final class DiskStateSet implements AutoCloseable {
     private final boolean readOnly;
     private final long checkpointCount;
 
-    /** Operational occurrence totals, never exact global class counts. Snapshots need not be atomic across fields. */
-    public record WriteProgress(long generatedKeyOccurrences, long submittedKeyOccurrences,
-                                long consumedKeyOccurrences, long ingestedKeyOccurrences, long ingestedTables) {
-        public long queuedKeyOccurrences() { return Math.max(0, submittedKeyOccurrences - consumedKeyOccurrences); }
+    /**
+     * Operational occurrence totals, never exact global class counts. Snapshots need not be atomic across fields.
+     */
+    public record WriteProgress(long generatedKeyOccurrences, long submittedKeyOccurrences, long consumedKeyOccurrences, long ingestedKeyOccurrences, long ingestedTables) {
+
+        public long queuedKeyOccurrences() {
+            return Math.max(0, submittedKeyOccurrences - consumedKeyOccurrences);
+        }
     }
 
-    /** Worker-owned mutable batch. Counter publication is amortized over batches and source calls. */
+    /**
+     * Worker-owned mutable batch. Counter publication is amortized over batches and source calls.
+     */
     private static final class ProducerBatch {
+
         final ArrayList<byte[]> keys;
         long generatedSincePublication;
-        ProducerBatch(int capacity) { keys = new ArrayList<>(capacity); }
+
+        ProducerBatch(final int capacity) {
+            keys = new ArrayList<>(capacity);
+        }
     }
 
-    /** Concurrent generation/persistence telemetry; partial current source calls may await counter publication. */
+    /**
+     * Concurrent generation/persistence telemetry; partial current source calls may await counter publication.
+     */
     public WriteProgress writeProgress() {
         long consumed = 0, submitted = 0;
-        for (var writer : writers) if (writer != null) {
-            consumed += writer.consumedKeys(); submitted += writer.submittedKeys();
+        for (val writer : writers) {
+            if (writer != null) {
+                consumed += writer.consumedKeys();
+                submitted += writer.submittedKeys();
+            }
         }
+
         return new WriteProgress(generatedKeys.sum(), submitted, consumed, ingestedKeys.sum(), ingestedTables.sum());
     }
 
-    /** Disjoint operational categories; none is a count of distinct closed root classes. */
-    public record FinalInverseProgress(long candidateSlots, long familyClosedSlots, long closedEndpointFamilies,
-                                       long replayedParents, long immediateClosedParents) { }
+    /**
+     * Disjoint operational categories; none is a count of distinct closed root classes.
+     */
+    public record FinalInverseProgress(long candidateSlots, long familyClosedSlots, long closedEndpointFamilies, long replayedParents, long immediateClosedParents) {
+    }
 
     public FinalInverseProgress finalInverseProgress() {
-        return new FinalInverseProgress(finalCandidateSlots.sum(), familyClosedSlots.sum(),
-                closedEndpointFamilies.sum(), replayedFinalParents.sum(), immediateClosedParents.sum());
+        return new FinalInverseProgress(finalCandidateSlots.sum(),
+                familyClosedSlots.sum(),
+                closedEndpointFamilies.sum(),
+                replayedFinalParents.sum(),
+                immediateClosedParents.sum());
     }
 
     public static final class State {
+
         private final PrimitivePair primitivePair;
         private final int maximumMoves;
         private volatile CyclicTargetPair legacyPair;
-        public State(CyclicTargetPair pair, int maximumMoves) {
+
+        public State(final CyclicTargetPair pair, final int maximumMoves) {
             this(LegacyPairs.fromLegacy(pair), maximumMoves);
         }
-        public State(PrimitivePair pair, int maximumMoves) {
-            if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
-            if (!pair.isFixedPointFree()) throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
-            this.primitivePair = pair; this.maximumMoves = maximumMoves;
+
+        public State(final PrimitivePair pair, final int maximumMoves) {
+            if (maximumMoves < 1 || maximumMoves > 11) {
+                throw new IllegalArgumentException("Budget must be 1..11");
+            }
+            if (!pair.isFixedPointFree()) {
+                throw new IllegalArgumentException("Reconstruction states must be fixed-point-free");
+            }
+
+            this.primitivePair = pair;
+            this.maximumMoves = maximumMoves;
         }
-        public PrimitivePair primitivePair() { return primitivePair; }
-        public int maximumMoves() { return maximumMoves; }
-        /** General mathematical/test compatibility only; production uses primitivePair(). */
+
+        public PrimitivePair primitivePair() {
+            return primitivePair;
+        }
+
+        public int maximumMoves() {
+            return maximumMoves;
+        }
+
+        /**
+         * General mathematical/test compatibility only; production uses primitivePair().
+         */
         public CyclicTargetPair pair() {
             var result = legacyPair;
-            if (result == null) { result = LegacyPairs.toLegacy(primitivePair); legacyPair = result; }
+            if (result == null) {
+                result = LegacyPairs.toLegacy(primitivePair);
+                legacyPair = result;
+            }
+
             return result;
         }
-        @Override public boolean equals(Object other) {
+
+        @Override
+        public boolean equals(final Object other) {
             return other instanceof State state && maximumMoves == state.maximumMoves && primitivePair.equals(state.primitivePair);
         }
-        @Override public int hashCode() { return 31 * primitivePair.hashCode() + maximumMoves; }
+
+        @Override
+        public int hashCode() {
+            return 31 * primitivePair.hashCode() + maximumMoves;
+        }
     }
 
-    public DiskStateSet(Path directory) {
+    public DiskStateSet(final Path directory) {
         this(directory, false, -1, null);
     }
 
-    /** Optional early-search observer; the complete persisted inventory remains authoritative. */
-    public DiskStateSet(Path directory, Consumer<List<byte[]>> generatedObserver) {
+    /**
+     * Optional early-search observer; the complete persisted inventory remains authoritative.
+     */
+    public DiskStateSet(final Path directory, final Consumer<List<byte[]>> generatedObserver) {
         this(directory, false, -1, java.util.Objects.requireNonNull(generatedObserver));
     }
 
-    /** Reopens a sealed checkpoint, checking every record and its exact inventory count. */
-    public static DiskStateSet openSealed(Path directory, long expectedCount) {
-        if (expectedCount < 0) throw new IllegalArgumentException("Nonnegative checkpoint count required");
+    /**
+     * Reopens a sealed checkpoint, checking every record and its exact inventory count.
+     */
+    public static DiskStateSet openSealed(final Path directory, final long expectedCount) {
+        if (expectedCount < 0) {
+            throw new IllegalArgumentException("Nonnegative checkpoint count required");
+        }
+
         return new DiskStateSet(directory, true, expectedCount, null);
     }
 
@@ -133,45 +196,60 @@ public final class DiskStateSet implements AutoCloseable {
      * count until that exhaustive scan validates every record, joins every
      * callback and checks the exact count. This avoids a duplicate traversal.
      */
-    public static DiskStateSet openSealedForScan(Path directory, long expectedCount) {
-        if (expectedCount < 0) throw new IllegalArgumentException("Nonnegative checkpoint count required");
+    public static DiskStateSet openSealedForScan(final Path directory, final long expectedCount) {
+        if (expectedCount < 0) {
+            throw new IllegalArgumentException("Nonnegative checkpoint count required");
+        }
+
         return new DiskStateSet(directory, true, expectedCount, null, false);
     }
 
-    /** A completed generated wave with a pending count; countKeys establishes its inventory before expansion. */
-    public static DiskStateSet openCompletedForScan(Path directory) {
+    /**
+     * A completed generated wave with a pending count; countKeys establishes its inventory before expansion.
+     */
+    public static DiskStateSet openCompletedForScan(final Path directory) {
         return new DiskStateSet(directory, true, -1, null, false);
     }
 
-    /** Inventory an emitter output before assigning its counted reconstruction work. */
-    public static DiskStateSet openForInventory(Path directory) {
+    /**
+     * Inventory an emitter output before assigning its counted reconstruction work.
+     */
+    public static DiskStateSet openForInventory(final Path directory) {
         return new DiskStateSet(directory, true, -1, null, false);
     }
 
-    private DiskStateSet(Path directory, boolean readOnly, long expectedCount,
-                         Consumer<List<byte[]>> generatedObserver) {
+    private DiskStateSet(final Path directory,
+            final boolean readOnly,
+            final long expectedCount,
+            final Consumer<List<byte[]>> generatedObserver) {
         this(directory, readOnly, expectedCount, generatedObserver, true);
     }
 
-    private DiskStateSet(Path directory, boolean readOnly, long expectedCount,
-                         Consumer<List<byte[]>> generatedObserver, boolean validateBeforeUse) {
+    private DiskStateSet(final Path directory,
+            final boolean readOnly,
+            final long expectedCount,
+            final Consumer<List<byte[]>> generatedObserver,
+            final boolean validateBeforeUse) {
         this.readOnly = readOnly;
         checkpointCount = readOnly ? expectedCount : -1;
         this.generatedObserver = generatedObserver;
         stagingDirectory = directory.resolve("sst-staging");
-        int writerCount = readOnly ? 0 : Math.min(bufferKeys, positiveProperty("td20.reconstructionWriters",
-                Math.min(8, Runtime.getRuntime().availableProcessors())));
-        int queueBatches = readOnly ? 0 : positiveProperty("td20.reconstructionQueueBatches", 1024);
-        options = new Options().setCreateIfMissing(true).setWriteBufferSize(256L << 20)
-                .setMaxWriteBufferNumber(4).setMaxBackgroundJobs(Math.max(2, Math.min(16, 2 * writerCount)))
-                .setMaxSubcompactions(Math.max(1, Math.min(8, writerCount)))
-                .setMaxOpenFiles(128);
+
+        final int writerCount = readOnly ? 0 : Math.min(bufferKeys,
+                positiveProperty("td20.reconstructionWriters",
+                        Math.min(8, Runtime.getRuntime().availableProcessors())));
+        final int queueBatches = readOnly ? 0 : positiveProperty("td20.reconstructionQueueBatches", 1024);
+        options = new Options().setCreateIfMissing(true).setWriteBufferSize(256L << 20).setMaxWriteBufferNumber(4).setMaxBackgroundJobs(Math.max(2, Math.min(16, 2 * writerCount))).setMaxSubcompactions(Math.max(1, Math.min(8, writerCount))).setMaxOpenFiles(128);
         writers = new StateSetWriter[writerCount];
+
         RocksDB opened = null;
+
         try {
             if (readOnly) {
-                if (!Files.isRegularFile(directory.resolve("CURRENT")))
+                if (!Files.isRegularFile(directory.resolve("CURRENT"))) {
                     throw new IllegalStateException("Missing checkpoint state set: " + directory);
+                }
+
                 options.setCreateIfMissing(false);
                 opened = RocksDB.openReadOnly(options, directory.toString());
             } else {
@@ -179,76 +257,114 @@ public final class DiskStateSet implements AutoCloseable {
                 Files.createDirectory(stagingDirectory);
                 opened = RocksDB.open(options, directory.toString());
             }
+
             database = opened;
             for (int i = 0; i < writerCount; i++) {
-                var pending = new HashSet<ByteBuffer>();
-                int limit = Math.min(writeBatchEntries, ceilingDivide(bufferKeys, writerCount));
+                val pending = new HashSet<ByteBuffer>();
+                final int limit = Math.min(writeBatchEntries, ceilingDivide(bufferKeys, writerCount));
                 writers[i] = new StateSetWriter(ceilingDivide(queueBatches, writerCount),
-                        "reconstruction-writer-" + directory.getFileName() + "-" + i, keys -> {
-                    for (byte[] key : keys) {
-                        pending.add(ByteBuffer.wrap(key));
-                        if (pending.size() >= limit) flushPending(pending);
+                        "reconstruction-writer-" + directory.getFileName() + "-" + i,
+                        keys -> {
+                            for (final byte[] key : keys) {
+                                pending.add(ByteBuffer.wrap(key));
+                                if (pending.size() >= limit) {
+                                    flushPending(pending);
+                                }
+                            }
+                        },
+                        () -> flushPending(pending),
+                        persistenceFailure);
+            }
+            if (readOnly && validateBeforeUse && seal() != expectedCount) {
+                throw new IllegalStateException("Checkpoint state count disagrees at " + directory + ": expected " + expectedCount + ", found " + size);
+            }
+        } catch (final IOException | RocksDBException | RuntimeException failure) {
+            for (val writer : writers) {
+                if (writer != null) {
+                    try {
+                        writer.finish();
+                    } catch (final RuntimeException error) {
+                        failure.addSuppressed(error);
                     }
-                }, () -> flushPending(pending), persistenceFailure);
+                }
             }
-            if (readOnly && validateBeforeUse && seal() != expectedCount)
-                throw new IllegalStateException("Checkpoint state count disagrees at " + directory
-                        + ": expected " + expectedCount + ", found " + size);
-        } catch (IOException | RocksDBException | RuntimeException failure) {
-            for (var writer : writers) if (writer != null) {
-                try { writer.finish(); } catch (RuntimeException error) { failure.addSuppressed(error); }
+            if (opened != null) {
+                opened.close();
             }
-            if (opened != null) opened.close();
+
             options.close();
             throw new IllegalStateException("Cannot open reconstruction state set: " + directory, failure);
         }
     }
 
-    public void add(CyclicTargetPair pair, int maximumMoves) {
+    public void add(final CyclicTargetPair pair, final int maximumMoves) {
         add(LegacyPairs.fromLegacy(pair), maximumMoves);
     }
 
-    public void add(PrimitivePair pair, int maximumMoves) {
+    public void add(final PrimitivePair pair, final int maximumMoves) {
         beginGeneration();
+
         try {
-            byte[] key = encode(new State(pair.canonicalRepresentative(), maximumMoves));
+            final byte[] key = encode(new State(pair.canonicalRepresentative(), maximumMoves));
             generatedKeys.increment();
             submit(List.of(key));
-        } catch (RuntimeException | Error failure) {
+        } catch (final RuntimeException | Error failure) {
             generationFailure.compareAndSet(null, failure);
             throw failure;
-        } finally { admissions.decrementAndGet(); }
+        } finally {
+            admissions.decrementAndGet();
+        }
     }
 
-    /** Primitive inverse callbacks pack keys directly into bounded producer batches. */
-    public void addInverseGenerated(PrimitivePair child, int maximumMoves, int... gains) {
-        if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+    /**
+     * Primitive inverse callbacks pack keys directly into bounded producer batches.
+     */
+    public void addInverseGenerated(final PrimitivePair child, final int maximumMoves, final int... gains) {
+        if (maximumMoves < 1 || maximumMoves > 11) {
+            throw new IllegalArgumentException("Budget must be 1..11");
+        }
+
         beginGeneration();
+
         ProducerBatch batch = null;
+
         try {
-            var work = INVERSE.get();
+            val work = INVERSE.get();
             batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
                     ignored -> new ProducerBatch(generatedBatchKeys));
-            var outputBatch = batch;
-            for (int gain : gains) work.inverse.preimages(child, gain, (omega, beta, n) -> {
-                byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
-                key[0] = VERSION; key[1] = (byte) maximumMoves; key[2] = (byte) n;
-                appendGenerated(outputBatch, key);
-            });
-        } catch (RuntimeException | Error failure) {
-            generationFailure.compareAndSet(null, failure); throw failure;
+
+            val outputBatch = batch;
+            for (final int gain : gains) {
+                work.inverse.preimages(child,
+                        gain,
+                        (omega, beta, n) -> {
+                            final byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
+                            key[0] = VERSION;
+                            key[1] = (byte) maximumMoves;
+                            key[2] = (byte) n;
+                            appendGenerated(outputBatch, key);
+                        });
+            }
+        } catch (final RuntimeException | Error failure) {
+            generationFailure.compareAndSet(null, failure);
+            throw failure;
         } finally {
-            if (batch != null) publishGeneratedCount(batch);
+            if (batch != null) {
+                publishGeneratedCount(batch);
+            }
+
             admissions.decrementAndGet();
         }
     }
 
     private static final class InverseWorkspace {
+
         final PrimitiveInverseReconstruction inverse = new PrimitiveInverseReconstruction();
         final PrimitiveCanonicalizer canonicalizer = new PrimitiveCanonicalizer();
         final FinalInverseReconstruction finalInverse = new FinalInverseReconstruction();
         final ImmediateRootClosure rootClosure = new ImmediateRootClosure();
     }
+
     private static final ThreadLocal<InverseWorkspace> INVERSE = ThreadLocal.withInitial(InverseWorkspace::new);
 
     /**
@@ -256,31 +372,49 @@ public final class DiskStateSet implements AutoCloseable {
      * closures precede canonicalization. Only elementary-residual roots persist.
      * Every source is still expanded; there is no budget-ten certificate lookup.
      */
-    public void addFinalInverseGenerated(PrimitivePair child) {
-        if (child.size() != 20 && child.size() != 21)
+    public void addFinalInverseGenerated(final PrimitivePair child) {
+        if (child.size() != 20 && child.size() != 21) {
             throw new IllegalArgumentException("Final inverse requires a 20/21-symbol source");
+        }
+
         beginGeneration();
+
         ProducerBatch batch = null;
+
         try {
-            var work = INVERSE.get();
+            val work = INVERSE.get();
             batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
                     ignored -> new ProducerBatch(generatedBatchKeys));
-            var outputBatch = batch;
-            long[] closed = {0};
-            long parents = work.finalInverse.preimages(child, 21 - child.size(), (omega, beta, n) -> {
-                if (work.rootClosure.closes(omega, beta, n)) { closed[0]++; return; }
-                byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
-                key[0] = VERSION; key[1] = 11; key[2] = (byte) n;
-                appendGenerated(outputBatch, key);
-            });
+
+            val outputBatch = batch;
+            final long[] closed = { 0 };
+            final long parents = work.finalInverse.preimages(child,
+                    21 - child.size(),
+                    (omega, beta, n) -> {
+                        if (work.rootClosure.closes(omega, beta, n)) {
+                            closed[0]++;
+                            return;
+                        }
+
+                        final byte[] key = work.canonicalizer.keyForKnownPair(omega, beta, n, 3);
+                        key[0] = VERSION;
+                        key[1] = 11;
+                        key[2] = (byte) n;
+                        appendGenerated(outputBatch, key);
+                    });
             finalCandidateSlots.add(work.finalInverse.candidateSlots());
             familyClosedSlots.add(work.finalInverse.familyClosedSlots());
             closedEndpointFamilies.add(work.finalInverse.closedEndpointFamilies());
-            replayedFinalParents.add(parents); immediateClosedParents.add(closed[0]);
-        } catch (RuntimeException | Error failure) {
-            generationFailure.compareAndSet(null, failure); throw failure;
+            replayedFinalParents.add(parents);
+            immediateClosedParents.add(closed[0]);
+        } catch (final RuntimeException | Error failure) {
+            generationFailure.compareAndSet(null, failure);
+            throw failure;
         } finally {
-            if (batch != null) publishGeneratedCount(batch);
+            if (batch != null) {
+                publishGeneratedCount(batch);
+            }
+
             admissions.decrementAndGet();
         }
     }
@@ -294,128 +428,189 @@ public final class DiskStateSet implements AutoCloseable {
      * its output callback. Callers must join all generators before sealing.
      * A failed generation makes the incomplete set unsealable.
      */
-    public void addGenerated(int maximumMoves, Consumer<Consumer<CyclicTargetPair>> generator) {
-        if (maximumMoves < 1 || maximumMoves > 11) throw new IllegalArgumentException("Budget must be 1..11");
+    public void addGenerated(final int maximumMoves, final Consumer<Consumer<CyclicTargetPair>> generator) {
+        if (maximumMoves < 1 || maximumMoves > 11) {
+            throw new IllegalArgumentException("Budget must be 1..11");
+        }
+
         java.util.Objects.requireNonNull(generator);
         beginGeneration();
+
         ProducerBatch batch = null;
+
         try {
             batch = producerBatches.computeIfAbsent(Thread.currentThread().threadId(),
                     ignored -> new ProducerBatch(generatedBatchKeys));
-            var outputBatch = batch;
+
+            val outputBatch = batch;
             generator.accept(pair -> {
                 appendGenerated(outputBatch, encode(new State(pair.canonicalRepresentative(), maximumMoves)));
             });
-        } catch (RuntimeException | Error failure) {
+        } catch (final RuntimeException | Error failure) {
             generationFailure.compareAndSet(null, failure);
             throw failure;
         } finally {
-            if (batch != null) publishGeneratedCount(batch);
+            if (batch != null) {
+                publishGeneratedCount(batch);
+            }
+
             admissions.decrementAndGet();
         }
     }
 
-    private void appendGenerated(ProducerBatch batch, byte[] key) {
-        batch.keys.add(key); batch.generatedSincePublication++;
+    private void appendGenerated(final ProducerBatch batch, final byte[] key) {
+        batch.keys.add(key);
+        batch.generatedSincePublication++;
         if (batch.keys.size() == generatedBatchKeys) {
-            publishGeneratedCount(batch); submit(batch.keys); batch.keys.clear();
+            publishGeneratedCount(batch);
+            submit(batch.keys);
+            batch.keys.clear();
         }
     }
 
-    private void publishGeneratedCount(ProducerBatch batch) {
-        if (batch.generatedSincePublication == 0) return;
-        generatedKeys.add(batch.generatedSincePublication); batch.generatedSincePublication = 0;
+    private void publishGeneratedCount(final ProducerBatch batch) {
+        if (batch.generatedSincePublication == 0) {
+            return;
+        }
+
+        generatedKeys.add(batch.generatedSincePublication);
+        batch.generatedSincePublication = 0;
     }
 
-    private void submit(List<byte[]> keys) {
-        if (generatedObserver != null) generatedObserver.accept(List.copyOf(keys));
-        if (writers.length == 1) { writers[0].submit(keys); return; }
-        var partitions = new ArrayList<List<byte[]>>(writers.length);
-        for (int i = 0; i < writers.length; i++) partitions.add(new ArrayList<>());
-        boolean powerOfTwo = (writers.length & (writers.length - 1)) == 0;
-        for (byte[] key : keys) {
+    private void submit(final List<byte[]> keys) {
+        if (generatedObserver != null) {
+            generatedObserver.accept(List.copyOf(keys));
+        }
+        if (writers.length == 1) {
+            writers[0].submit(keys);
+            return;
+        }
+
+        val partitions = new ArrayList<List<byte[]>>(writers.length);
+        for (int i = 0; i < writers.length; i++) {
+            partitions.add(new ArrayList<>());
+        }
+
+        final boolean powerOfTwo = (writers.length & (writers.length - 1)) == 0;
+        for (final byte[] key : keys) {
             int hash = Arrays.hashCode(key);
             hash ^= hash >>> 16;
             hash *= 0x7feb352d;
             hash ^= hash >>> 15;
             hash *= 0x846ca68b;
             hash ^= hash >>> 16;
-            int shard = powerOfTwo ? hash & (writers.length - 1) : Math.floorMod(hash, writers.length);
+
+            final int shard = powerOfTwo ? hash & (writers.length - 1) : Math.floorMod(hash, writers.length);
             partitions.get(shard).add(key);
         }
+
         // Publish to every available shard before waiting on any full shard.
         // Otherwise a slow first shard prevents later writers receiving work.
-        boolean[] submitted = new boolean[writers.length];
-        for (int i = 0; i < writers.length; i++) submitted[i] = writers[i].trySubmit(partitions.get(i));
-        for (int i = 0; i < writers.length; i++)
-            if (!submitted[i]) writers[i].submit(partitions.get(i));
-    }
-
-    static byte[] encode(State state) {
-        var pair = state.primitivePair().canonicalRepresentative();
-        byte[] raw = CertificateCodec.keyFor(pair);
-        return ByteBuffer.allocate(raw.length + 3).put(VERSION).put((byte) state.maximumMoves())
-                .put((byte) pair.size()).put(raw).array();
-    }
-
-    /** Persist a bounded, already sorted batch without creating asynchronous SST writers. */
-    public static void writeSealedBatch(Path directory, List<State> states) {
-        if (states.isEmpty()) throw new IllegalArgumentException("Empty reconstruction batch");
-        byte[] previous = null;
-        try (var options = new Options().setCreateIfMissing(true).setWriteBufferSize(4L << 20)
-                    .setMaxWriteBufferNumber(2).setMaxBackgroundJobs(2).setMaxOpenFiles(32);
-             var writes = new WriteOptions().setDisableWAL(true);
-             var flush = new FlushOptions().setWaitForFlush(true);
-             var batch = new WriteBatch()) {
-            for (var state : states) {
-                byte[] key = encode(state);
-                if (previous != null && Arrays.compareUnsigned(previous,key) >= 0)
-                    throw new IllegalArgumentException("Batch keys must be sorted and distinct");
-                batch.put(key,EMPTY); previous = key;
+        val submitted = new boolean[writers.length];
+        for (int i = 0; i < writers.length; i++) {
+            submitted[i] = writers[i].trySubmit(partitions.get(i));
+        }
+        for (int i = 0; i < writers.length; i++) {
+            if (!submitted[i]) {
+                writers[i].submit(partitions.get(i));
             }
-            Files.createDirectory(directory);
-            try (var database = RocksDB.open(options,directory.toString())) {
-                database.write(writes,batch); database.flush(flush);
-            }
-        } catch (IOException | RocksDBException error) {
-            throw new IllegalStateException("Cannot persist reconstruction batch: " + directory,error);
         }
     }
 
-    private void flushPending(HashSet<ByteBuffer> pending) {
-        if (pending.isEmpty()) return;
-        long started = System.nanoTime();
+    static byte[] encode(final State state) {
+        val pair = state.primitivePair().canonicalRepresentative();
+        final byte[] raw = CertificateCodec.keyFor(pair);
+
+        return ByteBuffer.allocate(raw.length + 3).put(VERSION).put((byte) state.maximumMoves()).put((byte) pair.size()).put(raw).array();
+    }
+
+    /**
+     * Persist a bounded, already sorted batch without creating asynchronous SST writers.
+     */
+    public static void writeSealedBatch(final Path directory, final List<State> states) {
+        if (states.isEmpty()) {
+            throw new IllegalArgumentException("Empty reconstruction batch");
+        }
+
+        byte[] previous = null;
+
+        try (val options = new Options().setCreateIfMissing(true).setWriteBufferSize(4L << 20).setMaxWriteBufferNumber(2).setMaxBackgroundJobs(2).setMaxOpenFiles(32);
+            val writes = new WriteOptions().setDisableWAL(true);
+            val flush = new FlushOptions().setWaitForFlush(true);
+            val batch = new WriteBatch()) {
+            for (val state : states) {
+                final byte[] key = encode(state);
+                if (previous != null && Arrays.compareUnsigned(previous, key) >= 0) {
+                    throw new IllegalArgumentException("Batch keys must be sorted and distinct");
+                }
+
+                batch.put(key, EMPTY);
+                previous = key;
+            }
+
+            Files.createDirectory(directory);
+
+            try (val database = RocksDB.open(options, directory.toString())) {
+                database.write(writes, batch);
+                database.flush(flush);
+            }
+        } catch (final IOException | RocksDBException error) {
+            throw new IllegalStateException("Cannot persist reconstruction batch: " + directory, error);
+        }
+    }
+
+    private void flushPending(final HashSet<ByteBuffer> pending) {
+        if (pending.isEmpty()) {
+            return;
+        }
+
+        final long started = System.nanoTime();
         log.debug("Reconstruction persistence: building sorted table, keys={}, directory={}",
-                pending.size(), stagingDirectory);
+                pending.size(),
+                stagingDirectory);
+
         // Match RocksDB's unsigned bytewise comparator. Each shard constructs its
         // table independently, outside the database's shared memtable write path.
-        byte[][] keys = new byte[pending.size()][];
+        val keys = new byte[pending.size()][];
         int index = 0;
-        for (var key : pending) keys[index++] = key.array();
+        for (val key : pending) {
+            keys[index++] = key.array();
+        }
+
         Arrays.sort(keys, Arrays::compareUnsigned);
-        try (var environment = new EnvOptions();
-             var table = new SstFileWriter(environment, options);
-             var ingest = new IngestExternalFileOptions().setMoveFiles(true)
-                     .setAllowGlobalSeqNo(true).setAllowBlockingFlush(false)) {
-            Path path = Files.createTempFile(stagingDirectory, "inverse-", ".sst");
+
+        try (val environment = new EnvOptions();
+            val table = new SstFileWriter(environment, options);
+            val ingest = new IngestExternalFileOptions().setMoveFiles(true).setAllowGlobalSeqNo(true).setAllowBlockingFlush(false)) {
+            final Path path = Files.createTempFile(stagingDirectory, "inverse-", ".sst");
             table.open(path.toString());
-            for (byte[] key : keys) table.put(key, EMPTY);
+            for (final byte[] key : keys) {
+                table.put(key, EMPTY);
+            }
+
             table.finish();
-            long bytes = table.fileSize();
+
+            final long bytes = table.fileSize();
             // Overlapping keys have the same empty value. Global sequence
             // numbers preserve one exact set entry across successive tables.
             database.ingestExternalFile(List.of(path.toString()), ingest);
             Files.deleteIfExists(path);
             pending.clear();
-            ingestedKeys.add(keys.length); ingestedTables.increment();
+            ingestedKeys.add(keys.length);
+            ingestedTables.increment();
             log.debug("Reconstruction persistence: ingested table, keys={}, bytes={}, elapsed={} ms, directory={}",
-                    keys.length, bytes, (System.nanoTime() - started) / 1_000_000, stagingDirectory);
-        } catch (IOException | RocksDBException failure) {
+                    keys.length,
+                    bytes,
+                    (System.nanoTime() - started) / 1_000_000,
+                    stagingDirectory);
+        } catch (final IOException | RocksDBException failure) {
             throw new IllegalStateException("Cannot persist reconstruction state table", failure);
         }
     }
 
-    /** Drain persistence without a preliminary inventory scan. */
+    /**
+     * Drain persistence without a preliminary inventory scan.
+     */
     public synchronized long prepareScan() {
         requireOpen();
         requireSuccessfulGeneration();
@@ -425,13 +620,19 @@ public final class DiskStateSet implements AutoCloseable {
                 finishWriters();
                 requireSuccessfulGeneration();
             }
+
             scanPrepared = true;
         }
+
         return size >= 0 ? size : checkpointCount;
     }
 
-    /** Unknown until an exhaustive iterator and its callbacks complete. */
-    public synchronized long knownSize() { return size; }
+    /**
+     * Unknown until an exhaustive iterator and its callbacks complete.
+     */
+    public synchronized long knownSize() {
+        return size;
+    }
 
     /**
      * Counts RocksDB's already-deduplicated logical keys after writers drain.
@@ -440,78 +641,122 @@ public final class DiskStateSet implements AutoCloseable {
      */
     public synchronized long countKeys() {
         prepareScan();
-        if (size >= 0) return size;
-        int workers=Math.min(Runtime.getRuntime().availableProcessors(),
-                positiveProperty("td20.reconstructionCountWorkers",Runtime.getRuntime().availableProcessors()));
-        long scanned=ParallelKeyCounter.count(database,workers,
-                positiveProperty("td20.reconstructionCountRangesPerWorker",4),checkpointCount,
-                "State inventory "+stagingDirectory.getParent().getFileName()+" key counting");
+        if (size >= 0) {
+            return size;
+        }
+
+        final int workers = Math.min(Runtime.getRuntime().availableProcessors(),
+                positiveProperty("td20.reconstructionCountWorkers", Runtime.getRuntime().availableProcessors()));
+        final long scanned = ParallelKeyCounter.count(database,
+                workers,
+                positiveProperty("td20.reconstructionCountRangesPerWorker", 4),
+                checkpointCount,
+                "State inventory " + stagingDirectory.getParent().getFileName() + " key counting");
         size = scanned;
+
         return size;
     }
 
     public synchronized long seal() {
         prepareScan();
-        if (size >= 0 && inventoryValidated) return size;
+        if (size >= 0 && inventoryValidated) {
+            return size;
+        }
+
         // This set writes exclusively through completed external-SST ingests.
         // There is no memtable to flush; a synchronous flush can wait behind
         // compactions even though the complete inventory is already readable.
-        size = scanEncodedConcurrently(Runtime.getRuntime().availableProcessors(), checkpointCount,
-                "unique-class counting", keys -> {
-                    for (byte[] key : keys) decode(key, EMPTY);
+        size = scanEncodedConcurrently(Runtime.getRuntime().availableProcessors(),
+                checkpointCount,
+                "unique-class counting",
+                keys -> {
+                    for (final byte[] key : keys) {
+                        decode(key, EMPTY);
+                    }
                     // Advisory work follows validation; the mandatory processing
                     // scan still visits every persisted record.
-                    if (generatedObserver != null) generatedObserver.accept(keys);
+                    if (generatedObserver != null) {
+                        generatedObserver.accept(keys);
+                    }
                 });
         inventoryValidated = true;
+
         return size;
     }
 
-    public void forEach(Consumer<State> consumer) {
-        long expected = prepareScan();
+    public void forEach(final Consumer<State> consumer) {
+        final long expected = prepareScan();
         long scanned = 0;
-        var scannedCount = new AtomicLong();
-        try (var progress = new ReconstructionProgress("State inventory " + stagingDirectory.getParent().getFileName() + " scan",
-                     expected, scannedCount::get);
-             var reads = new ReadOptions().setFillCache(false); var iterator = database.newIterator(reads)) {
+        val scannedCount = new AtomicLong();
+
+        try (val progress = new ReconstructionProgress("State inventory " + stagingDirectory.getParent().getFileName() + " scan",
+                expected,
+                scannedCount::get);
+            val reads = new ReadOptions().setFillCache(false);
+            val iterator = database.newIterator(reads)) {
             for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
                 consumer.accept(decode(iterator.key(), iterator.value()));
                 scanned = Math.addExact(scanned, 1);
-                if ((scanned & 4095) == 0) scannedCount.set(scanned);
+                if ((scanned & 4095) == 0) {
+                    scannedCount.set(scanned);
+                }
             }
+
             iterator.status();
             scannedCount.set(scanned);
-        } catch (RocksDBException failure) { throw new IllegalStateException("Cannot scan reconstruction states", failure); }
-        if (expected >= 0 && scanned != expected) throw new IllegalStateException("Reconstruction scan missed states");
-        synchronized (this) { size = scanned; inventoryValidated = true; }
+        } catch (final RocksDBException failure) {
+            throw new IllegalStateException("Cannot scan reconstruction states", failure);
+        }
+        if (expected >= 0 && scanned != expected) {
+            throw new IllegalStateException("Reconstruction scan missed states");
+        }
+        synchronized (this) {
+            size = scanned;
+            inventoryValidated = true;
+        }
     }
 
-    /** Reads deterministic keys with bounded parallel callbacks, waiting for all work to finish. */
-    public void forEachConcurrently(int workers, Consumer<State> consumer) {
-        forEachConcurrently(workers, null, state -> { }, consumer);
+    /**
+     * Reads deterministic keys with bounded parallel callbacks, waiting for all work to finish.
+     */
+    public void forEachConcurrently(final int workers, final Consumer<State> consumer) {
+        forEachConcurrently(workers, null, state -> {
+        }, consumer);
     }
 
-    public static int lookupBatchSize() { return positiveProperty("td20.certificateLookupBatchSize", 262144); }
+    public static int lookupBatchSize() {
+        return positiveProperty("td20.certificateLookupBatchSize", 262144);
+    }
 
-    private static int positiveProperty(String name, int defaultValue) {
-        int value = Integer.getInteger(name, defaultValue);
-        if (value < 1) throw new IllegalArgumentException(name + " must be positive");
+    private static int positiveProperty(final String name, final int defaultValue) {
+        final int value = Integer.getInteger(name, defaultValue);
+        if (value < 1) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+
         return value;
     }
 
-    private static int ceilingDivide(int value, int divisor) {
+    private static int ceilingDivide(final int value, final int divisor) {
         return Math.toIntExact(((long) value + divisor - 1) / divisor);
     }
 
-    /** Deterministic bounded batches, including the final partial batch. */
-    public void forEachBatch(Consumer<List<State>> consumer) {
-        int limit = lookupBatchSize();
-        var batch = new ArrayList<State>(limit);
+    /**
+     * Deterministic bounded batches, including the final partial batch.
+     */
+    public void forEachBatch(final Consumer<List<State>> consumer) {
+        final int limit = lookupBatchSize();
+        val batch = new ArrayList<State>(limit);
         forEach(state -> {
             batch.add(state);
-            if (batch.size() == limit) { consumer.accept(List.copyOf(batch)); batch.clear(); }
+            if (batch.size() == limit) {
+                consumer.accept(List.copyOf(batch));
+                batch.clear();
+            }
         });
-        if (!batch.isEmpty()) consumer.accept(List.copyOf(batch));
+        if (!batch.isEmpty()) {
+            consumer.accept(List.copyOf(batch));
+        }
     }
 
     /**
@@ -521,51 +766,84 @@ public final class DiskStateSet implements AutoCloseable {
      * Callbacks and lookups must support concurrent calls. Every worker joins
      * before the exact inventory becomes available, including the final batch.
      */
-    public void forEachConcurrently(int workers, Function<List<State>, boolean[]> lookup,
-                                    Consumer<State> cached, Consumer<State> missing) {
-        long expected = prepareScan();
-        long scanned = scanEncodedConcurrently(workers, expected, "scan", keys -> {
-            if (lookup == null) {
-                for (byte[] key : keys) missing.accept(decode(key, EMPTY));
-            } else {
-                var batch = new ArrayList<State>(keys.size());
-                for (byte[] key : keys) batch.add(decode(key, EMPTY));
-                boolean[] hits = lookup.apply(List.copyOf(batch));
-                if (hits == null || hits.length != batch.size())
-                    throw new IllegalStateException("Incomplete reconstruction batch lookup");
-                for (int i = 0; i < batch.size(); i++) {
-                    if (hits[i]) cached.accept(batch.get(i));
-                    else missing.accept(batch.get(i));
-                }
-            }
-        });
-        synchronized (this) { size = scanned; inventoryValidated = true; }
+    public void forEachConcurrently(final int workers,
+            final Function<List<State>, boolean[]> lookup,
+            final Consumer<State> cached,
+            final Consumer<State> missing) {
+        final long expected = prepareScan();
+        final long scanned = scanEncodedConcurrently(workers,
+                expected,
+                "scan",
+                keys -> {
+                    if (lookup == null) {
+                        for (final byte[] key : keys) {
+                            missing.accept(decode(key, EMPTY));
+                        }
+                    } else {
+                        val batch = new ArrayList<State>(keys.size());
+                        for (final byte[] key : keys) {
+                            batch.add(decode(key, EMPTY));
+                        }
+
+                        final boolean[] hits = lookup.apply(List.copyOf(batch));
+                        if (hits == null || hits.length != batch.size()) {
+                            throw new IllegalStateException("Incomplete reconstruction batch lookup");
+                        }
+                        for (int i = 0; i < batch.size(); i++) {
+                            if (hits[i]) {
+                                cached.accept(batch.get(i));
+                            } else {
+                                missing.accept(batch.get(i));
+                            }
+                        }
+                    }
+                });
+        synchronized (this) {
+            size = scanned;
+            inventoryValidated = true;
+        }
     }
 
-    /** The single RocksDB iterator owns ordering; bounded batches own all costly work. */
-    private long scanEncodedConcurrently(int workers, long expected, String phase,
-                                         Consumer<List<byte[]>> consumer) {
-        if (workers < 1) throw new IllegalArgumentException("Positive scan worker count required");
+    /**
+     * The single RocksDB iterator owns ordering; bounded batches own all costly work.
+     */
+    private long scanEncodedConcurrently(final int workers,
+            final long expected,
+            final String phase,
+            final Consumer<List<byte[]>> consumer) {
+        if (workers < 1) {
+            throw new IllegalArgumentException("Positive scan worker count required");
+        }
+
         int batchKeys = Math.min(lookupBatchSize(), positiveProperty("td20.reconstructionScanBatchKeys", 4096));
-        int parallelism = Math.min(workers, Runtime.getRuntime().availableProcessors());
+        final int parallelism = Math.min(workers, Runtime.getRuntime().availableProcessors());
         // Small distributed checkpoints also need enough independent tasks.
         // Explicit batch settings take precedence; retain large bulk reads for
         // the much larger, possibly uncounted waves.
-        boolean adaptive = Boolean.parseBoolean(System.getProperty("td20.reconstructionAdaptiveScan",
+        final boolean adaptive = Boolean.parseBoolean(System.getProperty("td20.reconstructionAdaptiveScan",
                 System.getProperty("td20.reconstructionScanBatchKeys") == null
                         && System.getProperty("td20.certificateLookupBatchSize") == null ? "true" : "false"));
-        if (expected >= 0 && adaptive) batchKeys = (int) Math.min(batchKeys,
-                Math.max(1L, Math.ceilDiv(expected, (long) parallelism * 16)));
+        if (expected >= 0 && adaptive) {
+            batchKeys = (int) Math.min(batchKeys,
+                    Math.max(1L, Math.ceilDiv(expected, (long) parallelism * 16)));
+        }
+
         long scanned = 0;
-        var completed = new LongAdder();
-        try (var progress = new ReconstructionProgress("State inventory " + stagingDirectory.getParent().getFileName() + " " + phase,
-                     expected, completed::sum);
-             var tasks = new BoundedTasks(parallelism, "reconstruction-");
-             var reads = new ReadOptions().setFillCache(false); var iterator = database.newIterator(reads)) {
-            var batch = new ArrayList<byte[]>(batchKeys);
+        val completed = new LongAdder();
+
+        try (val progress = new ReconstructionProgress("State inventory " + stagingDirectory.getParent().getFileName() + " " + phase,
+                expected,
+                completed::sum);
+            val tasks = new BoundedTasks(parallelism, "reconstruction-");
+            val reads = new ReadOptions().setFillCache(false);
+            val iterator = database.newIterator(reads)) {
+            val batch = new ArrayList<byte[]>(batchKeys);
             for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
                 tasks.check();
-                if (iterator.value().length != 0) throw new IllegalStateException("Malformed reconstruction state");
+                if (iterator.value().length != 0) {
+                    throw new IllegalStateException("Malformed reconstruction state");
+                }
+
                 batch.add(iterator.key());
                 scanned = Math.addExact(scanned, 1);
                 if (batch.size() == batchKeys) {
@@ -573,85 +851,145 @@ public final class DiskStateSet implements AutoCloseable {
                     batch.clear();
                 }
             }
+
             iterator.status();
-            if (!batch.isEmpty()) submitScanBatch(tasks, batch, consumer, completed);
-        } catch (RocksDBException failure) { throw new IllegalStateException("Cannot scan reconstruction states", failure); }
-        if (expected >= 0 && scanned != expected) throw new IllegalStateException("Reconstruction scan missed states");
-        if (completed.sum() != scanned) throw new IllegalStateException("Incomplete reconstruction scan callbacks");
+            if (!batch.isEmpty()) {
+                submitScanBatch(tasks, batch, consumer, completed);
+            }
+        } catch (final RocksDBException failure) {
+            throw new IllegalStateException("Cannot scan reconstruction states", failure);
+        }
+        if (expected >= 0 && scanned != expected) {
+            throw new IllegalStateException("Reconstruction scan missed states");
+        }
+        if (completed.sum() != scanned) {
+            throw new IllegalStateException("Incomplete reconstruction scan callbacks");
+        }
+
         return scanned;
     }
 
-    private static void submitScanBatch(BoundedTasks tasks, List<byte[]> batch,
-                                         Consumer<List<byte[]>> consumer, LongAdder completed) {
-        var keys = List.copyOf(batch);
+    private static void submitScanBatch(final BoundedTasks tasks,
+            final List<byte[]> batch,
+            final Consumer<List<byte[]>> consumer,
+            final LongAdder completed) {
+        val keys = List.copyOf(batch);
         tasks.submit(() -> {
             consumer.accept(keys);
             completed.add(keys.size());
         });
     }
 
-    static State decode(byte[] key, byte[] value) {
-        if (key.length < 4 || key[0] != VERSION || value.length != 0)
+    static State decode(final byte[] key, final byte[] value) {
+        if (key.length < 4 || key[0] != VERSION || value.length != 0) {
             throw new IllegalStateException("Malformed reconstruction state");
+        }
+
         return new State(PrimitivePair.fromCanonicalKey(Arrays.copyOfRange(key, 3, key.length),
-                Byte.toUnsignedInt(key[2])), Byte.toUnsignedInt(key[1]));
+                        Byte.toUnsignedInt(key[2])),
+                Byte.toUnsignedInt(key[1]));
     }
 
-    private void requireOpen() { if (closed) throw new IllegalStateException("State set is closed"); }
-    private void requireSuccessfulGeneration() {
-        if (generationFailure.get() != null)
-            throw new IllegalStateException("Reconstruction generation failed", generationFailure.get());
-        if (persistenceFailure.get() != null)
-            throw new IllegalStateException("Reconstruction writer failed", persistenceFailure.get());
+    private void requireOpen() {
+        if (closed) {
+            throw new IllegalStateException("State set is closed");
+        }
     }
+
+    private void requireSuccessfulGeneration() {
+        if (generationFailure.get() != null) {
+            throw new IllegalStateException("Reconstruction generation failed", generationFailure.get());
+        }
+        if (persistenceFailure.get() != null) {
+            throw new IllegalStateException("Reconstruction writer failed", persistenceFailure.get());
+        }
+    }
+
     private void beginGeneration() {
         requireOpen();
         requireSuccessfulGeneration();
-        if (readOnly) throw new IllegalStateException("State set is sealed");
+        if (readOnly) {
+            throw new IllegalStateException("State set is sealed");
+        }
         for (;;) {
-            int active = admissions.get();
-            if (active < 0) throw new IllegalStateException("State set is sealed");
-            if (active == Integer.MAX_VALUE) throw new IllegalStateException("Too many reconstruction producers");
-            if (admissions.compareAndSet(active, active + 1)) return;
+            final int active = admissions.get();
+            if (active < 0) {
+                throw new IllegalStateException("State set is sealed");
+            }
+            if (active == Integer.MAX_VALUE) {
+                throw new IllegalStateException("Too many reconstruction producers");
+            }
+            if (admissions.compareAndSet(active, active + 1)) {
+                return;
+            }
         }
     }
+
     private void stopAdmissions() {
-        if (admissions.get() == ADMISSION_STOPPED) return;
-        if (!admissions.compareAndSet(0, ADMISSION_STOPPED))
+        if (admissions.get() == ADMISSION_STOPPED) {
+            return;
+        }
+        if (!admissions.compareAndSet(0, ADMISSION_STOPPED)) {
             throw new IllegalStateException("Join all reconstruction producers before sealing or closing");
+        }
     }
+
     private void finishWriters() {
         RuntimeException failure = null;
         // All producers have joined and admissions have stopped. Each list was
         // mutated by only its owner; drain every remaining list before END can
         // reach any shard. A drain failure still joins all native-resource users.
-        for (var batch : producerBatches.values()) {
+        for (val batch : producerBatches.values()) {
             try {
                 publishGeneratedCount(batch);
-                if (!batch.keys.isEmpty()) submit(batch.keys);
+                if (!batch.keys.isEmpty()) {
+                    submit(batch.keys);
+                }
+
                 batch.keys.clear();
-            } catch (RuntimeException error) {
-                if (failure == null) failure = error; else failure.addSuppressed(error);
+            } catch (final RuntimeException error) {
+                if (failure == null) {
+                    failure = error;
+                } else {
+                    failure.addSuppressed(error);
+                }
             }
         }
+
         producerBatches.clear();
-        try (var progress = new ReconstructionProgress("State persistence " + stagingDirectory.getParent().getFileName() + " drain (writers)",
-                writers.length, () -> Arrays.stream(writers).filter(writer -> writer != null && writer.finished()).count(), () -> {
+
+        try (val progress = new ReconstructionProgress("State persistence " + stagingDirectory.getParent().getFileName() + " drain (writers)",
+                writers.length,
+                () -> Arrays.stream(writers).filter(writer -> writer != null && writer.finished()).count(),
+                () -> {
                     long submitted = 0, consumed = 0;
-                    for (var writer : writers) if (writer != null) {
-                        submitted += writer.submittedKeys(); consumed += writer.consumedKeys();
+                    for (val writer : writers) {
+                        if (writer != null) {
+                            submitted += writer.submittedKeys();
+                            consumed += writer.consumedKeys();
+                        }
                     }
-                    return "encodedKeysConsumed=" + consumed + "/" + submitted + ", encodedKeysRemaining="
-                            + (submitted - consumed) + ", ingestedTables=" + ingestedTables.sum()
-                            + ", ingestedKeys=" + ingestedKeys.sum() + ", uniqueTotal=unknown until counting";
+
+                    return "encodedKeysConsumed=" + consumed + "/" + submitted + ", encodedKeysRemaining=" + (submitted - consumed) + ", ingestedTables=" + ingestedTables.sum() + ", ingestedKeys=" + ingestedKeys.sum() + ", uniqueTotal=unknown until counting";
                 })) {
             // Signal every shard before joining any: their final tables must
             // build and ingest concurrently, rather than one final flush at a time.
-            for (var writer : writers) if (writer != null) writer.requestFinish();
-            for (var writer : writers) if (writer != null) {
-                try { writer.finish(); }
-                catch (RuntimeException error) {
-                    if (failure == null) failure = error; else failure.addSuppressed(error);
+            for (val writer : writers) {
+                if (writer != null) {
+                    writer.requestFinish();
+                }
+            }
+            for (val writer : writers) {
+                if (writer != null) {
+                    try {
+                        writer.finish();
+                    } catch (final RuntimeException error) {
+                        if (failure == null) {
+                            failure = error;
+                        } else {
+                            failure.addSuppressed(error);
+                        }
+                    }
                 }
             }
         }
@@ -660,11 +998,21 @@ public final class DiskStateSet implements AutoCloseable {
             throw failure;
         }
     }
-    @Override public synchronized void close() {
-        if (closed) return;
+
+    @Override
+    public synchronized void close() {
+        if (closed) {
+            return;
+        }
+
         stopAdmissions();
         closed = true;
-        try { finishWriters(); }
-        finally { database.close(); options.close(); }
+
+        try {
+            finishWriters();
+        } finally {
+            database.close();
+            options.close();
+        }
     }
 }

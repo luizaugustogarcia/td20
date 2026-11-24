@@ -1,8 +1,12 @@
 package br.unb.cic.td20.runtime;
 
-/** Shared, configurable CPU and buffer sizing for the independent checker. */
+/**
+ * Shared, configurable CPU and buffer sizing for the independent checker.
+ */
 public final class CheckerParallelism {
-    private CheckerParallelism() { }
+
+    private CheckerParallelism() {
+    }
 
     public static int workers() {
         return positiveProperty("td20.checkerWorkers", Runtime.getRuntime().availableProcessors());
@@ -29,12 +33,12 @@ public final class CheckerParallelism {
     }
 
     public static long bufferedBytes() {
-        long defaultMB = Math.max(128, Math.min(4096, Runtime.getRuntime().maxMemory() / (3L << 20)));
+        final long defaultMB = Math.max(128, Math.min(4096, Runtime.getRuntime().maxMemory() / (3L << 20)));
         return Math.multiplyExact(positiveLongProperty("td20.certificateBufferedMB", defaultMB), 1L << 20);
     }
 
     public static long readCacheBytes() {
-        long defaultMB = Math.max(64, Math.min(4096, Runtime.getRuntime().maxMemory() / (4L << 20)));
+        final long defaultMB = Math.max(64, Math.min(4096, Runtime.getRuntime().maxMemory() / (4L << 20)));
         return Math.multiplyExact(positiveLongProperty("td20.certificateReadCacheMB", defaultMB), 1L << 20);
     }
 
@@ -47,22 +51,30 @@ public final class CheckerParallelism {
     }
 
     public static int writeBatchEntries() {
-        String configured = System.getProperty("td20.dbWriteBatchEntries");
-        int entries = configured == null ? 524_288 : Integer.parseInt(configured.trim());
-        if (entries < 1) throw new IllegalArgumentException(
-                "td20.dbWriteBatchEntries must be positive");
+        final String configured = System.getProperty("td20.dbWriteBatchEntries");
+        final int entries = configured == null ? 524_288 : Integer.parseInt(configured.trim());
+        if (entries < 1) {
+            throw new IllegalArgumentException("td20.dbWriteBatchEntries must be positive");
+        }
+
         return entries;
     }
 
-    private static long positiveLongProperty(String name, long defaultValue) {
-        long value = Long.parseLong(System.getProperty(name, Long.toString(defaultValue)));
-        if (value < 1) throw new IllegalArgumentException(name + " must be positive");
+    private static long positiveLongProperty(final String name, final long defaultValue) {
+        final long value = Long.parseLong(System.getProperty(name, Long.toString(defaultValue)));
+        if (value < 1) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+
         return value;
     }
 
     private static int positiveProperty(final String name, final int defaultValue) {
         final int value = Integer.getInteger(name, defaultValue);
-        if (value < 1) throw new IllegalArgumentException(name + " must be positive");
+        if (value < 1) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+
         return value;
     }
 }

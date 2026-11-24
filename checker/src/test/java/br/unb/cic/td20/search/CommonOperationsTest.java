@@ -1,16 +1,16 @@
 package br.unb.cic.td20.search;
 
 import br.unb.cic.td20.permutation.Cycle;
-
-import java.util.Arrays;
-
 import lombok.val;
 import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
 
 import static br.unb.cic.td20.search.CommonOperations.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CommonOperationsTest {
+
     final private Cycle alpha = Cycle.of("0 2 7");
     final private Cycle beta = Cycle.of("0 5 4 3 8 7 6 2 1");
 
@@ -26,7 +26,7 @@ class CommonOperationsTest {
         val c1 = Cycle.of("1 3 5");
 
         val index = CommonOperations.cycleIndex(Arrays.asList(c0, c1), beta);
-        assertArrayEquals(new Cycle[]{c0, c1, c0, c1, c0, c1}, index);
+        assertArrayEquals(new Cycle[] { c0, c1, c0, c1, c0, c1 }, index);
     }
 
     @Test
@@ -43,9 +43,10 @@ class CommonOperationsTest {
 
     @Test
     void byteTranspositionMatchesTheCyclicBlockMove() {
-        assertArrayEquals(new byte[]{0, 4, 5, 6, 1, 2, 3},
-                applyTransposition(
-                        new byte[]{0, 1, 2, 3, 4, 5, 6},
-                        1, 4, 7));
+        assertArrayEquals(new byte[] { 0, 4, 5, 6, 1, 2, 3 },
+                applyTransposition(new byte[] { 0, 1, 2, 3, 4, 5, 6 },
+                        1,
+                        4,
+                        7));
     }
 }

@@ -1,5 +1,6 @@
 package br.unb.cic.td20.permutation;
 
+import lombok.Getter;
 import lombok.val;
 
 import java.util.*;
@@ -20,12 +21,14 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
                 beta[j] = j;
                 b_beta[j] = (byte) j;
             }
+
             CANONICAL_BETA_BYTE[i] = b_beta;
         }
     }
 
     private final List<Cycle> cycles;
 
+    @Getter
     private final Set<Integer> symbols;
 
     private int numberOfEvenCycles;
@@ -37,8 +40,7 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
         symbols = new HashSet<>();
     }
 
-    public MulticyclePermutation(final int expectedCycleCount,
-                                 final int expectedSymbolCount) {
+    public MulticyclePermutation(final int expectedCycleCount, final int expectedSymbolCount) {
         cycles = new ArrayList<>(expectedCycleCount);
         symbols = new HashSet<>(Math.max(1,
                 (int) Math.ceil(expectedSymbolCount / 0.75)));
@@ -65,6 +67,7 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
         if (oneLineNotation == null) {
             oneLineNotation = oneLineNotation(this);
         }
+
         return oneLineNotation;
     }
 
@@ -74,15 +77,16 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
         val result = Arrays.copyOf(CANONICAL_BETA_BYTE[numberOfSymbols], numberOfSymbols);
         for (val cycle : omega) {
             val symbols = cycle.getSymbols();
-            for (int symbol : symbols) {
+            for (final int symbol : symbols) {
                 val symbolIndex = (symbol);
                 result[symbolIndex] = (byte) cycle.image(symbolIndex);
             }
         }
+
         return result;
     }
 
-    private void of(String permutation) {
+    private void of(final String permutation) {
         val cyclePattern = Pattern.compile("\\(([^\\(\\)]*?)\\)");
         if (!permutation.contains("(")) {
             this.add(Cycle.of(permutation));
@@ -105,9 +109,14 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
     }
 
     @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+    public boolean equals(final Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
         return Objects.equals(cycles, ((MulticyclePermutation) o).cycles);
     }
 
@@ -121,8 +130,10 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
         if (this.isEmpty()) {
             return "()";
         }
-        final var result = new StringBuilder();
+
+        val result = new StringBuilder();
         cycles.forEach(result::append);
+
         return result.toString();
     }
 
@@ -139,6 +150,7 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
         if (this.size() > 1) {
             throw new RuntimeException("NONCYCLICPERMUTATION");
         }
+
         return cycles.stream().findFirst().get();
     }
 
@@ -149,6 +161,7 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
                 return cycle.image(a);
             }
         }
+
         return a;
     }
 
@@ -163,10 +176,6 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
 
     public int getNumberOfSymbols() {
         return symbols.size();
-    }
-
-    public Set<Integer> getSymbols() {
-        return symbols;
     }
 
     public int get3Norm() {
@@ -212,17 +221,19 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
     }
 
     @Override
-    public <T> T[] toArray(T[] a) {
+    public <T> T[] toArray(final T[] a) {
         return cycles.toArray(a);
     }
 
     @Override
     public boolean add(final Cycle cycle) {
         numberOfEvenCycles += cycle.size() % 2;
+
         val symbols = cycle.getSymbols();
-        for (int s : symbols) {
+        for (final int s : symbols) {
             this.symbols.add(s);
         }
+
         return cycles.add(cycle);
     }
 
@@ -235,8 +246,12 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
     @Override
     public boolean remove(final Object o) {
         val cycle = (Cycle) o;
-        if (cycle.isEven()) numberOfEvenCycles--;
+        if (cycle.isEven()) {
+            numberOfEvenCycles--;
+        }
+
         Arrays.stream(cycle.getSymbols()).forEach(symbols::remove);
+
         return cycles.remove(o);
     }
 
@@ -244,7 +259,10 @@ public class MulticyclePermutation implements Collection<Cycle>, Permutation {
     public boolean removeAll(final Collection<?> c) {
         c.forEach(o -> {
             val cycle = (Cycle) o;
-            if (cycle.isEven()) numberOfEvenCycles--;
+            if (cycle.isEven()) {
+                numberOfEvenCycles--;
+            }
+
             Arrays.stream(cycle.getSymbols()).forEach(symbols::remove);
         });
         return cycles.removeAll(c);

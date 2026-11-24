@@ -1,16 +1,16 @@
 package br.unb.cic.td20.verification;
 
-import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.joint.ErikssonRoute;
+import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
-
-import java.nio.file.Path;
-import java.nio.file.Files;
-import java.util.ArrayList;
-
+import lombok.val;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,115 +18,179 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CheckerStateSetTest {
-    @Test void reclaimsOnlyTheOwnedSourceAfterTheSuccessorHasSealed(@TempDir Path directory) throws Exception {
-        var sourcePath = directory.resolve("source");
-        var successorPath = directory.resolve("successor");
-        var outside = Files.createDirectory(directory.resolve("outside"));
-        var sentinel = Files.writeString(outside.resolve("keep"), "certificate data");
-        var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)), Cycle.of(0,1,2));
-        try (var source = new CheckerStateSet(sourcePath); var successor = new CheckerStateSet(successorPath)) {
-            source.add(new SearchState(8,pair));
+
+    @Test
+    void reclaimsOnlyTheOwnedSourceAfterTheSuccessorHasSealed(@TempDir final Path directory) throws Exception {
+        val sourcePath = directory.resolve("source");
+        val successorPath = directory.resolve("successor");
+        val outside = Files.createDirectory(directory.resolve("outside"));
+        val sentinel = Files.writeString(outside.resolve("keep"), "certificate data");
+        val pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)), Cycle.of(0, 1, 2));
+
+        try (val source = new CheckerStateSet(sourcePath);
+            val successor = new CheckerStateSet(successorPath)) {
+            source.add(new SearchState(8, pair));
             source.seal();
             source.forEachConcurrently(2, successor::add);
             Files.createSymbolicLink(sourcePath.resolve("external-link"), outside);
             source.retireAfter(successor);
             assertFalse(Files.exists(sourcePath));
             assertTrue(Files.isRegularFile(sentinel));
-            assertEquals(1,successor.seal().count());
-            assertTrue(successor.contains(new SearchState(8,pair)));
+            assertEquals(1, successor.seal().count());
+            assertTrue(successor.contains(new SearchState(8, pair)));
         }
+
         assertTrue(Files.isDirectory(successorPath), "Ordinary close preserves scratch after a failed boundary");
     }
 
-    @Test void failedSuccessorGenerationKeepsTheSourceBoundary(@TempDir Path directory) {
-        var sourcePath = directory.resolve("source");
-        var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)), Cycle.of(0,1,2));
-        try (var source = new CheckerStateSet(sourcePath); var successor = new CheckerStateSet(directory.resolve("successor"))) {
-            var state = new SearchState(8,pair);
-            source.add(state); source.seal();
-            assertThrows(IllegalStateException.class, () -> successor.addGeneratedPrimitive(9, output -> {
-                throw new IllegalStateException("Failed inverse generation");
-            }));
+    @Test
+    void failedSuccessorGenerationKeepsTheSourceBoundary(@TempDir final Path directory) {
+        val sourcePath = directory.resolve("source");
+        val pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)), Cycle.of(0, 1, 2));
+
+        try (val source = new CheckerStateSet(sourcePath);
+            val successor = new CheckerStateSet(directory.resolve("successor"))) {
+            val state = new SearchState(8, pair);
+            source.add(state);
+            source.seal();
+            assertThrows(IllegalStateException.class,
+                    () -> successor.addGeneratedPrimitive(9, output -> {
+                        throw new IllegalStateException("Failed inverse generation");
+                    }));
             assertThrows(IllegalStateException.class, () -> source.retireAfter(successor));
             assertTrue(Files.isRegularFile(sourcePath.resolve("CURRENT")));
             assertTrue(source.contains(state));
         }
+
         assertTrue(Files.isRegularFile(sourcePath.resolve("CURRENT")));
     }
 
     @Test
     void deduplicatesByClassAndKeepsBudgetsDistinct(@TempDir final Path directory) {
-        final var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)),
+        val pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)),
                 Cycle.of(0, 1, 2));
-        final var first = new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair);
-        try (final var states = new CheckerStateSet(directory.resolve("states"))) {
+        val first = new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair);
+
+        try (val states = new CheckerStateSet(directory.resolve("states"))) {
             states.add(first);
             states.add(new SearchState(ErikssonRoute.ENDPOINT_BUDGET, pair.canonicalRepresentative()));
             states.add(new SearchState(ErikssonRoute.ROOT_BUDGET, pair));
             assertEquals(2, states.seal().count());
             assertTrue(states.contains(first));
-            final var recovered = new ArrayList<SearchState>();
+
+            val recovered = new ArrayList<SearchState>();
             states.forEachBatch(recovered::addAll);
             assertEquals(2, recovered.size());
             assertEquals(pair.extendedToricClassKey(),
                     br.unb.cic.td20.compat.LegacyPairs.toLegacy(recovered.getFirst().pair()).extendedToricClassKey());
             assertThrows(IllegalStateException.class, () -> states.add(first));
         }
+
         assertThrows(IllegalStateException.class,
                 () -> new CheckerStateSet(directory.resolve("states")));
     }
 
-    @Test void concurrentBatchesDrainAndParallelReadsCoverEveryBudget(@TempDir Path directory) throws Exception {
-        String[] properties = {"td20.reconstructionGeneratedBatchKeys", "td20.reconstructionWriters",
-                "td20.reconstructionBufferKeys", "td20.reconstructionQueueBatches", "td20.reconstructionScanBatchKeys"};
-        String[] previous = java.util.Arrays.stream(properties).map(System::getProperty).toArray(String[]::new);
-        String[] values = {"17", "3", "128", "3", "3"};
-        for (int i=0;i<properties.length;i++) System.setProperty(properties[i], values[i]);
-        try (var states = new CheckerStateSet(directory.resolve("parallel"))) {
-            var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)), Cycle.of(0,1,2));
-            try (var pool = java.util.concurrent.Executors.newFixedThreadPool(4)) {
-                var jobs = new ArrayList<java.util.concurrent.Future<?>>();
-                for (int worker=0;worker<4;worker++) jobs.add(pool.submit(() -> {
-                    for (int i=0;i<103;i++) states.add(new SearchState(1+i%11,pair));
-                }));
-                for (var job:jobs) job.get(30, java.util.concurrent.TimeUnit.SECONDS);
+    @Test
+    void concurrentBatchesDrainAndParallelReadsCoverEveryBudget(@TempDir final Path directory) throws Exception {
+        final String[] properties = { "td20.reconstructionGeneratedBatchKeys", "td20.reconstructionWriters", "td20.reconstructionBufferKeys", "td20.reconstructionQueueBatches", "td20.reconstructionScanBatchKeys" };
+        final String[] previous = java.util.Arrays.stream(properties).map(System::getProperty).toArray(String[]::new);
+        final String[] values = { "17", "3", "128", "3", "3" };
+        for (int i = 0; i < properties.length; i++) {
+            System.setProperty(properties[i], values[i]);
+        }
+
+        try (val states = new CheckerStateSet(directory.resolve("parallel"))) {
+            val pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)), Cycle.of(0, 1, 2));
+
+            try (val pool = java.util.concurrent.Executors.newFixedThreadPool(4)) {
+                val jobs = new ArrayList<java.util.concurrent.Future<?>>();
+                for (int worker = 0; worker < 4; worker++) {
+                    jobs.add(pool.submit(() -> {
+                        for (int i = 0; i < 103; i++) {
+                            states.add(new SearchState(1 + i % 11, pair));
+                        }
+                    }));
+                }
+                for (val job : jobs) {
+                    job.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                }
             }
+
             assertEquals(11, states.seal().count());
-            var seen = java.util.concurrent.ConcurrentHashMap.<Integer>newKeySet();
-            states.forEachConcurrently(4, batch -> {
-                boolean[] hits = new boolean[batch.size()];
-                for(int i=0;i<hits.length;i++) hits[i]=batch.get(i).maximumMoves()%2==0;
-                return hits;
-            }, state -> assertTrue(seen.add(state.maximumMoves())),
-               state -> assertTrue(seen.add(state.maximumMoves())));
-            assertEquals(11,seen.size());
-            assertThrows(IllegalStateException.class, () -> states.forEachConcurrently(4,
-                    batch -> new boolean[0], state -> {}, state -> {}));
+
+            val seen = java.util.concurrent.ConcurrentHashMap.<Integer>newKeySet();
+            states.forEachConcurrently(4,
+                    batch -> {
+                        val hits = new boolean[batch.size()];
+                        for (int i = 0; i < hits.length; i++) {
+                            hits[i] = batch.get(i).maximumMoves() % 2 == 0;
+                        }
+
+                        return hits;
+                    },
+                    state -> assertTrue(seen.add(state.maximumMoves())),
+                    state -> assertTrue(seen.add(state.maximumMoves())));
+            assertEquals(11, seen.size());
+            assertThrows(IllegalStateException.class,
+                    () -> states.forEachConcurrently(4,
+                            batch -> new boolean[0],
+                            state -> {
+                            },
+                            state -> {
+                            }));
         } finally {
-            for(int i=0;i<properties.length;i++)
-                if(previous[i]==null) System.clearProperty(properties[i]); else System.setProperty(properties[i], previous[i]);
+            for (int i = 0; i < properties.length; i++) {
+                if (previous[i] == null) {
+                    System.clearProperty(properties[i]);
+                } else {
+                    System.setProperty(properties[i], previous[i]);
+                }
+            }
         }
     }
 
-    @Test void smallInverseInventorySuppliesConcurrentCallbacks(@TempDir Path directory) throws Exception {
-        var entered = new java.util.concurrent.CountDownLatch(2);
-        var release = new java.util.concurrent.CountDownLatch(1);
-        try (var states = new CheckerStateSet(directory.resolve("small"));
-             var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
-            var pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0,1,2)),Cycle.of(0,1,2));
-            for(int budget=1;budget<=11;budget++) states.add(new SearchState(budget,pair));
-            assertEquals(11,states.seal().count());
-            var completed = new java.util.concurrent.atomic.AtomicInteger();
-            var run=executor.submit(() -> states.forEachConcurrently(2,state -> {
-                entered.countDown();
-                try { if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Callbacks stalled"); }
-                catch(InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
-                completed.incrementAndGet();
-            }));
-            try { assertTrue(entered.await(10,java.util.concurrent.TimeUnit.SECONDS),"Small inventories must use concurrent callbacks"); }
-            finally { release.countDown(); }
-            run.get(10,java.util.concurrent.TimeUnit.SECONDS);
-            assertEquals(11,completed.get());
-        } finally { release.countDown(); }
+    @Test
+    void smallInverseInventorySuppliesConcurrentCallbacks(@TempDir final Path directory) throws Exception {
+        val entered = new java.util.concurrent.CountDownLatch(2);
+        val release = new java.util.concurrent.CountDownLatch(1);
+
+        try (val states = new CheckerStateSet(directory.resolve("small"));
+            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            val pair = CyclicTargetPair.of(new MulticyclePermutation(Cycle.of(0, 1, 2)), Cycle.of(0, 1, 2));
+            for (int budget = 1; budget <= 11; budget++) {
+                states.add(new SearchState(budget, pair));
+            }
+
+            assertEquals(11, states.seal().count());
+
+            val completed = new java.util.concurrent.atomic.AtomicInteger();
+            val run = executor.submit(() -> states.forEachConcurrently(2,
+                    state -> {
+                        entered.countDown();
+
+                        try {
+                            if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                                throw new AssertionError("Callbacks stalled");
+                            }
+                        } catch (final InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+
+                        completed.incrementAndGet();
+                    }));
+
+            try {
+                assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                        "Small inventories must use concurrent callbacks");
+            } finally {
+                release.countDown();
+            }
+
+            run.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(11, completed.get());
+        } finally {
+            release.countDown();
+        }
     }
 }

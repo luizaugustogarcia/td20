@@ -4,22 +4,26 @@ import br.unb.cic.td20.model.CyclicTargetPair;
 import br.unb.cic.td20.model.PrimitivePair;
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
+import lombok.val;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
-/** Compact on-disk encoding for normalized certificate pairs and witnesses. */
+/**
+ * Compact on-disk encoding for normalized certificate pairs and witnesses.
+ */
 public final class CertificateCodec {
+
     private static final int SYMBOL_BITS = 5;
     private static final int SYMBOL_LIMIT = 1 << SYMBOL_BITS;
     private static final int TRIPLE_BITS = 3 * SYMBOL_BITS;
     private static final int RANK_STRIDE = SYMBOL_LIMIT + 1;
-    private static final ThreadLocal<CanonicalKeyScratch> CANONICAL_KEY_SCRATCH =
-            ThreadLocal.withInitial(CanonicalKeyScratch::new);
+    private static final ThreadLocal<CanonicalKeyScratch> CANONICAL_KEY_SCRATCH = ThreadLocal.withInitial(CanonicalKeyScratch::new);
 
     private static final class CanonicalKeyScratch {
+
         final int[] sizes = new int[RANK_STRIDE];
         final int[] first = new int[RANK_STRIDE];
         final int[] last = new int[RANK_STRIDE];
@@ -29,93 +33,137 @@ public final class CertificateCodec {
 
     private static final PrimitiveCertificate.Kind[] PRIMITIVE_KINDS = PrimitiveCertificate.Kind.values();
 
-    /** Packs a normalized primitive pair; no permutation or encoding objects are created. */
+    /**
+     * Packs a normalized primitive pair; no permutation or encoding objects are created.
+     */
     public static byte[] keyFor(final PrimitivePair pair) {
-        int n = pair.size();
-        byte[] encoded = new byte[byteLength((long) SYMBOL_BITS * n)];
+        final int n = pair.size();
+        val encoded = new byte[byteLength((long) SYMBOL_BITS * n)];
         for (int symbol = 0; symbol < n; symbol++) {
-            if (pair.betaAt(symbol) != symbol)
+            if (pair.betaAt(symbol) != symbol) {
                 throw new IllegalArgumentException("Certificate keys require beta=(0,...,N-1)");
+            }
+
             writeSymbol(encoded, symbol * SYMBOL_BITS, pair.omegaImage(symbol));
         }
+
         return encoded;
     }
 
-    /** Decodes and validates a persisted normalized pair into compact primitive tables. */
+    /**
+     * Decodes and validates a persisted normalized pair into compact primitive tables.
+     */
     public static PrimitivePair primitivePairForKey(final byte[] encoded, final int domainSize) {
         return PrimitivePair.fromNormalizedImages(decodeKeyOmega(encoded, domainSize), false);
     }
 
     public static PrimitivePair primitivePairForKey(final byte[] encoded) {
-        if (encoded == null || encoded.length == 0 || encoded.length > byteLength(21L * SYMBOL_BITS))
+        if (encoded == null || encoded.length == 0 || encoded.length > byteLength(21L * SYMBOL_BITS)) {
             throw new IllegalArgumentException("Invalid checker certificate key length");
+        }
+
         int largest = 0;
-        for (int bit = 0; bit + SYMBOL_BITS <= encoded.length * Byte.SIZE; bit += SYMBOL_BITS)
+        for (int bit = 0; bit + SYMBOL_BITS <= encoded.length * Byte.SIZE; bit += SYMBOL_BITS) {
             largest = Math.max(largest, readSymbol(encoded, bit));
-        if (largest >= 21) throw new IllegalArgumentException("Certificate domain exceeds the active root domain");
+        }
+        if (largest >= 21) {
+            throw new IllegalArgumentException("Certificate domain exceeds the active root domain");
+        }
+
         return primitivePairForKey(encoded, largest + 1);
     }
 
-    /** Encodes the packed triples in the unchanged legacy raw-witness payload format. */
+    /**
+     * Encodes the packed triples in the unchanged legacy raw-witness payload format.
+     */
     public static byte[] valueFor(final PrimitiveCertificate result) {
-        if (result.moveCount() == 0) throw new IllegalArgumentException("A certificate must contain at least one move");
-        byte[] encoded = new byte[byteLength((long) TRIPLE_BITS * result.moveCount())];
+        if (result.moveCount() == 0) {
+            throw new IllegalArgumentException("A certificate must contain at least one move");
+        }
+
+        val encoded = new byte[byteLength((long) TRIPLE_BITS * result.moveCount())];
         writeMoves(encoded, 0, result);
+
         return encoded;
     }
 
-    /** Reads a raw complete-witness payload without materializing algebraic 3-cycles. */
+    /**
+     * Reads a raw complete-witness payload without materializing algebraic 3-cycles.
+     */
     public static PrimitiveCertificate decodePrimitiveValue(final byte[] encoded) {
-        if (encoded == null || encoded.length == 0) throw new IllegalArgumentException("Truncated certificate value");
-        int count = Math.toIntExact((long) encoded.length * Byte.SIZE / TRIPLE_BITS);
-        if (count == 0 || count > 11) throw new IllegalArgumentException("Invalid raw certificate move count");
+        if (encoded == null || encoded.length == 0) {
+            throw new IllegalArgumentException("Truncated certificate value");
+        }
+
+        final int count = Math.toIntExact((long) encoded.length * Byte.SIZE / TRIPLE_BITS);
+        if (count == 0 || count > 11) {
+            throw new IllegalArgumentException("Invalid raw certificate move count");
+        }
+
         requirePayload(encoded, (long) count * TRIPLE_BITS, "value");
+
         return PrimitiveCertificate.ofOwned(PrimitiveCertificate.Kind.COMPLETE, readMoves(encoded, 0, count));
     }
 
-    /** Version-2 kind/count bytes and fifteen-bit triples are byte-for-byte unchanged. */
+    /**
+     * Version-2 kind/count bytes and fifteen-bit triples are byte-for-byte unchanged.
+     */
     public static byte[] resultFor(final PrimitiveCertificate result) {
-        byte[] encoded = new byte[2 + byteLength((long) TRIPLE_BITS * result.moveCount())];
+        val encoded = new byte[2 + byteLength((long) TRIPLE_BITS * result.moveCount())];
         encoded[0] = (byte) result.kind().ordinal();
         encoded[1] = (byte) result.moveCount();
         writeMoves(encoded, 2 * Byte.SIZE, result);
+
         return encoded;
     }
 
     public static PrimitiveCertificate decodePrimitiveResult(final byte[] encoded) {
-        if (encoded == null || encoded.length < 2) throw new IllegalArgumentException("Truncated sorting result");
-        int kind = Byte.toUnsignedInt(encoded[0]), count = Byte.toUnsignedInt(encoded[1]);
-        if (kind >= PRIMITIVE_KINDS.length || count > 11)
+        if (encoded == null || encoded.length < 2) {
+            throw new IllegalArgumentException("Truncated sorting result");
+        }
+
+        final int kind = Byte.toUnsignedInt(encoded[0]), count = Byte.toUnsignedInt(encoded[1]);
+        if (kind >= PRIMITIVE_KINDS.length || count > 11) {
             throw new IllegalArgumentException("Unsupported sorting result kind or move count");
+        }
+
         requirePayload(encoded, 2L * Byte.SIZE + (long) TRIPLE_BITS * count, "result");
+
         return PrimitiveCertificate.ofOwned(PRIMITIVE_KINDS[kind], readMoves(encoded, 2 * Byte.SIZE, count));
     }
 
-    private static void writeMoves(byte[] encoded, int bitOffset, PrimitiveCertificate result) {
+    private static void writeMoves(final byte[] encoded, int bitOffset, final PrimitiveCertificate result) {
         for (int i = 0; i < result.moveCount(); i++) {
-            int move = result.moveAt(i);
+            final int move = result.moveAt(i);
             bitOffset = writeSymbol(encoded, bitOffset, move & 31);
             bitOffset = writeSymbol(encoded, bitOffset, (move >>> 5) & 31);
             bitOffset = writeSymbol(encoded, bitOffset, (move >>> 10) & 31);
         }
     }
 
-    private static int[] readMoves(byte[] encoded, int bitOffset, int count) {
-        int[] moves = new int[count];
+    private static int[] readMoves(final byte[] encoded, int bitOffset, final int count) {
+        val moves = new int[count];
         for (int i = 0; i < count; i++) {
-            moves[i] = readSymbol(encoded, bitOffset) | (readSymbol(encoded, bitOffset + 5) << 5)
-                    | (readSymbol(encoded, bitOffset + 10) << 10);
+            moves[i] = readSymbol(encoded, bitOffset) | (readSymbol(encoded, bitOffset + 5) << 5) | (readSymbol(encoded, bitOffset + 10) << 10);
             bitOffset += TRIPLE_BITS;
         }
+
         return moves;
     }
 
-    public static byte[] canonicalKeyFor(PrimitivePair pair) { return pair.canonicalKey(); }
+    public static byte[] canonicalKeyFor(final PrimitivePair pair) {
+        return pair.canonicalKey();
+    }
 
-    public static boolean matchesNormalizedPair(byte[] key, PrimitivePair pair) {
-        int n=pair.size();
-        requirePayload(key,(long)SYMBOL_BITS*n,"key");
-        for(int x=0;x<n;x++) if(pair.betaAt(x)!=x || readSymbol(key,x*SYMBOL_BITS)!=pair.omegaImage(x)) return false;
+    public static boolean matchesNormalizedPair(final byte[] key, final PrimitivePair pair) {
+        final int n = pair.size();
+        requirePayload(key, (long) SYMBOL_BITS * n, "key");
+        for (int x = 0; x < n; x++) {
+            if (pair.betaAt(x) != x || readSymbol(key, x * SYMBOL_BITS) != pair.omegaImage(x)) {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -129,21 +177,24 @@ public final class CertificateCodec {
      */
     public static byte[] keyFor(final CyclicTargetPair pair) {
         for (int symbol = 0; symbol < pair.getBeta().size(); symbol++) {
-            if (pair.getBeta().get(symbol) != symbol)
+            if (pair.getBeta().get(symbol) != symbol) {
                 throw new IllegalArgumentException("Certificate keys require the normalized current cycle");
+            }
         }
-        final var oneLine = pair.getOmega().getOneLineNotation();
+
+        val oneLine = pair.getOmega().getOneLineNotation();
         if (oneLine.length != pair.getBeta().size()) {
-            throw new IllegalArgumentException(
-                    "Certificate keys require an algebraic permutation on the full beta domain");
+            throw new IllegalArgumentException("Certificate keys require an algebraic permutation on the full beta domain");
         }
+
         requireDomainSize(oneLine.length);
 
-        final var encoded = new byte[byteLength((long) SYMBOL_BITS * oneLine.length)];
+        val encoded = new byte[byteLength((long) SYMBOL_BITS * oneLine.length)];
         var bitOffset = 0;
-        for (final var image : oneLine) {
+        for (val image : oneLine) {
             bitOffset = writeSymbol(encoded, bitOffset, Byte.toUnsignedInt(image));
         }
+
         return encoded;
     }
 
@@ -152,8 +203,9 @@ public final class CertificateCodec {
      * Fixed symbols remain explicit data. No canonical permutation is constructed.
      */
     public static byte[] canonicalKeyFor(final CyclicTargetPair pair) {
-        final var encoded = new byte[keyLength(pair.getBeta().size())];
+        val encoded = new byte[keyLength(pair.getBeta().size())];
         writeCanonicalKey(pair, encoded, 0, false);
+
         return encoded;
     }
 
@@ -162,131 +214,158 @@ public final class CertificateCodec {
         return byteLength((long) SYMBOL_BITS * domainSize);
     }
 
-    /** Writes a canonical key after a caller-owned prefix; fixed points are rejected. */
-    public static void writeFixedPointFreeCanonicalKey(final CyclicTargetPair pair,
-                                                       final byte[] encoded,
-                                                       final int byteOffset) {
+    /**
+     * Writes a canonical key after a caller-owned prefix; fixed points are rejected.
+     */
+    public static void writeFixedPointFreeCanonicalKey(final CyclicTargetPair pair, final byte[] encoded, final int byteOffset) {
         writeCanonicalKey(pair, encoded, byteOffset, true);
     }
 
-    private static void writeCanonicalKey(final CyclicTargetPair pair, final byte[] encoded,
-                                          final int byteOffset, final boolean requireFixedPointFree) {
+    private static void writeCanonicalKey(final CyclicTargetPair pair,
+            final byte[] encoded,
+            final int byteOffset,
+            final boolean requireFixedPointFree) {
         final int n = pair.getBeta().size(), length = keyLength(n);
         Objects.checkFromIndexSize(byteOffset, length, encoded.length);
-        final var scratch = CANONICAL_KEY_SCRATCH.get();
+
+        val scratch = CANONICAL_KEY_SCRATCH.get();
         if (pair.isKnownCanonicalRepresentative()) {
             // Direct generators already establish this representative; retain their cheap path.
             for (int symbol = 0; symbol < n; symbol++) {
-                if (pair.getBeta().get(symbol) != symbol)
+                if (pair.getBeta().get(symbol) != symbol) {
                     throw new IllegalArgumentException("Canonical certificate keys require the normalized current cycle");
+                }
+
                 scratch.images[symbol] = pair.getOmega().image(symbol);
-                if (requireFixedPointFree && scratch.images[symbol] == symbol)
+                if (requireFixedPointFree && scratch.images[symbol] == symbol) {
                     throw new IllegalArgumentException("Contract fixed points before encoding reconstruction states");
+                }
             }
         } else {
-            final var word = pair.extendedToricClassKey().twistedBracelet().canonicalWord();
+            val word = pair.extendedToricClassKey().twistedBracelet().canonicalWord();
             Arrays.fill(scratch.sizes, 0);
             for (int position = 0; position < n; position++) {
                 final int label = word.cycleLabelAt(position), rank = word.rankAt(position);
                 final int size = ++scratch.sizes[label];
                 if (rank == 0) {
-                    if (size == 1) scratch.first[label] = position;
-                    else scratch.images[position] = scratch.last[label];
+                    if (size == 1) {
+                        scratch.first[label] = position;
+                    } else {
+                        scratch.images[position] = scratch.last[label];
+                    }
+
                     scratch.last[label] = position;
-                } else scratch.rankPositions[label * RANK_STRIDE + rank] = position;
+                } else {
+                    scratch.rankPositions[label * RANK_STRIDE + rank] = position;
+                }
             }
             for (int position = 0; position < n; position++) {
                 final int label = word.cycleLabelAt(position), rank = word.rankAt(position);
                 final int size = scratch.sizes[label];
-                if (requireFixedPointFree && size == 1)
+                if (requireFixedPointFree && size == 1) {
                     throw new IllegalArgumentException("Contract fixed points before encoding reconstruction states");
+                }
                 if (rank == 0) {
                     // Unoriented cycles follow the inverse restricted current cycle.
-                    if (position == scratch.first[label]) scratch.images[position] = scratch.last[label];
-                } else scratch.images[position] = scratch.rankPositions[
-                        label * RANK_STRIDE + (rank == size ? 1 : rank + 1)];
+                    if (position == scratch.first[label]) {
+                        scratch.images[position] = scratch.last[label];
+                    }
+                } else {
+                    scratch.images[position] = scratch.rankPositions[label * RANK_STRIDE + (rank == size ? 1 : rank + 1)];
+                }
             }
         }
+
         Arrays.fill(encoded, byteOffset, byteOffset + length, (byte) 0);
         for (int position = 0, bit = 0; position < n; position++, bit += SYMBOL_BITS) {
             final int at = byteOffset + (bit >>> 3), offset = bit & 7, image = scratch.images[position];
-            if (offset <= 3) encoded[at] |= (byte) (image << (3 - offset));
-            else {
+            if (offset <= 3) {
+                encoded[at] |= (byte) (image << (3 - offset));
+            } else {
                 encoded[at] |= (byte) (image >>> (offset - 3));
                 encoded[at + 1] |= (byte) (image << (11 - offset));
             }
         }
     }
 
-    /** Compares a key with the actual normalized pair; it does not assume persisted keys are canonical. */
+    /**
+     * Compares a key with the actual normalized pair; it does not assume persisted keys are canonical.
+     */
     public static boolean matchesNormalizedPair(final byte[] key, final CyclicTargetPair pair) {
         final int n = pair.getBeta().size();
         requireDomainSize(n);
         requirePayload(key, (long) SYMBOL_BITS * n, "key");
         for (int symbol = 0; symbol < n; symbol++) {
-            if (pair.getBeta().get(symbol) != symbol
-                    || readSymbol(key, symbol * SYMBOL_BITS) != pair.getOmega().image(symbol)) return false;
+            if (pair.getBeta().get(symbol) != symbol || readSymbol(key, symbol * SYMBOL_BITS) != pair.getOmega().image(symbol)) {
+                return false;
+            }
         }
+
         return true;
     }
 
-    /** Decodes the one-line algebraic permutation stored in a key. */
+    /**
+     * Decodes the one-line algebraic permutation stored in a key.
+     */
     public static byte[] decodeKeyOmega(final byte[] encoded, final int domainSize) {
         requireDomainSize(domainSize);
         requirePayload(encoded, (long) SYMBOL_BITS * domainSize, "key");
 
-        final var oneLine = new byte[domainSize];
+        val oneLine = new byte[domainSize];
         var bitOffset = 0;
         for (var symbol = 0; symbol < domainSize; symbol++) {
             oneLine[symbol] = (byte) readSymbol(encoded, bitOffset);
             bitOffset += SYMBOL_BITS;
         }
+
         return oneLine;
     }
 
-    /** Reconstructs the canonical cyclic-target representative stored by a key. */
-    public static CyclicTargetPair pairForKey(
-            final byte[] encoded,
-            final int domainSize
-    ) {
-        final var images = decodeKeyOmega(encoded, domainSize);
-        final var seenImages = new boolean[domainSize];
-        for (final var image : images) {
-            final var unsigned = Byte.toUnsignedInt(image);
+    /**
+     * Reconstructs the canonical cyclic-target representative stored by a key.
+     */
+    public static CyclicTargetPair pairForKey(final byte[] encoded, final int domainSize) {
+        val images = decodeKeyOmega(encoded, domainSize);
+        val seenImages = new boolean[domainSize];
+        for (val image : images) {
+            val unsigned = Byte.toUnsignedInt(image);
             if (unsigned >= domainSize || seenImages[unsigned]) {
-                throw new IllegalArgumentException(
-                        "Certificate key does not encode a permutation");
+                throw new IllegalArgumentException("Certificate key does not encode a permutation");
             }
+
             seenImages[unsigned] = true;
         }
 
-        final var omega = new MulticyclePermutation();
-        final var visited = new boolean[domainSize];
+        val omega = new MulticyclePermutation();
+        val visited = new boolean[domainSize];
         for (var start = 0; start < domainSize; start++) {
             if (visited[start]) {
                 continue;
             }
-            final var buffer = new int[domainSize];
+
+            val buffer = new int[domainSize];
             var length = 0;
             var current = start;
             do {
                 if (visited[current]) {
-                    throw new IllegalArgumentException(
-                            "Certificate key contains a non-cycle component");
+                    throw new IllegalArgumentException("Certificate key contains a non-cycle component");
                 }
+
                 visited[current] = true;
                 buffer[length++] = current;
                 current = Byte.toUnsignedInt(images[current]);
             } while (current != start);
-            final var symbols = new int[length];
+
+            val symbols = new int[length];
             System.arraycopy(buffer, 0, symbols, 0, length);
             omega.add(Cycle.of(symbols));
         }
 
-        final var betaSymbols = new int[domainSize];
+        val betaSymbols = new int[domainSize];
         for (var symbol = 0; symbol < domainSize; symbol++) {
             betaSymbols[symbol] = symbol;
         }
+
         return CyclicTargetPair.ofOwned(omega, Cycle.of(betaSymbols));
     }
 
@@ -299,32 +378,38 @@ public final class CertificateCodec {
             throw new IllegalArgumentException("A certificate must contain at least one move");
         }
 
-        final var encoded = new byte[byteLength((long) TRIPLE_BITS * moves.size())];
+        val encoded = new byte[byteLength((long) TRIPLE_BITS * moves.size())];
         var bitOffset = 0;
-        for (final var move : moves) {
+        for (val move : moves) {
             if (move.size() != 3) {
                 throw new IllegalArgumentException("A certificate move must be a symbol triple");
             }
+
             bitOffset = writeSymbol(encoded, bitOffset, move.get(0));
             bitOffset = writeSymbol(encoded, bitOffset, move.get(1));
             bitOffset = writeSymbol(encoded, bitOffset, move.get(2));
         }
+
         return encoded;
     }
 
-    /** Decodes the concatenated fifteen-bit move triples stored in a value. */
+    /**
+     * Decodes the concatenated fifteen-bit move triples stored in a value.
+     */
     public static List<Cycle> decodeValue(final byte[] encoded) {
         if (encoded == null || encoded.length == 0) {
             throw new IllegalArgumentException("Truncated certificate value");
         }
+
         final long capacityBits = (long) Byte.SIZE * encoded.length;
         final int moveCount = Math.toIntExact(capacityBits / TRIPLE_BITS);
         if (moveCount == 0) {
             throw new IllegalArgumentException("Truncated certificate value");
         }
+
         requirePayload(encoded, (long) TRIPLE_BITS * moveCount, "value");
 
-        final var moves = new ArrayList<Cycle>(moveCount);
+        val moves = new ArrayList<Cycle>(moveCount);
         var bitOffset = 0;
         for (var index = 0; index < moveCount; index++) {
             final int first = readSymbol(encoded, bitOffset);
@@ -333,31 +418,49 @@ public final class CertificateCodec {
             moves.add(Cycle.of(first, second, third));
             bitOffset += TRIPLE_BITS;
         }
+
         return List.copyOf(moves);
     }
 
-    /** Version-2 values start with a kind byte and an exact move-count byte. */
+    /**
+     * Version-2 values start with a kind byte and an exact move-count byte.
+     */
     public static byte[] resultFor(final SortingCertificate result) {
-        if (result.moves().size() > 11) throw new IllegalArgumentException("Certificate exceeds eleven moves");
+        if (result.moves().size() > 11) {
+            throw new IllegalArgumentException("Certificate exceeds eleven moves");
+        }
+
         final byte[] payload = result.moves().isEmpty() ? new byte[0] : valueFor(result.moves());
-        final byte[] encoded = new byte[payload.length + 2];
+        val encoded = new byte[payload.length + 2];
         encoded[0] = (byte) result.kind().ordinal();
         encoded[1] = (byte) result.moves().size();
         System.arraycopy(payload, 0, encoded, 2, payload.length);
+
         return encoded;
     }
 
-    /** Rejects unknown kinds, truncated records, inconsistent counts and nonzero padding. */
+    /**
+     * Rejects unknown kinds, truncated records, inconsistent counts and nonzero padding.
+     */
     public static SortingCertificate decodeResult(final byte[] encoded) {
-        if (encoded == null || encoded.length < 2) throw new IllegalArgumentException("Truncated sorting result");
+        if (encoded == null || encoded.length < 2) {
+            throw new IllegalArgumentException("Truncated sorting result");
+        }
+
         final int kind = Byte.toUnsignedInt(encoded[0]);
         final int count = Byte.toUnsignedInt(encoded[1]);
-        if (kind >= SortingCertificate.Kind.values().length || count > 11)
+        if (kind >= SortingCertificate.Kind.values().length || count > 11) {
             throw new IllegalArgumentException("Unsupported sorting result kind or move count");
+        }
+
         final byte[] payload = java.util.Arrays.copyOfRange(encoded, 2, encoded.length);
         requirePayload(payload, (long) TRIPLE_BITS * count, "result");
-        final var moves = count == 0 ? List.<Cycle>of() : decodeValue(payload);
-        if (moves.size() != count) throw new IllegalArgumentException("Sorting result count mismatch");
+
+        val moves = count == 0 ? List.<Cycle>of() : decodeValue(payload);
+        if (moves.size() != count) {
+            throw new IllegalArgumentException("Sorting result count mismatch");
+        }
+
         return new SortingCertificate(SortingCertificate.Kind.values()[kind], moves);
     }
 
@@ -368,6 +471,7 @@ public final class CertificateCodec {
             final int outputBit = bitOffset + bit;
             encoded[outputBit / Byte.SIZE] |= (byte) (valueBit << (Byte.SIZE - 1 - outputBit % Byte.SIZE));
         }
+
         return bitOffset + SYMBOL_BITS;
     }
 
@@ -375,10 +479,9 @@ public final class CertificateCodec {
         var symbol = 0;
         for (var bit = 0; bit < SYMBOL_BITS; bit++) {
             final int inputBit = bitOffset + bit;
-            symbol = (symbol << 1)
-                    | ((Byte.toUnsignedInt(encoded[inputBit / Byte.SIZE])
-                    >>> (Byte.SIZE - 1 - inputBit % Byte.SIZE)) & 1);
+            symbol = (symbol << 1) | ((Byte.toUnsignedInt(encoded[inputBit / Byte.SIZE]) >>> (Byte.SIZE - 1 - inputBit % Byte.SIZE)) & 1);
         }
+
         return symbol;
     }
 
@@ -386,24 +489,22 @@ public final class CertificateCodec {
         if (encoded == null || encoded.length != byteLength(payloadBits)) {
             throw new IllegalArgumentException("Malformed certificate " + kind + " length");
         }
+
         final int paddingBits = (int) ((long) Byte.SIZE * encoded.length - payloadBits);
-        if (paddingBits != 0 && (Byte.toUnsignedInt(encoded[encoded.length - 1])
-                & ((1 << paddingBits) - 1)) != 0) {
+        if (paddingBits != 0 && (Byte.toUnsignedInt(encoded[encoded.length - 1]) & ((1 << paddingBits) - 1)) != 0) {
             throw new IllegalArgumentException("Nonzero certificate " + kind + " padding");
         }
     }
 
     private static void requireDomainSize(final int size) {
         if (size <= 0 || size > SYMBOL_LIMIT) {
-            throw new IllegalArgumentException(
-                    "The compact certificate format supports domains of size 1.." + SYMBOL_LIMIT);
+            throw new IllegalArgumentException("The compact certificate format supports domains of size 1.." + SYMBOL_LIMIT);
         }
     }
 
     private static void requireSymbol(final int symbol) {
         if (symbol < 0 || symbol >= SYMBOL_LIMIT) {
-            throw new IllegalArgumentException(
-                    "Certificate symbols must lie in 0.." + (SYMBOL_LIMIT - 1) + ": " + symbol);
+            throw new IllegalArgumentException("Certificate symbols must lie in 0.." + (SYMBOL_LIMIT - 1) + ": " + symbol);
         }
     }
 

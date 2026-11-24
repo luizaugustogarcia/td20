@@ -1,27 +1,30 @@
 package br.unb.cic.td20.model;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.val;
+
 import java.util.Arrays;
 import java.util.Objects;
 
-/** Immutable value key identifying one twisted-bracelet orbit. */
+/**
+ * Immutable value key identifying one twisted-bracelet orbit.
+ */
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> {
 
     private final StandardizedEncodingWord canonicalWord;
 
-    private TwistedBraceletKey(final StandardizedEncodingWord canonicalWord) {
-        this.canonicalWord = canonicalWord;
-    }
-
-    /** Builds a key from a word already proved least in its bracelet orbit. */
-    public static TwistedBraceletKey ofCanonicalWord(
-            final StandardizedEncodingWord canonicalWord
-    ) {
+    /**
+     * Builds a key from a word already proved least in its bracelet orbit.
+     */
+    public static TwistedBraceletKey ofCanonicalWord(final StandardizedEncodingWord canonicalWord) {
         return new TwistedBraceletKey(Objects.requireNonNull(canonicalWord));
     }
 
     public static TwistedBraceletKey of(final CyclicTargetCandidate candidate) {
-        final var word = candidate.standardizedEncodingWord();
-        final var comparison = new OrbitComparison(word);
+        val word = candidate.standardizedEncodingWord();
+        val comparison = new OrbitComparison(word);
         int leastShift = 0;
         boolean leastReflected = false;
         for (int shift = 0; shift < word.length(); shift++) {
@@ -33,6 +36,7 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
                 }
             }
         }
+
         // Construct and validate only the winning auxiliary-standardized word.
         return new TwistedBraceletKey(word.transform(leastShift, leastReflected));
     }
@@ -49,6 +53,7 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
      * to order indistinguishable colors.  Oriented ranks follow their color.
      */
     private static final class OrbitComparison {
+
         private final int length;
         private final int[] labels, ranks, sizes, types, typeBases;
         private final int[] colorsSeenByType, firstSymbolByLabel, rankOriginByLabel;
@@ -72,17 +77,24 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
                 labels[position] = label;
                 ranks[position] = word.rankAt(position);
                 sizes[label]++;
-                if (ranks[position] != 0) types[label] = 1;
+                if (ranks[position] != 0) {
+                    types[label] = 1;
+                }
             }
             for (int label = 1; label <= length; label++) {
-                if (sizes[label] == 0) continue;
+                if (sizes[label] == 0) {
+                    continue;
+                }
+
                 // Increasing type indices give decreasing size, then U before O.
                 types[label] += 2 * (length - sizes[label]);
                 colorsSeenByType[types[label]]++;
             }
+
             int nextSymbol = 0;
             for (int type = 0; type < typeBases.length; type++) {
                 typeBases[type] = nextSymbol;
+
                 final int width = (type & 1) == 0 ? 1 : length - type / 2;
                 nextSymbol += colorsSeenByType[type] * width;
             }
@@ -91,6 +103,7 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
         boolean consider(final int shift, final boolean reflected) {
             Arrays.fill(colorsSeenByType, 0);
             Arrays.fill(firstSymbolByLabel, -1);
+
             int comparison = hasLeast ? 0 : -1;
             int position = reflected ? (length - shift) % length : shift;
             for (int offset = 0; offset < length; offset++) {
@@ -102,23 +115,33 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
                     firstSymbolByLabel[label] = typeBases[type] + colorsSeenByType[type]++ * width;
                     rankOriginByLabel[label] = rank;
                 }
+
                 int symbol = firstSymbolByLabel[label];
                 if (rank != 0) {
-                    final int difference = reflected
-                            ? rankOriginByLabel[label] - rank : rank - rankOriginByLabel[label];
+                    final int difference = reflected ? rankOriginByLabel[label] - rank : rank - rankOriginByLabel[label];
                     symbol += difference < 0 ? difference + sizes[label] : difference;
                 }
+
                 currentSymbols[offset] = symbol;
                 if (comparison == 0) {
                     comparison = Integer.compare(symbol, leastSymbols[offset]);
-                    if (comparison > 0) return false;
+                    if (comparison > 0) {
+                        return false;
+                    }
                 }
-                if (reflected) position = position == 0 ? length - 1 : position - 1;
-                else position = position + 1 == length ? 0 : position + 1;
+                if (reflected) {
+                    position = position == 0 ? length - 1 : position - 1;
+                } else {
+                    position = position + 1 == length ? 0 : position + 1;
+                }
             }
-            if (comparison >= 0) return false;
+            if (comparison >= 0) {
+                return false;
+            }
+
             System.arraycopy(currentSymbols, 0, leastSymbols, 0, length);
             hasLeast = true;
+
             return true;
         }
     }
@@ -138,8 +161,7 @@ public final class TwistedBraceletKey implements Comparable<TwistedBraceletKey> 
 
     @Override
     public boolean equals(final Object object) {
-        return object instanceof TwistedBraceletKey other
-                && canonicalWord.equals(other.canonicalWord);
+        return object instanceof TwistedBraceletKey other && canonicalWord.equals(other.canonicalWord);
     }
 
     @Override

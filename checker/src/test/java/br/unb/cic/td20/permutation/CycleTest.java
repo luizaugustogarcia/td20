@@ -10,7 +10,7 @@ class CycleTest {
 
     @Test
     void getSymbols() {
-        assertArrayEquals(new int[] {0, 1, 2, 3, 4, 5}, cycle.getSymbols());
+        assertArrayEquals(new int[] { 0, 1, 2, 3, 4, 5 }, cycle.getSymbols());
     }
 
     @Test
@@ -56,7 +56,7 @@ class CycleTest {
 
     @Test
     void getStartingBy() {
-        assertArrayEquals(new int[] {2, 3, 4, 5, 0, 1}, cycle.startingBy(2).getSymbols());
+        assertArrayEquals(new int[] { 2, 3, 4, 5, 0, 1 }, cycle.startingBy(2).getSymbols());
     }
 
     @Test

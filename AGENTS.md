@@ -127,3 +127,100 @@
 - Run mvn -pl emitter -am test and mvn -pl checker -am test for CPU-side work.
 - Run CUDA-dependent tests only when the environment is configured for them.
 - Run Java entry points through JShell; use tools/td20 for prepared classpaths.
+
+# Java programming style
+
+Apply these conventions throughout this repository. They are inferred from the existing Java sources, especially `Cycle`, `Configuration`, `BaseAlgorithm`, `Silvaetal`, and the proof utilities. The preference against defensive programming is an explicit user instruction. Follow the surrounding code when a convention varies between files.
+
+## Blank lines and layout
+
+- Use four spaces for indentation and put opening braces on the declaration or control-flow line.
+- Leave one blank line after the package declaration, between import groups, and before the class declaration. Imports generally group project and third-party classes first, Java classes next, and static imports last. Both explicit and wildcard imports occur.
+- Separate methods and constructors with one blank line. Most classes also have a blank line before their first member; follow the local layout.
+- Use blank lines inside methods to separate logical steps: preparation, searching or iteration, applying a move, updating state, and returning the result.
+- Keep closely related declarations and assignments together. Constructor field assignments and related index calculations usually form a compact group.
+- A computed value and the condition or loop that immediately uses it can stay adjacent. Add a blank line when the next statement starts a new step.
+- Usually leave a blank line before the final return after a substantial calculation or loop. Short forwarding methods and immediate guard returns stay compact.
+- Put annotations directly above the field, method, or class they annotate. Separate individually annotated fields with a blank line; related unannotated fields can be contiguous.
+- Wrap long argument lists, conditions, and stream chains onto indented continuation lines. Follow the nearby alignment; the sources do not enforce a uniform line-length limit.
+
+The grouping in `Cycle.startingBy` is representative:
+
+```java
+public Cycle startingBy(final int symbol) {
+    if (this.symbols[0] == symbol) {
+        return this;
+    }
+
+    val index = indexOf(symbol);
+    val symbols = new int[this.symbols.length];
+    System.arraycopy(this.symbols, index, symbols, 0, symbols.length - index);
+    System.arraycopy(this.symbols, 0, symbols, symbols.length - index, index);
+
+    return Cycle.create(symbols);
+}
+```
+
+## Local declarations and variable names
+
+- Prefer Lombok's `val` for local references and values that are assigned once; replace `final var` wherever Lombok supports the declaration. Import `lombok.val`. Use `var` for reassigned state and loop counters, such as `var current`, `var pi`, and `for (var i = 0; ...)`. Explicit local types also occur when the declared type matters, including collection interfaces, arrays, and variables initialized with `null`.
+- Prefer `final` on parameters that are not reassigned. Keep explicit types on fields, parameters, and return values. Enhanced loops commonly use `for (val move : moves)`.
+- A `final` reference can still hold a mutable collection or array. Filling an array or adding to a list fits the existing style.
+- Use lower camel case for ordinary names: `initialNumberOfEvenCycles`, `nonBadSmallComponents`, `translatedSorting`, and `numberOfTrivialCycles`.
+- Preserve the mathematical vocabulary: `pi`, `sigma`, `spi`, `mu`, `gamma`, and `bigGamma`. Use `a`, `b`, `c` for symbols, `i`, `j`, `k` for indices, and `n` for a size when the formula makes their meaning clear.
+- Use descriptive names around those formulas, such as `piInverse`, `cycleIndex`, `spiCycleIndex`, `piInverseIndex`, `aPos`, `openGates`, and `configSymbols`. Keep position, symbol, and index meanings distinct.
+- Leading underscores commonly identify a derived or alternative state, such as `_pi`, `_spi`, `_config`, and `_bigGamma`. Existing code also uses suffixes such as `spi_`; keep the local convention.
+- Encode mathematical move and sequence names directly: `_2Move`, `_2_2Seq`, `_11_8Seq`, `searchFor3_2_Seq`, and `_11_8_sortings`. Preserve the notation and existing casing when extending related code.
+- Short contextual names such as `cycle`, `move`, `symbols`, `index`, `config`, `sorting`, `pair`, and `triplet` are common. Use longer names when several similar values coexist.
+- Use uppercase names for ordinary constants, such as `CANONICAL_PI` and `EMPTY_LIST`; mathematical constants may retain numeric notation, such as `_11_8_SEQS`.
+
+## Lombok
+
+Use the Lombok dependency already declared in `pom.xml`, following these established patterns:
+
+- Use `@Getter` on individual fields when only selected state is exposed, as in `Configuration` and `MulticyclePermutation`. Class-level `@Getter` is used for simple holders such as `Pair`.
+- Use `@AllArgsConstructor` for classes whose constructor only assigns their fields, as in `SearchParams`, `SortOrExtend`, and the combination jobs.
+- Keep explicit constructors when they compute derived state, call initialization helpers, or provide overloads. Examples include `Cycle` and `Configuration`.
+- Use `@ToString` for generated diagnostic representations. Use `@ToString.Exclude` for cached or recursive state such as `Configuration.canonical`, and `@ToString.Include` for useful computed properties such as the norm and number of open gates.
+- `@SneakyThrows` is common on file-loading, proof-generation, and experiment methods. Follow that pattern where checked exceptions are allowed to propagate; preserve explicit handling where the method performs recovery or cleanup.
+- Keep custom `equals`, `hashCode`, and domain-specific `toString` implementations where their mathematical semantics matter. The code uses individual Lombok annotations rather than a general `@Data` convention.
+
+Annotated fields are laid out like this:
+
+```java
+@Getter
+private final MulticyclePermutation spi;
+
+@Getter
+private final Cycle pi;
+
+@ToString.Exclude
+private Configuration canonical;
+```
+
+## Comments and documentation
+
+- Write short English comments close to the code they explain. Existing comments emphasize mathematical meaning, assumptions, and the reason for a step.
+- Use brief Javadoc for a method or class assumption, representation, or limit. Examples include assuming `sigma = (0,1,2,...,n)`, describing a cycle index, and limiting supported oriented-cycle lengths. Full parameter and return tags are uncommon.
+- Keep the paper's terminology in comments: oriented cycles, open gates, trivial cycles, 3-norm, and `(3,2)` or `(11,8)` sequences.
+- Mark algorithm phases with short labels such as `// Type 1 extension`, `// Type 2 extension`, and apply/rollback comments in recursive search. Keep those labels near the corresponding block.
+- Explain complexity shortcuts and bounds where they are used, for example `O(1)` because the configuration norm is bounded at that point.
+- Document proof-backed guarantees and operational constraints when they explain a branch, failure, or ordering requirement. Existing code explicitly links guaranteed sequences to the article's proof.
+- Preserve useful mathematical and phase comments when changing the associated code, and update them when the assumption or behavior changes.
+
+## Try, catch, and cleanup
+
+- Use try-with-resources for scoped readers, writers, streams, scanners, and random-access files, declaring the resource with `val` where Lombok supports it: `try (val writer = new PrintWriter(outputFile)) { ... }`. Nested resource scopes occur when a resource wraps or depends on another resource.
+- Use `@SneakyThrows` on methods where checked failures simply propagate. An explicit `throws` declaration also fits existing entry points and file utilities.
+- Use a catch block when it handles a concrete condition or crosses a checked-exception boundary, such as an `IOException` inside a stream callback. Existing callbacks use `Throwables.propagate(e)` to let the failure surface.
+- Catch specific exceptions for a defined response. For example, case cleanup catches `IllegalStateException` to mark an invalid case file for deletion.
+- Use `finally` for cleanup that must run after success, failure, or an early return, such as deleting a working-case marker or releasing a lock. Try-with-resources can sit inside that outer try/finally.
+- Put `catch` and `finally` on the closing-brace line, as in `} catch (IOException e) {` and `} finally {`. Caught exceptions are commonly named `e`.
+- Let unexpected failures propagate. Avoid empty catches, catch-all recovery, and returning a success-shaped default after a failure.
+
+## No defensive programming
+
+- Assume valid inputs and satisfied method preconditions. Write the direct algorithm.
+- Do not add speculative null checks, bounds checks, argument validation, defensive copies, or fallback values. Add validation only when it is part of explicitly requested behavior.
+- Keep conditions that express algorithm behavior: applicability checks, recursion base cases, search outcomes, and mathematical case distinctions.
+- Preserve proof-backed invariants and let impossible states fail visibly. Do not add recovery paths for conditions the algorithm guarantees cannot occur.

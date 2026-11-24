@@ -2,53 +2,44 @@ package br.unb.cic.td20.model;
 
 import br.unb.cic.td20.permutation.Cycle;
 import br.unb.cic.td20.permutation.MulticyclePermutation;
+import lombok.val;
 
 import java.util.Optional;
 
-/** Valid cyclic-target pair {@code (omega, beta)} with target {@code rho}. */
+/**
+ * Valid cyclic-target pair {@code (omega, beta)} with target {@code rho}.
+ */
 public final class CyclicTargetPair extends CyclicTargetCandidate {
 
     private final Cycle rho;
     private volatile ExtendedToricClassKey extendedToricClassKey;
     private volatile CyclicTargetPair canonicalRepresentative;
 
-    private CyclicTargetPair(
-            final MulticyclePermutation omega,
-            final Cycle beta,
-            final Cycle rho
-    ) {
+    private CyclicTargetPair(final MulticyclePermutation omega, final Cycle beta, final Cycle rho) {
         this(omega, beta, rho, false, true);
     }
 
-    private CyclicTargetPair(
-            final MulticyclePermutation omega,
+    private CyclicTargetPair(final MulticyclePermutation omega,
             final Cycle beta,
             final Cycle rho,
             final boolean takeOwnership,
-            final boolean validate
-    ) {
+            final boolean validate) {
         super(omega, beta, takeOwnership, validate);
         this.rho = takeOwnership ? rho : Cycle.of(rho.getSymbols().clone());
     }
 
-    private CyclicTargetPair(
-            final MulticyclePermutation omega,
-            final Cycle beta,
-            final boolean takeOwnership
-    ) {
+    private CyclicTargetPair(final MulticyclePermutation omega, final Cycle beta, final boolean takeOwnership) {
         super(omega, beta, takeOwnership);
-        final var product = getProduct();
+
+        val product = getProduct();
         if (product.size() != 1 || product.asNCycle().size() != beta.size()) {
-            throw new IllegalStateException(
-                    "The product omega * beta is not an N-cycle");
+            throw new IllegalStateException("The product omega * beta is not an N-cycle");
         }
+
         this.rho = product.asNCycle();
     }
 
-    public static CyclicTargetPair of(
-            final MulticyclePermutation omega,
-            final Cycle beta
-    ) {
+    public static CyclicTargetPair of(final MulticyclePermutation omega, final Cycle beta) {
         return new CyclicTargetPair(omega, beta, false);
     }
 
@@ -56,10 +47,7 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
      * Takes ownership of freshly constructed permutation objects and validates
      * that they form a cyclic-target pair. Callers must retain no mutable alias.
      */
-    public static CyclicTargetPair ofOwned(
-            final MulticyclePermutation omega,
-            final Cycle beta
-    ) {
+    public static CyclicTargetPair ofOwned(final MulticyclePermutation omega, final Cycle beta) {
         return new CyclicTargetPair(omega, beta, true);
     }
 
@@ -69,11 +57,7 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
      * satisfy {@code rho = omega * beta} with {@code beta} and {@code rho}
      * both full cycles.
      */
-    public static CyclicTargetPair ofKnownTargetOwned(
-            final MulticyclePermutation omega,
-            final Cycle beta,
-            final Cycle rho
-    ) {
+    public static CyclicTargetPair ofKnownTargetOwned(final MulticyclePermutation omega, final Cycle beta, final Cycle rho) {
         return new CyclicTargetPair(omega, beta, rho, true, false);
     }
 
@@ -82,23 +66,22 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
      * its extended-toric class. This avoids repeating orbit minimization for
      * representatives emitted by a direct canonical generator.
      */
-    public static CyclicTargetPair ofCanonicalKnownTargetOwned(
-            final MulticyclePermutation omega,
-            final Cycle beta,
-            final Cycle rho
-    ) {
-        final var pair = new CyclicTargetPair(omega, beta, rho, true, false);
+    public static CyclicTargetPair ofCanonicalKnownTargetOwned(final MulticyclePermutation omega, final Cycle beta, final Cycle rho) {
+        val pair = new CyclicTargetPair(omega, beta, rho, true, false);
         pair.canonicalRepresentative = pair;
+
         return pair;
     }
 
-    /** Decodes and validates a realizable fixed-content encoding in one pass. */
+    /**
+     * Decodes and validates a realizable fixed-content encoding in one pass.
+     */
     public static CyclicTargetPair fromEncodingWord(final EncodingWord word) {
-        final var pair = new CyclicTargetPair(
-                word.decodeAlgebraicPermutation(),
+        val pair = new CyclicTargetPair(word.decodeAlgebraicPermutation(),
                 CyclicTargetCandidate.canonicalCycle(word.length()),
                 true);
         pair.validateEncodedOrientations(word);
+
         return pair;
     }
 
@@ -106,8 +89,9 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
         if (!candidate.formsCyclicTargetPair()) {
             return Optional.empty();
         }
-        return Optional.of(new CyclicTargetPair(
-                candidate.getOmega(), candidate.getBeta(),
+
+        return Optional.of(new CyclicTargetPair(candidate.getOmega(),
+                candidate.getBeta(),
                 candidate.getProduct().asNCycle()));
     }
 
@@ -141,6 +125,7 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
                 }
             }
         }
+
         return result;
     }
 
@@ -151,19 +136,18 @@ public final class CyclicTargetPair extends CyclicTargetCandidate {
             synchronized (this) {
                 result = canonicalRepresentative;
                 if (result == null) {
-                    result = CyclicTargetPair.fromEncodingWord(
-                            twistedBraceletKey().canonicalWord());
+                    result = CyclicTargetPair.fromEncodingWord(twistedBraceletKey().canonicalWord());
                     result.canonicalRepresentative = result;
                     canonicalRepresentative = result;
                 }
             }
         }
+
         return result;
     }
 
     @Override
     public String toString() {
-        return "CyclicTargetPair(omega=" + getOmega()
-                + ", beta=" + getBeta() + ", rho=" + rho + ')';
+        return "CyclicTargetPair(omega=" + getOmega() + ", beta=" + getBeta() + ", rho=" + rho + ')';
     }
 }

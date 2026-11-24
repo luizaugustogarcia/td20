@@ -17,6 +17,9 @@ presents the proof.
 | [WORKFLOW.md](WORKFLOW.md) | Count, publish, emit, reconstruct and verify via JShell. |
 | [OPERATIONS.md](OPERATIONS.md) | Explicit budgets, CPU/GPU configuration, persistence and resume. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Independent modules, generators and three inverse waves. |
+| [EXECUTION.md](EXECUTION.md) | Visual guide to internal component interactions, representations and artifact boundaries. |
+| [EMITTER_EXECUTION.md](EMITTER_EXECUTION.md) | Illustrated emitter phases: generation, CPU/CUDA search, inverse waves, queues and persistence. |
+| [CHECKER_EXECUTION.md](CHECKER_EXECUTION.md) | Illustrated checker phases: independent regeneration, batched replay, inverse coverage and completion. |
 | [KNOWLEDGE.md](KNOWLEDGE.md) | Pair conventions, encoding, symmetry and counting. |
 | [td20-burnside-counting.md](td20-burnside-counting.md) | Burnside derivation and the complete endpoint census. |
 | [RECONSTRUCTION_OPTIMIZATION.md](RECONSTRUCTION_OPTIMIZATION.md) | Experimental reconstruction alternatives, measurements, and required coverage safeguards. |

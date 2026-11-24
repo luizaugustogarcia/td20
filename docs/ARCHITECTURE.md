@@ -1,5 +1,9 @@
 # Computer-assisted proof architecture
 
+For illustrated internal execution and component handoffs, start with
+[the visual guide](EXECUTION.md), then follow
+[the emitter](EMITTER_EXECUTION.md) and [the checker](CHECKER_EXECUTION.md).
+
 The [paper](td20-reduction-count.tex) specifies the mathematics and
 [research plan](RESEARCH_PLAN.md) states proof completion criteria. The public
 `WitnessEmitter` and `CertificateChecker` entries dispatch to their active

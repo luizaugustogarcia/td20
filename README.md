@@ -64,5 +64,8 @@ Generated databases, count reports, checkpoints, certificates and logs remain
 untracked. See [workflow](docs/WORKFLOW.md), [operations](docs/OPERATIONS.md),
 [architecture](docs/ARCHITECTURE.md), [conventions](docs/KNOWLEDGE.md),
 [validation](docs/VALIDATION.md), and the [39-commit port ledger](docs/TD18_PORT.md).
+For illustrated internal execution, read [the visual guide](docs/EXECUTION.md),
+[the emitter walkthrough](docs/EMITTER_EXECUTION.md) and
+[the checker walkthrough](docs/CHECKER_EXECUTION.md).
 [The proof completion record](docs/RESEARCH_PLAN.md) maps all five completion
 criteria to checked evidence and retains the requirements for reproduction.

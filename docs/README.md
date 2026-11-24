@@ -13,16 +13,13 @@ presents the proof.
 | --- | --- |
 | [RESEARCH_PLAN.md](RESEARCH_PLAN.md) | Completed evidence ledger and requirements for reproducing the proof. |
 | [REFERENCE_SIMULATION.md](REFERENCE_SIMULATION.md) | Successful full-scope TD20 verification, configuration, timings and artifact locations. |
-| [TD18_PORT.md](TD18_PORT.md) | Complete commit-by-commit port inventory and TD20 adaptations. |
-| [WORKFLOW.md](WORKFLOW.md) | Count, publish, emit, reconstruct and verify via JShell. |
-| [OPERATIONS.md](OPERATIONS.md) | Explicit budgets, CPU/GPU configuration, persistence and resume. |
+| [RUNNING.md](RUNNING.md) | Build, count, emit, reconstruct and verify directly through JShell. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Independent modules, generators and three inverse waves. |
 | [EXECUTION.md](EXECUTION.md) | Visual guide to internal component interactions, representations and artifact boundaries. |
 | [EMITTER_EXECUTION.md](EMITTER_EXECUTION.md) | Illustrated emitter phases: generation, CPU/CUDA search, inverse waves, queues and persistence. |
 | [CHECKER_EXECUTION.md](CHECKER_EXECUTION.md) | Illustrated checker phases: independent regeneration, batched replay, inverse coverage and completion. |
 | [KNOWLEDGE.md](KNOWLEDGE.md) | Pair conventions, encoding, symmetry and counting. |
 | [td20-burnside-counting.md](td20-burnside-counting.md) | Burnside derivation and the complete endpoint census. |
-| [RECONSTRUCTION_OPTIMIZATION.md](RECONSTRUCTION_OPTIMIZATION.md) | Experimental reconstruction alternatives, measurements, and required coverage safeguards. |
 
 Update the paper before changing the route, then align both implementations,
 counts, tests, guides and completion artifacts. Generated databases and work sets remain

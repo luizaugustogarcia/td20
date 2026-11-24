@@ -1,7 +1,5 @@
 # Building and running directly
 
-The former tools/ launchers have been removed. References to them in older
-operational and experimental documentation describe historical workflows.
 Use JDK 21 and run the following commands from the repository root.
 
 Build Java and prepare independent module classpaths:
@@ -77,7 +75,7 @@ CPU workers default to automatic detection. Tune heap and CPU/GPU memory
 settings to the allocation with remote-VM options such as `-R-Xmx32g` and
 `-R-Dtd20.gpuSlots=8`. Add `-R-XX:+UseNUMA` on multiple sockets or NUMA nodes.
 Maven execution-profile properties are not automatically applied to JShell.
-Record logs and effective settings explicitly; automatic launcher recording
-has been removed. Preserve all generated evidence untracked and consult
+Record logs and effective settings explicitly. Preserve all generated evidence
+untracked and consult
 [the execution record](REFERENCE_SIMULATION.md) for the successful run settings.
 

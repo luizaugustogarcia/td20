@@ -443,9 +443,8 @@ before encoding it, including results arriving through optional import paths.
 [ErikssonCheckpoint](../emitter/src/main/java/br/unb/cic/td20/avoidance/ErikssonCheckpoint.java)
 validates stage, mode, route, budgets, inventory kind and counts on resume.
 An interrupted output wave is regenerated from its completed source boundary.
-A supported older completed after-one checkpoint with a pending count is counted
-and upgraded before final expansion. Old complete-root, incompatible-mode or
-historical TD18 checkpoints cannot be relabeled as current filtered roots.
+Resume accepts only checkpoints whose version, mode, route, budgets, inventory
+kind and counts match the current filtered-root computation.
 
 Generated/submitted/ingested counters can contain duplicate key occurrences.
 Final expansion progress uses completed sources against the exact after-one
@@ -472,13 +471,12 @@ flowchart TB
     Residual --> Resume["Compatible RESIDUAL_EXPANSION input"]
 ```
 
-Despite its name,
 [ImportTd18AfterTwo](../emitter/src/main/java/br/unb/cic/td20/avoidance/ImportTd18AfterTwo.java)
 requires the complete **TD20** after-two source inventory and compatible TD20
 checkpoint. It imports replayed intrinsic witnesses from the source database,
-not an archived TD18 reconstruction checkpoint. It checks source/imported/
-residual accounting, flushes copied results, seals residuals, rechecks destination
-coverage, then publishes its residual work and report.
+checks source/imported/residual accounting, flushes copied results, seals
+residuals, rechecks destination coverage, then publishes its residual work and
+report.
 
 [CertificateDatabaseMerger](../emitter/src/main/java/br/unb/cic/td20/certificate/CertificateDatabaseMerger.java)
 opens one input database at a time, submits bounded record batches for replay,

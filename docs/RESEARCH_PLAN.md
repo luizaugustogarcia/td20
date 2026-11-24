@@ -11,23 +11,22 @@ completed premises, alongside the smaller established bounds.
 All five completion criteria below have checked evidence. The full-scope
 independent checker run `checker-20261122T183611Z-32945` completed on
 22 November 2026 with fresh work, exit code zero, `status=complete`,
-`completionScope=complete`, and the application success marker. Its retained
-[evidence directory](../logs/official-verification/checker-20261122T183611Z-32945/)
-and [execution record](REFERENCE_SIMULATION.md) document the scope and provenance.
+`completionScope=complete`, and the application success marker. The
+[execution record](REFERENCE_SIMULATION.md) documents the scope, configuration,
+counts and provenance.
 The criteria below remain the requirements for reproducing the proof.
 
 | Criterion | Completed checked evidence |
 | --- | --- |
-| 1. Mathematical coverage and small domains | Coverage derivation in the source paper; both Maven CPU suites passed, including a rerun on 23 November 2026 recorded in `logs/proof-status-update/`. Retained Surefire XML reports are under `emitter/target/surefire-reports/` and `checker/target/surefire-reports/`; earlier successful CPU-suite logs are under `logs/eriksson-route-v1/`. |
-| 2. Independent inventories | `logs/eriksson-route-v1/root-census.log` and `independent-root-census.log` complete all 83 rows with totals U3/O3/C3 = 0/8/2; `endpoint-census.log` and `independent-endpoints.log` complete all 143 annotations. `data/eriksson-route-validation-v1.json` records agreement. The full checker independently regenerates and compares every root row again. |
-| 3. Direct roots and endpoints | All 83 root and 143 endpoint completion entries in the official checker log; six direct obligations discharged at budget 11 and 2,036 endpoint residuals propagated to inverse coverage. Witnesses are replayed from the TD20 certificate database. |
-| 4. Complete inverse coverage | Official `inverse-coverage-v3.txt`: 5,032,950 after-two classes, 4,062,619 budget-nine closures, 970,331 second-level residuals, 4,010,256,622 after-one classes, 51,456,682 final residual roots, zero unresolved; both branches and endpoints, no budget-ten lookup. Full regeneration and replay independently check the reused results. |
-| 5. Entire proof | Both successful CPU suites and the official complete `verify --phase=all` run, its log, settings JSON, executed-class provenance and version-three coverage report. Established smaller diameters and the reverse bound are cited in the source paper. |
+| 1. Mathematical coverage and small domains | Coverage derivation in the source paper; both Maven CPU suites passed on 23 November 2026. The commands and required scope are in [VALIDATION.md](VALIDATION.md). |
+| 2. Independent inventories | The source paper publishes all 83 root rows with totals U3/O3/C3 = 0/8/2 and all 143 endpoint annotations. The standalone counts agree, and the full checker independently regenerated and compared every row. |
+| 3. Direct roots and endpoints | The completed execution records all 83 root and 143 endpoint completions; six direct obligations were discharged at budget 11 and 2,036 endpoint residuals propagated to inverse coverage. Witnesses are replayed from the TD20 certificate database. |
+| 4. Complete inverse coverage | The completed execution records 5,032,950 after-two classes, 4,062,619 budget-nine closures, 970,331 second-level residuals, 4,010,256,622 after-one classes, 51,456,682 final residual roots and zero unresolved; both branches and endpoints are covered without a budget-ten lookup. |
+| 5. Entire proof | Both CPU suites and the complete `verify --phase=all` run succeeded. The execution record gives its configuration, executed-class provenance and version-three coverage totals. Established smaller diameters and the reverse bound are cited in the source paper. |
 
-Versioned census reports are generated at the paths specified in criterion 2;
-the retained census logs record their completed executions. They are separate
-from the full-scope sorting and reconstruction check. No standalone count,
-test, import audit, or partial run is being substituted for that check.
+Versioned census reports are separate from the full-scope sorting and
+reconstruction check. No standalone count, test, import audit, or partial run
+is being substituted for that check.
 
 The source paper proves elementary final-root family closures. The final
 persisted inventory contains reconstructed roots with no immediate
@@ -175,20 +174,15 @@ and no unresolved final root. The version-three checker report
 non-elementary final-root count, and records
 that no budget-ten certificate lookup pruned the final roots. If a wave or `R`
 is empty, the full checker must still check and report its complete source scope.
-Historical full-search, unfiltered residual-expansion and family-filtered
-checkpoints are distinct modes or versions. Filtered completed-root checkpoints
-use `td-eriksson-reconstruction-v4`, retain their original `FULL_SEARCH` or
-`RESIDUAL_EXPANSION` mode, and record
+Filtered completed-root checkpoints use `td-eriksson-reconstruction-v4`, carry
+their `FULL_SEARCH` or `RESIDUAL_EXPANSION` mode, and record
 `rootInventory=ELEMENTARY_RESIDUALS`; their `roots` count means `|R|`. Both
 execution modes use the filtered final wave without budget-ten search or
 certificate pruning. Production flushes certificates before publishing a
 downstream checkpoint; a failed flush preserves the preceding boundary.
-A completed old after-two or
-after-one residual-expansion source can be explicitly adopted after validating
-its unchanged domain, budget, route, mode and exact inventory. Old complete-root
-checkpoints cannot be relabeled as filtered-root checkpoints, and TD18 or
-full-search checkpoints cannot substitute for this input. Interrupted final
-output is regenerated from its completed source boundary.
+Resume requires the exact current domain, budget, route, mode and inventory;
+incompatible checkpoints are rejected. Interrupted final output is regenerated
+from its completed source boundary.
 After residual intermediate generation completes and all writers drain,
 `countKeys()` counts distinct persisted budget-ten classes through RocksDB's
 merged logical keys using parallel, disjoint half-open ranges on one snapshot.
@@ -196,11 +190,9 @@ All range workers join and every iterator status is checked before summing and
 publishing the exact inventory. Approximate byte sizes guide range scheduling
 only. It does not decode or validate states, invoke
 prefetch, or perform an additional Java deduplication. Publish that exact count
-in the `AFTER_ONE` checkpoint before final inverse generation starts. Legacy
-version-three checkpoints with `afterOne=-1` remain readable only for completed
-residual generation; resume performs the key-only count and atomically upgrades
-the checkpoint before proceeding. Final expansion logs completed expanded
-source classes as `processed=X/N (P%)`, against the exact fixed source total
+in the `AFTER_ONE` checkpoint before final inverse generation starts. Final
+expansion logs completed expanded source classes as `processed=X/N (P%)`,
+against the exact fixed source total
 `N`, and estimates its ETA from the observed rate. The completion percentage
 comes from completed source coverage, including proved whole families,
 independently of output counters.

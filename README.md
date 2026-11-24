@@ -10,7 +10,7 @@ methodology and are explicit completed premises of this project.
 [The source paper](docs/td20-reduction-count.tex) specifies the proof route.
 [The reading PDF](docs/td20-reduction-count.pdf) presents the proof, and
 [the execution record](docs/REFERENCE_SIMULATION.md) documents the successful
-checker run, its configuration and retained evidence.
+checker run, its configuration and recorded results.
 
 The checker completed all **83 root partitions** and **143 endpoint annotations**,
 independently regenerated **4,010,256,622 budget-ten source classes**, and checked
@@ -29,7 +29,6 @@ U3 = 0 retained unoriented roots, O3 = 8 retained oriented roots and C3 = 2
 support-cleared roots, leaving six direct obligations. The paper records all
 143 endpoint rows with
 14,098,353,328 classes, including 11,523,939,269 outside elementary closures.
-Historical joint-2 counts and TD18 results cannot supply TD20 coverage.
 Direct roots require budget 11; endpoints require
 budget 8. Endpoint misses generate three inverse waves, including both `(1,2,2)`
 and `(0,3,2)` branches on both endpoints, with budgets 9, 10 and 11.
@@ -42,16 +41,15 @@ The archive is 89,848,709,120 bytes (83.68 GiB) and contains the `certificates/`
 directory. Extract it with
 `tar -xf certificate.tar` and use the independent checker described in
 [the execution instructions](docs/RUNNING.md) to regenerate obligations and
-replay witnesses. Download access requires no AWS account.
-The download becomes available only after the multipart upload completes.
-A [SHA-256 checksum file](https://td20.s3.us-east-2.amazonaws.com/certificate.tar.sha256)
-will be published after upload; verify a downloaded archive with
+replay witnesses. Download access requires no AWS account. A
+[SHA-256 checksum file](https://td20.s3.us-east-2.amazonaws.com/certificate.tar.sha256)
+is available; verify a downloaded archive with
 `sha256sum -c certificate.tar.sha256`.
 
 JDK 21, Maven, Bash and JShell are the baseline. See
 [direct build and execution instructions](docs/RUNNING.md) for compilation,
-CPU tests, CUDA builds, emission and independent verification. The former
-tools/ launchers have been removed; record settings and logs explicitly.
+CPU tests, CUDA builds, emission and independent verification. Record settings
+and logs explicitly.
 
 Successful CPU computations do not initialize CUDA. The checker has no emitter
 artifact dependency and independently regenerates obligations before replay.
@@ -61,9 +59,8 @@ Full 21-symbol independent regeneration and witness replay completed in
 `checker-20261122T183611Z-32945`.
 
 Generated databases, count reports, checkpoints, certificates and logs remain
-untracked. See [workflow](docs/WORKFLOW.md), [operations](docs/OPERATIONS.md),
-[architecture](docs/ARCHITECTURE.md), [conventions](docs/KNOWLEDGE.md),
-[validation](docs/VALIDATION.md), and the [39-commit port ledger](docs/TD18_PORT.md).
+untracked. See [running](docs/RUNNING.md), [architecture](docs/ARCHITECTURE.md),
+[conventions](docs/KNOWLEDGE.md), and [validation](docs/VALIDATION.md).
 For illustrated internal execution, read [the visual guide](docs/EXECUTION.md),
 [the emitter walkthrough](docs/EMITTER_EXECUTION.md) and
 [the checker walkthrough](docs/CHECKER_EXECUTION.md).

@@ -58,7 +58,7 @@ does not call CUDA or search for replacement witnesses.
 
 The production representation is compact. Most hot loops use primitive arrays,
 not collections of `Cycle` objects. The mathematical object APIs remain useful
-for comparison tests and compatibility adapters.
+for comparison tests.
 
 ```mermaid
 flowchart LR
@@ -222,14 +222,12 @@ formats; they are not competing versions of the same file.
 | `runtime/BoundedTasks` | Worker pools, bounded submission and failure propagation. | Limits queued work while independent producers and consumers run concurrently. |
 | Checker `CheckerParallelism`, `RocksDbMemoryBudget` | Worker/read limits and shared native memory allocation. | Configure generation, reads, replay, scans and scratch storage. |
 | Progress classes and CPU/GPU statistics | Observe phases, completed source work, queues, memory and rates. | Default ten-second snapshots; output occurrences are separate from exact distinct inventories. |
-| Emitter `ReadOnlyWitnessSource`, `ImportTd18AfterTwo` | Replay reusable results and convert compatible imported classes. | Optional input preparation; only replayed, budget-valid results discharge current obligations. Historical route checkpoints are not TD20 inputs. |
+| Emitter `ReadOnlyWitnessSource`, `ImportTd18AfterTwo` | Replay reusable results and convert compatible imported classes. | Optional input preparation; only replayed, budget-valid TD20 results discharge current obligations. |
 | Emitter `CertificateDatabaseMerger`, `CertificateDatabaseConsolidator` | Merger replays incoming results; consolidator copies opaque records from disjoint closed databases and checks inventories. | Artifact maintenance, outside the main generation/reconstruction loop; consolidation does not replay witnesses. |
-| `compat/LegacyPairs`, `LegacyCertificates` | Convert object models and packed representations. | Preserve comparison and older API boundaries; not a second production proof route. |
-| Emitter `experimental/` | Benchmarks and alternative algorithms. | Separate experiments; their presence does not make them part of the checked production path. |
 
 The walkthroughs link the participating classes at each phase. For the broader
 design rationale see [ARCHITECTURE.md](ARCHITECTURE.md); for validation scopes
-see [VALIDATION.md](VALIDATION.md) and [PERFORMANCE_EXPERIMENTS.md](PERFORMANCE_EXPERIMENTS.md).
+see [VALIDATION.md](VALIDATION.md).
 
 ## 6. Relating execution to the completed record
 

@@ -15,15 +15,10 @@ merging, and certificate replay use immutable `PrimitivePair` byte vectors and p
 transpositions. Worker-owned arrays perform inverse enumeration, canonicalization,
 CPU prefixes, and replay. Inverse callbacks pack canonical state keys directly
 into bounded persistence batches, without disjoint-cycle or encoding objects.
-The general mathematical APIs and comparison harness retain legacy adapters.
-Both modules now use the same primitive representation, each compiled into its
-own artifact. The mathematical route, counter, scheduling, and persisted formats
-are preserved. The checker retains its legacy mathematical APIs as comparison
-oracles; production generation, inverse persistence and batched witness replay
-do not construct disjoint-cycle objects.
-The bounded comparison and correctness scope are documented in
-[PERFORMANCE_EXPERIMENTS.md](PERFORMANCE_EXPERIMENTS.md).
-
+The general mathematical APIs remain comparison oracles. Both modules use the
+same primitive representation, each compiled into its own artifact; production
+generation, inverse persistence and batched witness replay do not construct
+disjoint-cycle objects.
 `ErikssonRoute` defines the root domain 21, budget 11, endpoint domain
 16, budget 8, and 143 endpoint annotations. `ErikssonInventory`
 reads every active paper row in deterministic partition order. Explicit pending
@@ -32,7 +27,7 @@ rows support structure checks but cannot supply proof counts.
 The emitter root stream uses `ErikssonRootGenerator` with normalized algebraic
 cycles and prefix placement. `CyclicTargetMoves` contains mathematical move and
 contraction operations. The checker has its own independent move implementation
-and a budgeted `SearchState`; neither requires a superseded route container.
+and a budgeted `SearchState`.
 Source-side immediate and three-move constraints, forced target-cycle checks,
 and twisted canonical comparisons prune prefixes. Known directed target paths
 also certify immediate target-side closures. Full remaining leaves pass the
@@ -51,7 +46,7 @@ Oriented ranks are measured from that first occurrence, with both positions
 and ranks inverted for twisted reflection. These are the same auxiliary
 standardization and spatial action described in [the conventions](KNOWLEDGE.md).
 A first larger differing symbol rejects an image immediately. Strict replacement
-preserves the previous rotation/reflection order on ties. Only the winning
+preserves rotation/reflection order on ties. Only the winning
 image becomes a constructed, fully validated encoding word. This preserves
 the canonical representative and persisted keys; it changes no obligation,
 inverse support, forward replay or certificate check. An independent full-word
@@ -66,8 +61,9 @@ algebraic images without decoding a canonical permutation and encoding it again.
 Already established canonical representatives from direct generation retain a
 cheap normalized-image path. Reconstruction state encoding uses the same writer
 with its explicit fixed-point-free precondition; fixed points must be contracted
-before admission. Certificate keys still support fixed points. Canonical key bytes are preserved. The active route, domains and explicit budgets
-are versioned for TD20 and reject historical route checkpoints.
+before admission. Certificate keys still support fixed points. The active route,
+domains and explicit budgets are versioned for TD20; incompatible checkpoints
+are rejected.
 
 Root, endpoint and inverse certificate lookups construct these keys before
 reading the database. A miss needs no materialized canonical pair. For a hit,
@@ -150,7 +146,6 @@ and `P=100 X/N` for a nonempty source. Remaining source classes, throughput
 and an ETA estimated from the observed rate accompany that fraction. Output
 key-occurrence and write counters are reported separately.
 Intermediate CUDA searches explore the full obligation budget (9 or 10).
-The former depth-five cap and its override have been removed.
 `td20.reconstructionGpuMillis` defaults to 0 (no time cutoff). Budget-11 searches
 always use full exploration depth 11 without a time cutoff.
 Persistence is bounded and asynchronous. The checker
@@ -272,9 +267,5 @@ Sealed checkpoints are versioned computation state. The latest-wave count,
 route and budgets are validated on resume. Intrinsic certificates remain
 route-independent and are replayed at the requested budget. Counts, successful
 partial scopes, checkpoints and passing tests are distinct from a complete
-end-to-end proof report.
-Legacy version-three `AFTER_ONE` checkpoints may contain `afterOne=-1` for a
-completed residual wave. Resume counts that persisted set with `countKeys()`
-and atomically upgrades the checkpoint before activating final-root prefetch
-or starting final inverse generation. New completed budget-ten checkpoints
-record the count immediately.
+end-to-end proof report. Completed budget-ten checkpoints record their exact
+source count.
